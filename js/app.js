@@ -4,6 +4,7 @@ import { renderSchedulingTab } from './scheduling.js';
 import { renderSongbookTab } from './songbook.js';
 import { renderVoiceExercises } from './components/voiceExercises.js';
 import { renderAuthScreen } from './components/authScreen.js';
+import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations } from './i18n.js';
@@ -68,6 +69,9 @@ onLangChange(() => {
   applyStaticTranslations();
   updateLangButtons();
   renderAuthScreen(authScreenEl, { supabase });
+  if (!passwordRecoveryEl.classList.contains('hidden')) {
+    renderPasswordRecovery(passwordRecoveryEl, { supabase, onDone: () => supabase.auth.signOut() });
+  }
   // Dynamic tab content is generated with hardcoded strings, not
   // data-i18n attributes, so the visible tab needs a full re-render.
   if (currentTabName && lazyTabs[currentTabName]) lazyTabs[currentTabName]();
@@ -103,14 +107,34 @@ sidebarBackdrop.addEventListener('click', closeSidebar);
 // ---- Auth gating ----
 const authScreenEl = document.querySelector('#auth-screen');
 const appShellEl = document.querySelector('#app-shell');
+const passwordRecoveryEl = document.querySelector('#password-recovery-screen');
 const currentUserNameEl = document.querySelector('#current-user-name');
 const signOutBtn = document.querySelector('#sign-out-btn');
 
 renderAuthScreen(authScreenEl, { supabase });
 
 let currentUserId = null;
+// True from the moment a PASSWORD_RECOVERY event arrives until the member
+// either sets a new password or signs out. Guards against the initial
+// getSession() check (which sees the same recovery session as a normal
+// login) racing the recovery screen and bouncing them into the app.
+let isRecovering = false;
+
+function showPasswordRecovery() {
+  isRecovering = true;
+  authScreenEl.classList.add('hidden');
+  appShellEl.classList.add('hidden');
+  passwordRecoveryEl.classList.remove('hidden');
+  renderPasswordRecovery(passwordRecoveryEl, {
+    supabase,
+    onDone: () => { isRecovering = false; supabase.auth.signOut(); },
+  });
+}
 
 async function showApp(session) {
+  if (isRecovering) return;
+
+  passwordRecoveryEl.classList.add('hidden');
   authScreenEl.classList.add('hidden');
   appShellEl.classList.remove('hidden');
 
@@ -134,6 +158,8 @@ async function showApp(session) {
 
 function showAuth() {
   currentUserId = null;
+  isRecovering = false;
+  passwordRecoveryEl.classList.add('hidden');
   appShellEl.classList.add('hidden');
   authScreenEl.classList.remove('hidden');
   membersNavBtn.classList.add('hidden');
@@ -144,7 +170,11 @@ supabase.auth.getSession().then(({ data: { session }, error }) => {
   if (session) showApp(session); else showAuth();
 });
 
-supabase.auth.onAuthStateChange((_event, session) => {
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    showPasswordRecovery();
+    return;
+  }
   if (session) showApp(session); else showAuth();
 });
 

@@ -3,7 +3,7 @@
 import { createMemberCreatorModal } from './memberCreatorModal.js';
 import { t, voicePartLabel, roleLabel } from '../i18n.js';
 
-const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Instrumentalist'];
+const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
 export function renderMemberManager(container, { supabase, currentUserId }) {
   let members = [];
@@ -33,7 +33,7 @@ export function renderMemberManager(container, { supabase, currentUserId }) {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, role, voice_parts, instrument_name')
+      .select('id, full_name, role, voice_parts, instrument_name, profile_emails ( email )')
       .order('full_name');
 
     if (error) {
@@ -54,6 +54,7 @@ export function renderMemberManager(container, { supabase, currentUserId }) {
       <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
         <tr>
           <th class="text-left px-4 py-2">${t('members.name')}</th>
+          <th class="text-left px-4 py-2">${t('members.email')}</th>
           <th class="text-left px-4 py-2">${t('members.voicePart')}</th>
           <th class="text-left px-4 py-2">${t('members.role')}</th>
           <th class="text-left px-4 py-2">${t('members.actions')}</th>
@@ -70,6 +71,10 @@ export function renderMemberManager(container, { supabase, currentUserId }) {
       const nameCell = document.createElement('td');
       nameCell.className = 'px-4 py-2.5 font-medium text-slate-800 whitespace-nowrap';
       nameCell.textContent = member.full_name;
+
+      const emailCell = document.createElement('td');
+      emailCell.className = 'px-4 py-2.5 text-slate-500 whitespace-nowrap';
+      emailCell.textContent = member.profile_emails?.email || t('members.emailUnknown');
 
       const voicePartCell = document.createElement('td');
       voicePartCell.className = 'px-4 py-2.5';
@@ -93,14 +98,32 @@ export function renderMemberManager(container, { supabase, currentUserId }) {
 
       const actionsCell = document.createElement('td');
       actionsCell.className = 'px-4 py-2.5';
+      actionsCell.innerHTML = '';
+
       const toggleBtn = document.createElement('button');
       toggleBtn.type = 'button';
-      toggleBtn.className = 'text-sm font-medium text-indigo-600 hover:text-indigo-800 whitespace-nowrap';
+      toggleBtn.className = 'text-sm font-medium text-indigo-600 hover:text-indigo-800 whitespace-nowrap block mb-1';
       toggleBtn.textContent = member.role === 'admin' ? t('members.makeSinger') : t('members.makeAdmin');
       toggleBtn.addEventListener('click', () => toggleRole(member));
       actionsCell.appendChild(toggleBtn);
 
-      row.append(nameCell, voicePartCell, roleCell, actionsCell);
+      if (member.profile_emails?.email) {
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'text-sm font-medium text-slate-500 hover:text-slate-700 whitespace-nowrap block mb-1';
+        resetBtn.textContent = t('members.sendReset');
+        resetBtn.addEventListener('click', () => sendPasswordReset(member, resetBtn));
+        actionsCell.appendChild(resetBtn);
+      }
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'text-sm font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap block';
+      removeBtn.textContent = t('members.remove');
+      removeBtn.addEventListener('click', () => removeMember(member));
+      actionsCell.appendChild(removeBtn);
+
+      row.append(nameCell, emailCell, voicePartCell, roleCell, actionsCell);
       tbody.appendChild(row);
     });
 
@@ -162,6 +185,34 @@ export function renderMemberManager(container, { supabase, currentUserId }) {
     }
 
     member.voice_parts = newVoiceParts;
+  }
+
+  async function removeMember(member) {
+    if (!window.confirm(t('members.confirmRemove', { name: member.full_name }))) return;
+
+    const { error } = await supabase.from('profiles').delete().eq('id', member.id);
+    if (error) {
+      window.alert(t('members.removeFailed', { message: error.message }));
+      return;
+    }
+
+    members = members.filter((m) => m.id !== member.id);
+    renderTable();
+  }
+
+  async function sendPasswordReset(member, button) {
+    const email = member.profile_emails?.email;
+    if (!email) return;
+
+    button.disabled = true;
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    button.disabled = false;
+
+    if (error) {
+      window.alert(t('members.resetFailed', { message: error.message }));
+      return;
+    }
+    window.alert(t('members.resetSent', { name: member.full_name }));
   }
 }
 

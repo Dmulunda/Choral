@@ -4,36 +4,77 @@
 // that pool, and let the admin override any slot before saving.
 import { t, tn, voicePartLabel } from '../i18n.js';
 
-const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Instrumentalist'];
+const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
 const DEFAULT_REQUIREMENTS = [
   { voice_part: 'Leader', count: 1 },
   { voice_part: 'Soprano', count: 2 },
   { voice_part: 'Alto', count: 2 },
   { voice_part: 'Tenor', count: 2 },
-  { voice_part: 'Instrumentalist', count: 1 },
+  { voice_part: 'Pianist', count: 1 },
+  { voice_part: 'Bassist', count: 1 },
+  { voice_part: 'Guitarist', count: 1 },
+  { voice_part: 'Drummer', count: 1 },
 ];
 
 // ---- Pure logic: safe to unit test without touching Supabase ----
 
+// Combines two separate "I'm free that day" signals: the general
+// availability calendar, and approvals on a titled service request for
+// this same date (if one exists). Either counts as available.
 export async function getAvailableSingersForDate(supabase, dateStr) {
+  const [{ data: availRows, error: availError }, { data: plan, error: planError }] = await Promise.all([
+    supabase
+      .from('availability')
+      .select('user_id, profiles ( id, full_name, voice_parts, instrument_name )')
+      .eq('date', dateStr)
+      .eq('status', 'available'),
+    supabase.from('service_plans').select('id').eq('date', dateStr).maybeSingle(),
+  ]);
+
+  if (availError) throw availError;
+  if (planError) throw planError;
+
+  const pool = new Map();
+  (availRows || []).forEach((row) => { if (row.profiles) pool.set(row.profiles.id, row.profiles); });
+
+  if (plan) {
+    const { data: rsvpRows, error: rsvpError } = await supabase
+      .from('service_rsvps')
+      .select('profiles ( id, full_name, voice_parts, instrument_name )')
+      .eq('service_plan_id', plan.id)
+      .eq('status', 'approved');
+    if (rsvpError) throw rsvpError;
+    (rsvpRows || []).forEach((row) => { if (row.profiles) pool.set(row.profiles.id, row.profiles); });
+  }
+
+  return { planId: plan?.id ?? null, singers: Array.from(pool.values()) };
+}
+
+// Fetches who's already saved as programmed for this date, if a roster
+// was saved before — lets "Generate" mean "load the current roster and
+// let me change it" rather than always starting from a blank slate.
+export async function getExistingAssignments(supabase, planId) {
+  if (!planId) return [];
+
   const { data, error } = await supabase
-    .from('availability')
-    .select('user_id, profiles ( id, full_name, voice_parts, instrument_name )')
-    .eq('date', dateStr)
-    .eq('status', 'available');
+    .from('service_plan_singers')
+    .select('voice_part, profiles ( id, full_name, instrument_name )')
+    .eq('service_plan_id', planId);
 
   if (error) throw error;
 
-  return data
-    .map((row) => row.profiles)
-    .filter(Boolean);
+  return (data || [])
+    .filter((row) => row.profiles)
+    .map((row) => ({ voice_part: row.voice_part, singer: row.profiles }));
 }
 
 // A singer covering multiple parts (e.g. a Leader who also sings Soprano
 // as a backup) is added to every matching pool; the `used` set below still
-// ensures they only fill one slot across the whole roster.
-export function generateRoster(availableSingers, requirements) {
+// ensures they only fill one slot across the whole roster. Existing
+// assignees are tried first so a saved roster loads as-is by default —
+// admin can then override any slot to swap someone new in.
+export function generateRoster(availableSingers, requirements, existingAssignments = []) {
   const byPart = new Map();
   for (const singer of availableSingers) {
     for (const part of singer.voice_parts || []) {
@@ -42,12 +83,22 @@ export function generateRoster(availableSingers, requirements) {
     }
   }
 
+  const existingByPart = new Map();
+  for (const { voice_part, singer } of existingAssignments) {
+    if (!existingByPart.has(voice_part)) existingByPart.set(voice_part, []);
+    existingByPart.get(voice_part).push(singer);
+  }
+
   const used = new Set();
   const roster = requirements.map(({ voice_part, count }) => {
-    const pool = (byPart.get(voice_part) || []).filter((s) => !used.has(s.id));
+    const existing = existingByPart.get(voice_part) || [];
+    const existingIds = new Set(existing.map((s) => s.id));
+    const pool = (byPart.get(voice_part) || []).filter((s) => !existingIds.has(s.id));
+    const candidates = [...existing, ...pool].filter((s) => !used.has(s.id));
+
     const slots = [];
     for (let i = 0; i < count; i++) {
-      const pick = pool[i] || null;
+      const pick = candidates[i] || null;
       if (pick) used.add(pick.id);
       slots.push(pick ? pick.id : null);
     }
@@ -55,7 +106,7 @@ export function generateRoster(availableSingers, requirements) {
       voice_part,
       required: count,
       slots,
-      shortage: Math.max(0, count - pool.length),
+      shortage: Math.max(0, count - candidates.length),
     };
   });
 
@@ -66,6 +117,7 @@ export function generateRoster(availableSingers, requirements) {
 
 export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
   let availableSingers = [];
+  let existingAssignments = []; // [{ voice_part, singer }] — the currently saved roster, if any
   let roster = []; // [{ voice_part, required, slots: [singerId|null, ...], shortage }]
 
   container.innerHTML = `
@@ -143,8 +195,10 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
     statusEl.textContent = t('planner.loadingAvailableSingers');
 
     try {
-      availableSingers = await getAvailableSingersForDate(supabase, dateStr);
-      roster = generateRoster(availableSingers, readRequirements());
+      const { planId, singers } = await getAvailableSingersForDate(supabase, dateStr);
+      availableSingers = singers;
+      existingAssignments = await getExistingAssignments(supabase, planId);
+      roster = generateRoster(availableSingers, readRequirements(), existingAssignments);
       renderResults();
       statusEl.textContent = tn('planner.singersAvailable', availableSingers.length, { date: dateStr });
     } catch (error) {
@@ -162,7 +216,16 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
     resultsEl.classList.remove('hidden');
 
     resultsBodyEl.innerHTML = roster.map((part, partIdx) => {
-      const pool = availableSingers.filter((s) => (s.voice_parts || []).includes(part.voice_part));
+      // The dropdown includes anyone currently assigned to this slot even
+      // if they're no longer marked available, so admin can still see (and
+      // change) who's programmed rather than have them silently vanish.
+      const existingForPart = existingAssignments
+        .filter((a) => a.voice_part === part.voice_part)
+        .map((a) => a.singer);
+      const pool = [
+        ...existingForPart,
+        ...availableSingers.filter((s) => (s.voice_parts || []).includes(part.voice_part)),
+      ].filter((s, idx, arr) => arr.findIndex((other) => other.id === s.id) === idx);
       const shortageWarning = part.shortage > 0
         ? `<span class="text-rose-600 text-xs font-medium ml-2">${t('planner.shortBy', { count: part.shortage })}</span>`
         : '';

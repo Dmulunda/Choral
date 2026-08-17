@@ -5,6 +5,7 @@ import { renderAvailabilityCalendar } from './components/calendar.js';
 import { renderAdminAutoPlanner } from './components/autoPlanner.js';
 import { renderServiceRequestAdmin } from './components/serviceRequestAdmin.js';
 import { renderServiceRequestSinger } from './components/serviceRequestSinger.js';
+import { renderReplacementRequests } from './components/replacementRequests.js';
 import { t } from './i18n.js';
 
 export async function renderSchedulingTab() {
@@ -20,7 +21,7 @@ export async function renderSchedulingTab() {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, voice_parts')
     .eq('id', user.id)
     .single();
 
@@ -33,13 +34,16 @@ export async function renderSchedulingTab() {
   const requestsEl = document.createElement('div');
   const plannerEl = document.createElement('div');
   plannerEl.className = 'bg-white rounded-xl shadow p-4 sm:p-6';
-  container.append(requestsEl, plannerEl);
 
   if (profile.role === 'admin') {
+    container.append(requestsEl, plannerEl);
     renderServiceRequestAdmin(requestsEl, { supabase, adminUserId: user.id });
     renderAdminAutoPlanner(plannerEl, { supabase, adminUserId: user.id });
   } else {
+    const replacementEl = document.createElement('div');
+    container.append(requestsEl, replacementEl, plannerEl);
     renderServiceRequestSinger(requestsEl, { supabase, userId: user.id });
+    renderReplacementRequests(replacementEl, { supabase, userId: user.id, myVoiceParts: profile.voice_parts });
     renderAvailabilityCalendar(plannerEl, { supabase, userId: user.id });
   }
 }

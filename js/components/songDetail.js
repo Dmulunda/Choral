@@ -11,13 +11,19 @@ const PART_TRACK_FIELDS = {
   Tenor: 'audio_tenor_track',
 };
 
-export function renderSongDetail(container, song, { onBack, viewerVoiceParts }) {
+export function renderSongDetail(container, song, { supabase, isAdmin, onBack, onDeleted, viewerVoiceParts }) {
   const playerId = `yt-player-${++playerInstanceCounter}`;
   const videoId = extractYouTubeId(song.youtube_url);
 
   container.innerHTML = `
-    <button type="button" data-action="back"
-            class="mb-4 text-sm text-indigo-600 hover:text-indigo-800 font-medium">${t('songDetail.back')}</button>
+    <div class="flex items-center justify-between mb-4">
+      <button type="button" data-action="back"
+              class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">${t('songDetail.back')}</button>
+      ${isAdmin ? `
+        <button type="button" data-action="delete"
+                class="text-sm font-medium text-rose-600 hover:text-rose-800">${t('songDetail.delete')}</button>
+      ` : ''}
+    </div>
 
     <div class="flex items-baseline justify-between mb-4">
       <h2 class="text-2xl font-bold">${escapeHtml(song.title)}</h2>
@@ -49,6 +55,19 @@ export function renderSongDetail(container, song, { onBack, viewerVoiceParts }) 
   `;
 
   container.querySelector('[data-action="back"]').addEventListener('click', onBack);
+
+  if (isAdmin) {
+    container.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+      if (!window.confirm(t('songDetail.confirmDelete', { title: song.title }))) return;
+
+      const { error } = await supabase.from('songs').delete().eq('id', song.id);
+      if (error) {
+        window.alert(t('songDetail.deleteFailed', { message: error.message }));
+        return;
+      }
+      onDeleted?.();
+    });
+  }
 
   if (videoId) {
     loadYouTubeIframeAPI().then((YT) => {

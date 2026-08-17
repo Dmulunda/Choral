@@ -4,7 +4,7 @@
 import { formatDateLocal } from '../utils/date.js';
 import { t, voicePartLabel } from '../i18n.js';
 
-const VOICE_PART_ORDER = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Instrumentalist'];
+const VOICE_PART_ORDER = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
 export function renderDashboard(container, { supabase }) {
   container.innerHTML = `

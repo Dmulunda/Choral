@@ -5,7 +5,7 @@
 import { createScopedClient } from '../supabaseClient.js';
 import { t, voicePartLabel } from '../i18n.js';
 
-const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Instrumentalist'];
+const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
 export function createMemberCreatorModal({ supabase, onCreated }) {
   const root = document.createElement('div');

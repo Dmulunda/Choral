@@ -38,14 +38,20 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
   `;
 
   const form = container.querySelector('[data-el="form"]');
+  const dateInput = form.elements.date;
   const songsSelect = container.querySelector('[data-el="songs-select"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
   const submitBtn = container.querySelector('[data-el="submit-btn"]');
   const listEl = container.querySelector('[data-el="list"]');
 
   form.addEventListener('submit', handleSubmit);
+  // Re-entering (or clicking Edit into) a date that already has a request
+  // loads its current title/songs, so submitting again updates it in
+  // place instead of erroring — this is how songs get attached later to
+  // a request that was sent without any.
+  dateInput.addEventListener('change', () => prefillFromDate(dateInput.value));
 
-  loadSongOptions();
+  loadSongOptions().then(() => prefillFromDate(dateInput.value));
   loadRequests();
 
   async function loadSongOptions() {
@@ -53,6 +59,21 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
     songsSelect.innerHTML = (data || [])
       .map((song) => `<option value="${song.id}">${escapeHtml(song.title)}</option>`)
       .join('');
+  }
+
+  async function prefillFromDate(dateStr) {
+    if (!dateStr) return;
+
+    const { data: plan } = await supabase
+      .from('service_plans')
+      .select('title, song_ids')
+      .eq('date', dateStr)
+      .not('title', 'is', null)
+      .maybeSingle();
+
+    form.elements.title.value = plan?.title || '';
+    const songIds = new Set(plan?.song_ids || []);
+    Array.from(songsSelect.options).forEach((opt) => { opt.selected = songIds.has(opt.value); });
   }
 
   async function handleSubmit(e) {
@@ -175,8 +196,12 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
             <div class="font-semibold text-slate-800">${escapeHtml(plan.title)}</div>
             <div class="text-sm text-slate-500">${escapeHtml(plan.date)}</div>
           </div>
-          <button type="button" data-action="cancel"
-                  class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('requests.cancelRequest')}</button>
+          <div class="flex items-center gap-3 shrink-0">
+            <button type="button" data-action="edit"
+                    class="text-xs font-medium text-indigo-600 hover:text-indigo-800 whitespace-nowrap">${t('common.edit')}</button>
+            <button type="button" data-action="cancel"
+                    class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('requests.cancelRequest')}</button>
+          </div>
         </div>
         <div class="flex flex-wrap gap-2 mt-2">
           <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">${tn('requests.tally.approved', counts.approved)}</span>
@@ -197,6 +222,11 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
       `;
 
       card.querySelector('[data-action="cancel"]').addEventListener('click', () => cancelRequest(plan));
+      card.querySelector('[data-action="edit"]').addEventListener('click', () => {
+        dateInput.value = plan.date;
+        prefillFromDate(plan.date);
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
       listEl.appendChild(card);
     });
   }
