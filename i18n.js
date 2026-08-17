@@ -1,0 +1,559 @@
+// Minimal i18n: flat dictionary, localStorage persistence, and a
+// `choir-hub:langchange` window event so open tabs re-render in place.
+// No build step in this project, so translations live in this one file
+// rather than per-locale JSON.
+const STORAGE_KEY = 'choir-hub-lang';
+const SUPPORTED = ['en', 'fr'];
+
+const TRANSLATIONS = {
+  en: {
+    'app.brand': 'Choir Hub',
+    'menu.open': 'Open menu',
+    'menu.close': 'Close menu',
+
+    'nav.dashboard': 'Dashboard',
+    'nav.scheduling': 'Scheduling',
+    'nav.songbook': 'Songbook',
+    'nav.voiceExercises': 'Voice Exercises',
+    'nav.members': 'Members',
+
+    'sidebar.signedInAs': 'Signed in as',
+    'sidebar.guest': 'Guest',
+    'sidebar.signOut': 'Sign out',
+    'sidebar.language': 'Language',
+
+    'dashboard.placeholder': 'Dashboard content will be rendered here.',
+    'scheduling.placeholder': 'Availability calendar and service plans will be rendered here.',
+    'songbook.placeholder': 'Song list, lyrics, and track links will be rendered here.',
+    'voiceExercises.placeholder': 'Warm-up and practice material will be rendered here.',
+    'members.placeholder': 'Member roster and role management will be rendered here.',
+
+    'dashboard.roster': 'Choir Roster',
+    'dashboard.rosterFailed': 'Failed to load roster: {message}',
+    'dashboard.noMembers': 'No members yet.',
+    'dashboard.unassigned': 'Unassigned',
+    'dashboard.nextService': 'Next Service',
+    'dashboard.nextServiceFailed': 'Failed to load the next service: {message}',
+    'dashboard.noUpcomingService': 'No upcoming service scheduled yet.',
+    'dashboard.untitledService': 'Service',
+    'dashboard.available': 'Available',
+    'dashboard.programmed': 'Programmed',
+    'dashboard.songs': 'Songs',
+    'dashboard.noneYet': 'None yet.',
+    'dashboard.noSongsYet': 'No songs added yet.',
+
+    'requests.title': 'Service Requests',
+    'requests.date': 'Date',
+    'requests.eventTitle': 'Event title',
+    'requests.eventTitlePlaceholder': 'e.g. Choir Seminar',
+    'requests.songsOptional': 'Songs (optional, ctrl/cmd-click to select several)',
+    'requests.send': 'Send Request',
+    'requests.sending': 'Sending…',
+    'requests.missingFields': 'Date and title are required.',
+    'requests.failedToSend': 'Failed to send request: {message}',
+    'requests.sentTo_one': 'Request sent to {count} member.',
+    'requests.sentTo_other': 'Request sent to {count} members.',
+    'requests.noRequestsYet': 'No requests sent yet.',
+    'requests.failedToLoad': 'Failed to load requests: {message}',
+    'requests.tally.approved_one': '{count} approved',
+    'requests.tally.approved_other': '{count} approved',
+    'requests.tally.declined_one': '{count} declined',
+    'requests.tally.declined_other': '{count} declined',
+    'requests.tally.pending_one': '{count} pending',
+    'requests.tally.pending_other': '{count} pending',
+    'requests.viewResponses': 'View responses',
+    'requests.cancelRequest': 'Cancel request',
+    'requests.confirmCancel': 'Cancel the "{title}" request? This removes it and all responses.',
+    'requests.cancelFailed': 'Failed to cancel: {message}',
+    'requests.yourRequests': 'Service Requests',
+    'requests.needsResponse': 'Needs your response',
+    'requests.yourResponses': 'Your responses',
+    'requests.noRequests': 'No requests right now.',
+    'requests.approve': 'Approve',
+    'requests.decline': 'Decline',
+    'requests.responseFailed': 'Failed to respond: {message}',
+    'requests.statusPending': 'Pending',
+    'requests.statusApproved': 'Approved',
+    'requests.statusDeclined': 'Declined',
+
+    'common.loading': 'Loading…',
+    'common.saving': 'Saving…',
+    'common.searching': 'Searching…',
+    'common.cancel': 'Cancel',
+    'common.search': 'Search',
+
+    'auth.subtitle': 'Sign in to your account',
+    'auth.signIn': 'Sign In',
+    'auth.signUp': 'Sign Up',
+    'auth.fullName': 'Full name',
+    'auth.email': 'Email',
+    'auth.password': 'Password',
+    'auth.createAccount': 'Create Account',
+    'auth.creatingAccount': 'Creating account…',
+    'auth.signingIn': 'Signing in…',
+    'auth.accountCreatedCheckEmail': 'Account created — check your email to confirm before signing in.',
+
+    'scheduling.pleaseSignIn': 'Please sign in to view scheduling.',
+    'scheduling.failedToLoadProfile': 'Failed to load profile: {message}',
+
+    'calendar.prev': '← Prev',
+    'calendar.next': 'Next →',
+    'calendar.available': 'Available',
+    'calendar.unavailable': 'Unavailable',
+    'calendar.notSet': 'Not set',
+    'calendar.days.sun': 'Sun',
+    'calendar.days.mon': 'Mon',
+    'calendar.days.tue': 'Tue',
+    'calendar.days.wed': 'Wed',
+    'calendar.days.thu': 'Thu',
+    'calendar.days.fri': 'Fri',
+    'calendar.days.sat': 'Sat',
+    'calendar.saveAvailability': 'Save Availability',
+    'calendar.failedToLoad': 'Failed to load availability: {message}',
+    'calendar.saved': 'Saved.',
+    'calendar.saveFailed': 'Save failed: {message}',
+    'calendar.unsavedChanges_one': '{count} unsaved change',
+    'calendar.unsavedChanges_other': '{count} unsaved changes',
+
+    'month.0': 'January', 'month.1': 'February', 'month.2': 'March', 'month.3': 'April',
+    'month.4': 'May', 'month.5': 'June', 'month.6': 'July', 'month.7': 'August',
+    'month.8': 'September', 'month.9': 'October', 'month.10': 'November', 'month.11': 'December',
+
+    'songbook.pleaseSignIn': 'Please sign in to view the songbook.',
+    'songbook.failedToLoadProfile': 'Failed to load profile: {message}',
+    'songbook.searchPlaceholder': 'Search songs by title…',
+    'songbook.addSong': '+ Add Song',
+    'songbook.failedToLoad': 'Failed to load songs: {message}',
+    'songbook.noSongsFound': 'No songs found.',
+
+    'songDetail.back': '← Back to Songbook',
+    'songDetail.key': 'Key: {key}',
+    'songDetail.noVideoLinked': 'No video linked',
+    'songDetail.leadTrack': 'Lead / full mix track',
+    'songDetail.lyrics': 'Lyrics',
+    'songDetail.noLyricsYet': '(No lyrics yet)',
+    'songDetail.yourPartTrack': 'Your part — {part} rehearsal track',
+    'songDetail.otherPartTracks_one': 'Other part tracks ({count})',
+    'songDetail.otherPartTracks_other': 'Other part tracks ({count})',
+
+    'voicePart.Leader': 'Leader',
+    'voicePart.Soprano': 'Soprano',
+    'voicePart.Alto': 'Alto',
+    'voicePart.Tenor': 'Tenor',
+    'voicePart.Instrumentalist': 'Instrumentalist',
+
+    'role.admin': 'Admin',
+    'role.singer': 'Singer',
+
+    'members.addSinger': '+ Add Singer',
+    'members.name': 'Name',
+    'members.voicePart': 'Voice parts (ctrl/cmd-click to select several)',
+    'members.role': 'Role',
+    'members.actions': 'Actions',
+    'members.makeAdmin': 'Make Admin',
+    'members.makeSinger': 'Make Singer',
+    'members.confirmPromote': 'Make {name} an admin? They will be able to manage songs, schedules, and members.',
+    'members.confirmDemote': 'Remove admin access from {name}?',
+    'members.confirmDemoteSelf': "You're about to remove your own admin access. You may lose the ability to undo this. Continue?",
+    'members.roleUpdateFailed': 'Could not update role: {message}',
+    'members.roleUpdateBlocked': 'The update was blocked by the database. Make sure migration sql/004_admin_manage_profiles.sql has been run in the Supabase SQL Editor.',
+    'members.voicePartUpdateFailed': 'Could not update voice part: {message}',
+    'members.failedToLoad': 'Failed to load members: {message}',
+    'members.loadingMembers': 'Loading members…',
+    'members.notAuthorized': 'Only admins can manage members.',
+
+    'memberCreator.title': 'Add Singer',
+    'memberCreator.intro': 'Creates a real login for this person. They can sign in immediately with the password below (or after confirming their email, depending on this project’s Supabase auth settings).',
+    'memberCreator.fullName': 'Full name',
+    'memberCreator.email': 'Email',
+    'memberCreator.password': 'Temporary password',
+    'memberCreator.generatePassword': 'Generate',
+    'memberCreator.role': 'Role',
+    'memberCreator.voicePart': 'Voice parts (ctrl/cmd-click to select several)',
+    'memberCreator.instrumentName': 'Instrument name (optional)',
+    'memberCreator.save': 'Create Account',
+    'memberCreator.creating': 'Creating account…',
+    'memberCreator.missingFields': 'Full name, email, and password are required.',
+    'memberCreator.passwordTooShort': 'Password must be at least 6 characters.',
+    'memberCreator.emailAlreadyRegistered': 'This email is already registered.',
+    'memberCreator.failedToCreate': 'Failed to create account: {message}',
+    'memberCreator.roleAssignFailed': 'Account created, but the role/voice part could not be set: {message}',
+    'memberCreator.success': 'Account created for {name}. Share this password with them: {password}',
+
+    'planner.serviceDate': 'Service date',
+    'planner.generateRoster': 'Generate Roster',
+    'planner.requirements': 'Roster requirements',
+    'planner.proposedRoster': 'Proposed roster',
+    'planner.overrideAnySlot': '(override any slot)',
+    'planner.saveRoster': 'Save Roster',
+    'planner.pickDateFirst': 'Pick a date first.',
+    'planner.loadingAvailableSingers': 'Loading available singers…',
+    'planner.singersAvailable_one': '{count} singer marked available on {date}.',
+    'planner.singersAvailable_other': '{count} singers marked available on {date}.',
+    'planner.failedToGenerate': 'Failed to generate roster: {message}',
+    'planner.unassigned': '— Unassigned —',
+    'planner.shortBy': 'short by {count}',
+    'planner.needed': '({count} needed)',
+    'planner.rosterSaved_one': 'Roster saved for {date} ({count} singer).',
+    'planner.rosterSaved_other': 'Roster saved for {date} ({count} singers).',
+    'planner.saveFailed': 'Save failed: {message}',
+
+    'voiceExercises.pitchTitle': 'Pitch & Arpeggio Warm-ups',
+    'voiceExercises.rootNote': 'Root note',
+    'voiceExercises.tempo': 'Tempo',
+    'voiceExercises.tempoValue': '{ms} ms/note',
+    'voiceExercises.playScale': '▶ Play Major Scale',
+    'voiceExercises.stopScale': '■ Stop Scale',
+    'voiceExercises.playArpeggio': '▶ Play Arpeggio',
+    'voiceExercises.stopArpeggio': '■ Stop Arpeggio',
+    'voiceExercises.breathingTitle': 'Breathing Timer',
+    'voiceExercises.pattern': 'Pattern',
+    'voiceExercises.ready': 'Ready',
+    'voiceExercises.start': '▶ Start',
+    'voiceExercises.stop': '■ Stop',
+    'voiceExercises.breathing.box': 'Box breathing (4-4-4-4)',
+    'voiceExercises.breathing.relaxing': 'Relaxing breath (4-7-8)',
+    'voiceExercises.breathing.simple': 'Simple breath (4-4)',
+    'voiceExercises.phase.inhale': 'Inhale',
+    'voiceExercises.phase.hold': 'Hold',
+    'voiceExercises.phase.exhale': 'Exhale',
+
+    'songCreator.title': 'Add Song',
+    'songCreator.titleField': 'Title *',
+    'songCreator.key': 'Key',
+    'songCreator.keyPlaceholder': 'e.g. G major',
+    'songCreator.youtubeUrl': 'YouTube URL',
+    'songCreator.leadTrackUrl': 'Lead vocal track URL',
+    'songCreator.partTracksOptional': 'Part rehearsal tracks (optional)',
+    'songCreator.sopranoTrackPlaceholder': 'Soprano track URL',
+    'songCreator.altoTrackPlaceholder': 'Alto track URL',
+    'songCreator.tenorTrackPlaceholder': 'Tenor track URL',
+    'songCreator.lrclibLookup': 'Look up lyrics on LRCLIB',
+    'songCreator.lrclibPlaceholder': "Song title, or 'title artist'",
+    'songCreator.lyrics': 'Lyrics',
+    'songCreator.startDictation': '🎙️ Start Dictation',
+    'songCreator.stopDictation': '⏹ Stop Dictation',
+    'songCreator.dictationUnsupported': 'Speech recognition is not supported in this browser.',
+    'songCreator.lyricsPlaceholder': 'Paste lyrics, use LRCLIB search, or dictate with the mic button above.',
+    'songCreator.saveSong': 'Save Song',
+    'songCreator.titleRequired': 'Title is required.',
+    'songCreator.failedToSave': 'Failed to save: {message}',
+    'songCreator.enterTitleToSearch': 'Enter a song title to search.',
+    'songCreator.noMatchesFound': 'No matches found.',
+    'songCreator.matchesFound_one': '{count} match — click one to use its lyrics.',
+    'songCreator.matchesFound_other': '{count} matches — click one to use its lyrics.',
+    'songCreator.untitled': 'Untitled',
+    'songCreator.unknownArtist': 'Unknown artist',
+    'songCreator.loadedLyricsFor': 'Loaded lyrics for "{title}".',
+    'songCreator.searchFailed': 'Search failed: {message}',
+    'songCreator.noLyricsAvailable': '(No lyrics available for this match — instrumental track?)',
+  },
+
+  fr: {
+    'app.brand': 'Choir Hub',
+    'menu.open': 'Ouvrir le menu',
+    'menu.close': 'Fermer le menu',
+
+    'nav.dashboard': 'Tableau de bord',
+    'nav.scheduling': 'Planification',
+    'nav.songbook': 'Recueil de chants',
+    'nav.voiceExercises': 'Exercices vocaux',
+    'nav.members': 'Membres',
+
+    'sidebar.signedInAs': 'Connecté en tant que',
+    'sidebar.guest': 'Invité',
+    'sidebar.signOut': 'Déconnexion',
+    'sidebar.language': 'Langue',
+
+    'dashboard.placeholder': 'Le contenu du tableau de bord sera affiché ici.',
+    'scheduling.placeholder': 'Le calendrier de disponibilité et les plans de service seront affichés ici.',
+    'songbook.placeholder': 'La liste des chants, les paroles et les liens audio seront affichés ici.',
+    'voiceExercises.placeholder': "Les exercices d'échauffement et de pratique seront affichés ici.",
+    'members.placeholder': "La liste des membres et la gestion des rôles seront affichées ici.",
+
+    'dashboard.roster': 'Effectif de la chorale',
+    'dashboard.rosterFailed': "Échec du chargement de l'effectif : {message}",
+    'dashboard.noMembers': 'Aucun membre pour le moment.',
+    'dashboard.unassigned': 'Non assigné',
+    'dashboard.nextService': 'Prochain service',
+    'dashboard.nextServiceFailed': 'Échec du chargement du prochain service : {message}',
+    'dashboard.noUpcomingService': 'Aucun service à venir planifié pour le moment.',
+    'dashboard.untitledService': 'Service',
+    'dashboard.available': 'Disponibles',
+    'dashboard.programmed': 'Programmés',
+    'dashboard.songs': 'Chants',
+    'dashboard.noneYet': 'Aucun pour le moment.',
+    'dashboard.noSongsYet': "Aucun chant ajouté pour le moment.",
+
+    'requests.title': 'Demandes de service',
+    'requests.date': 'Date',
+    'requests.eventTitle': "Titre de l'événement",
+    'requests.eventTitlePlaceholder': 'ex. Séminaire de la chorale',
+    'requests.songsOptional': 'Chants (optionnel, ctrl/cmd-clic pour en sélectionner plusieurs)',
+    'requests.send': 'Envoyer la demande',
+    'requests.sending': 'Envoi…',
+    'requests.missingFields': 'La date et le titre sont requis.',
+    'requests.failedToSend': "Échec de l'envoi de la demande : {message}",
+    'requests.sentTo_one': 'Demande envoyée à {count} membre.',
+    'requests.sentTo_other': 'Demande envoyée à {count} membres.',
+    'requests.noRequestsYet': 'Aucune demande envoyée pour le moment.',
+    'requests.failedToLoad': 'Échec du chargement des demandes : {message}',
+    'requests.tally.approved_one': '{count} approuvé',
+    'requests.tally.approved_other': '{count} approuvés',
+    'requests.tally.declined_one': '{count} refusé',
+    'requests.tally.declined_other': '{count} refusés',
+    'requests.tally.pending_one': '{count} en attente',
+    'requests.tally.pending_other': '{count} en attente',
+    'requests.viewResponses': 'Voir les réponses',
+    'requests.cancelRequest': 'Annuler la demande',
+    'requests.confirmCancel': 'Annuler la demande « {title} » ? Cela supprime la demande et toutes les réponses.',
+    'requests.cancelFailed': "Échec de l'annulation : {message}",
+    'requests.yourRequests': 'Demandes de service',
+    'requests.needsResponse': 'Nécessite votre réponse',
+    'requests.yourResponses': 'Vos réponses',
+    'requests.noRequests': 'Aucune demande pour le moment.',
+    'requests.approve': 'Approuver',
+    'requests.decline': 'Refuser',
+    'requests.responseFailed': 'Échec de la réponse : {message}',
+    'requests.statusPending': 'En attente',
+    'requests.statusApproved': 'Approuvé',
+    'requests.statusDeclined': 'Refusé',
+
+    'common.loading': 'Chargement…',
+    'common.saving': 'Enregistrement…',
+    'common.searching': 'Recherche…',
+    'common.cancel': 'Annuler',
+    'common.search': 'Rechercher',
+
+    'auth.subtitle': 'Connectez-vous à votre compte',
+    'auth.signIn': 'Connexion',
+    'auth.signUp': 'Inscription',
+    'auth.fullName': 'Nom complet',
+    'auth.email': 'E-mail',
+    'auth.password': 'Mot de passe',
+    'auth.createAccount': 'Créer un compte',
+    'auth.creatingAccount': 'Création du compte…',
+    'auth.signingIn': 'Connexion en cours…',
+    'auth.accountCreatedCheckEmail': 'Compte créé — vérifiez votre e-mail pour confirmer avant de vous connecter.',
+
+    'scheduling.pleaseSignIn': 'Veuillez vous connecter pour voir la planification.',
+    'scheduling.failedToLoadProfile': 'Échec du chargement du profil : {message}',
+
+    'calendar.prev': '← Précédent',
+    'calendar.next': 'Suivant →',
+    'calendar.available': 'Disponible',
+    'calendar.unavailable': 'Indisponible',
+    'calendar.notSet': 'Non défini',
+    'calendar.days.sun': 'Dim',
+    'calendar.days.mon': 'Lun',
+    'calendar.days.tue': 'Mar',
+    'calendar.days.wed': 'Mer',
+    'calendar.days.thu': 'Jeu',
+    'calendar.days.fri': 'Ven',
+    'calendar.days.sat': 'Sam',
+    'calendar.saveAvailability': 'Enregistrer la disponibilité',
+    'calendar.failedToLoad': 'Échec du chargement de la disponibilité : {message}',
+    'calendar.saved': 'Enregistré.',
+    'calendar.saveFailed': "Échec de l'enregistrement : {message}",
+    'calendar.unsavedChanges_one': '{count} modification non enregistrée',
+    'calendar.unsavedChanges_other': '{count} modifications non enregistrées',
+
+    'month.0': 'Janvier', 'month.1': 'Février', 'month.2': 'Mars', 'month.3': 'Avril',
+    'month.4': 'Mai', 'month.5': 'Juin', 'month.6': 'Juillet', 'month.7': 'Août',
+    'month.8': 'Septembre', 'month.9': 'Octobre', 'month.10': 'Novembre', 'month.11': 'Décembre',
+
+    'songbook.pleaseSignIn': 'Veuillez vous connecter pour voir le recueil de chants.',
+    'songbook.failedToLoadProfile': 'Échec du chargement du profil : {message}',
+    'songbook.searchPlaceholder': 'Rechercher un chant par titre…',
+    'songbook.addSong': '+ Ajouter un chant',
+    'songbook.failedToLoad': 'Échec du chargement des chants : {message}',
+    'songbook.noSongsFound': 'Aucun chant trouvé.',
+
+    'songDetail.back': '← Retour au recueil',
+    'songDetail.key': 'Ton : {key}',
+    'songDetail.noVideoLinked': 'Aucune vidéo associée',
+    'songDetail.leadTrack': 'Piste principale / mix complet',
+    'songDetail.lyrics': 'Paroles',
+    'songDetail.noLyricsYet': '(Pas encore de paroles)',
+    'songDetail.yourPartTrack': 'Votre pupitre — piste de répétition {part}',
+    'songDetail.otherPartTracks_one': 'Autre piste de pupitre ({count})',
+    'songDetail.otherPartTracks_other': 'Autres pistes de pupitre ({count})',
+
+    'voicePart.Leader': 'Meneur/Meneuse',
+    'voicePart.Soprano': 'Soprano',
+    'voicePart.Alto': 'Alto',
+    'voicePart.Tenor': 'Ténor',
+    'voicePart.Instrumentalist': 'Instrumentiste',
+
+    'role.admin': 'Admin',
+    'role.singer': 'Choriste',
+
+    'members.addSinger': '+ Ajouter un choriste',
+    'members.name': 'Nom',
+    'members.voicePart': 'Pupitres (ctrl/cmd-clic pour en sélectionner plusieurs)',
+    'members.role': 'Rôle',
+    'members.actions': 'Actions',
+    'members.makeAdmin': 'Nommer admin',
+    'members.makeSinger': 'Rétrograder en choriste',
+    'members.confirmPromote': 'Faire de {name} un administrateur ? Cette personne pourra gérer les chants, la planification et les membres.',
+    'members.confirmDemote': "Retirer les droits d'administrateur de {name} ?",
+    'members.confirmDemoteSelf': "Vous êtes sur le point de retirer vos propres droits d'administrateur. Vous pourriez ne plus pouvoir annuler cette action. Continuer ?",
+    'members.roleUpdateFailed': 'Impossible de modifier le rôle : {message}',
+    'members.roleUpdateBlocked': "La modification a été bloquée par la base de données. Assurez-vous que la migration sql/004_admin_manage_profiles.sql a bien été exécutée dans l'éditeur SQL de Supabase.",
+    'members.voicePartUpdateFailed': 'Impossible de modifier le pupitre : {message}',
+    'members.failedToLoad': 'Échec du chargement des membres : {message}',
+    'members.loadingMembers': 'Chargement des membres…',
+    'members.notAuthorized': 'Seuls les administrateurs peuvent gérer les membres.',
+
+    'memberCreator.title': 'Ajouter un choriste',
+    'memberCreator.intro': "Crée un véritable compte de connexion pour cette personne. Elle pourra se connecter immédiatement avec le mot de passe ci-dessous (ou après confirmation de son e-mail, selon les paramètres d'authentification de ce projet Supabase).",
+    'memberCreator.fullName': 'Nom complet',
+    'memberCreator.email': 'E-mail',
+    'memberCreator.password': 'Mot de passe temporaire',
+    'memberCreator.generatePassword': 'Générer',
+    'memberCreator.role': 'Rôle',
+    'memberCreator.voicePart': 'Pupitres (ctrl/cmd-clic pour en sélectionner plusieurs)',
+    'memberCreator.instrumentName': "Nom de l'instrument (optionnel)",
+    'memberCreator.save': 'Créer le compte',
+    'memberCreator.creating': 'Création du compte…',
+    'memberCreator.missingFields': 'Le nom complet, l\'e-mail et le mot de passe sont requis.',
+    'memberCreator.passwordTooShort': 'Le mot de passe doit contenir au moins 6 caractères.',
+    'memberCreator.emailAlreadyRegistered': 'Cet e-mail est déjà enregistré.',
+    'memberCreator.failedToCreate': 'Échec de la création du compte : {message}',
+    'memberCreator.roleAssignFailed': "Compte créé, mais le rôle/pupitre n'a pas pu être défini : {message}",
+    'memberCreator.success': 'Compte créé pour {name}. Partagez ce mot de passe avec cette personne : {password}',
+
+    'planner.serviceDate': 'Date du service',
+    'planner.generateRoster': "Générer l'équipe",
+    'planner.requirements': "Besoins de l'équipe",
+    'planner.proposedRoster': 'Équipe proposée',
+    'planner.overrideAnySlot': '(modifiez n\'importe quelle place)',
+    'planner.saveRoster': "Enregistrer l'équipe",
+    'planner.pickDateFirst': "Choisissez d'abord une date.",
+    'planner.loadingAvailableSingers': 'Chargement des choristes disponibles…',
+    'planner.singersAvailable_one': '{count} choriste disponible le {date}.',
+    'planner.singersAvailable_other': '{count} choristes disponibles le {date}.',
+    'planner.failedToGenerate': "Échec de la génération de l'équipe : {message}",
+    'planner.unassigned': '— Non assigné —',
+    'planner.shortBy': 'manque {count}',
+    'planner.needed': '({count} requis)',
+    'planner.rosterSaved_one': 'Équipe enregistrée pour le {date} ({count} choriste).',
+    'planner.rosterSaved_other': 'Équipe enregistrée pour le {date} ({count} choristes).',
+    'planner.saveFailed': "Échec de l'enregistrement : {message}",
+
+    'voiceExercises.pitchTitle': "Échauffements de gammes et d'arpèges",
+    'voiceExercises.rootNote': 'Note fondamentale',
+    'voiceExercises.tempo': 'Tempo',
+    'voiceExercises.tempoValue': '{ms} ms/note',
+    'voiceExercises.playScale': '▶ Jouer la gamme majeure',
+    'voiceExercises.stopScale': '■ Arrêter la gamme',
+    'voiceExercises.playArpeggio': "▶ Jouer l'arpège",
+    'voiceExercises.stopArpeggio': "■ Arrêter l'arpège",
+    'voiceExercises.breathingTitle': 'Minuteur de respiration',
+    'voiceExercises.pattern': 'Modèle',
+    'voiceExercises.ready': 'Prêt',
+    'voiceExercises.start': '▶ Démarrer',
+    'voiceExercises.stop': '■ Arrêter',
+    'voiceExercises.breathing.box': 'Respiration carrée (4-4-4-4)',
+    'voiceExercises.breathing.relaxing': 'Respiration relaxante (4-7-8)',
+    'voiceExercises.breathing.simple': 'Respiration simple (4-4)',
+    'voiceExercises.phase.inhale': 'Inspirez',
+    'voiceExercises.phase.hold': 'Retenez',
+    'voiceExercises.phase.exhale': 'Expirez',
+
+    'songCreator.title': 'Ajouter un chant',
+    'songCreator.titleField': 'Titre *',
+    'songCreator.key': 'Ton',
+    'songCreator.keyPlaceholder': 'ex. Sol majeur',
+    'songCreator.youtubeUrl': 'URL YouTube',
+    'songCreator.leadTrackUrl': 'URL de la piste vocale principale',
+    'songCreator.partTracksOptional': 'Pistes de répétition par pupitre (optionnel)',
+    'songCreator.sopranoTrackPlaceholder': 'URL piste Soprano',
+    'songCreator.altoTrackPlaceholder': 'URL piste Alto',
+    'songCreator.tenorTrackPlaceholder': 'URL piste Ténor',
+    'songCreator.lrclibLookup': 'Rechercher les paroles sur LRCLIB',
+    'songCreator.lrclibPlaceholder': "Titre du chant, ou « titre artiste »",
+    'songCreator.lyrics': 'Paroles',
+    'songCreator.startDictation': '🎙️ Démarrer la dictée',
+    'songCreator.stopDictation': '⏹ Arrêter la dictée',
+    'songCreator.dictationUnsupported': "La reconnaissance vocale n'est pas prise en charge par ce navigateur.",
+    'songCreator.lyricsPlaceholder': 'Collez les paroles, utilisez la recherche LRCLIB, ou dictez avec le bouton micro ci-dessus.',
+    'songCreator.saveSong': 'Enregistrer le chant',
+    'songCreator.titleRequired': 'Le titre est requis.',
+    'songCreator.failedToSave': "Échec de l'enregistrement : {message}",
+    'songCreator.enterTitleToSearch': 'Entrez un titre de chant pour rechercher.',
+    'songCreator.noMatchesFound': 'Aucun résultat trouvé.',
+    'songCreator.matchesFound_one': '{count} résultat — cliquez pour utiliser ses paroles.',
+    'songCreator.matchesFound_other': '{count} résultats — cliquez sur l\'un d\'eux pour utiliser ses paroles.',
+    'songCreator.untitled': 'Sans titre',
+    'songCreator.unknownArtist': 'Artiste inconnu',
+    'songCreator.loadedLyricsFor': 'Paroles chargées pour « {title} ».',
+    'songCreator.searchFailed': 'Échec de la recherche : {message}',
+    'songCreator.noLyricsAvailable': '(Aucune parole disponible pour ce résultat — piste instrumentale ?)',
+  },
+};
+
+export function getLang() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (SUPPORTED.includes(stored)) return stored;
+  const browserLang = (navigator.language || 'en').slice(0, 2);
+  return SUPPORTED.includes(browserLang) ? browserLang : 'en';
+}
+
+export function setLang(lang) {
+  if (!SUPPORTED.includes(lang) || lang === getLang()) return;
+  localStorage.setItem(STORAGE_KEY, lang);
+  document.documentElement.lang = lang;
+  window.dispatchEvent(new CustomEvent('choir-hub:langchange'));
+}
+
+export function onLangChange(fn) {
+  window.addEventListener('choir-hub:langchange', fn);
+}
+
+export function t(key, vars) {
+  const dict = TRANSLATIONS[getLang()] || TRANSLATIONS.en;
+  let str = dict[key] ?? TRANSLATIONS.en[key] ?? key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      str = str.replaceAll(`{${k}}`, v);
+    }
+  }
+  return str;
+}
+
+// French treats 0 as singular too ("0 modification"), unlike English.
+function pluralForm(lang, count) {
+  return lang === 'fr' ? (count <= 1 ? 'one' : 'other') : (count === 1 ? 'one' : 'other');
+}
+
+export function tn(key, count, vars = {}) {
+  const form = pluralForm(getLang(), count);
+  return t(`${key}_${form}`, { count, ...vars });
+}
+
+export function monthName(monthIndex) {
+  return t(`month.${monthIndex}`);
+}
+
+export function voicePartLabel(part) {
+  return part ? t(`voicePart.${part}`) : part;
+}
+
+export function roleLabel(role) {
+  return role ? t(`role.${role}`) : role;
+}
+
+// Applies text/placeholder/aria-label translations to every element
+// carrying a data-i18n* attribute — used for the static index.html shell.
+export function applyStaticTranslations(root = document) {
+  root.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  root.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  root.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
+  });
+}
