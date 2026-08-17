@@ -7,7 +7,7 @@ const SUPPORTED = ['en', 'fr'];
 
 const TRANSLATIONS = {
   en: {
-    'app.brand': 'Choir Hub',
+    'app.brand': 'VPD Choir Program',
     'menu.open': 'Open menu',
     'menu.close': 'Close menu',
 
@@ -250,7 +250,7 @@ const TRANSLATIONS = {
   },
 
   fr: {
-    'app.brand': 'Choir Hub',
+    'app.brand': 'VPD Choir Program',
     'menu.open': 'Ouvrir le menu',
     'menu.close': 'Fermer le menu',
 

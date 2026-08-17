@@ -3,19 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Choir Hub</title>
+  <title>VPD Choir Program</title>
+  <link rel="icon" type="image/png" href="img/vpd-logo.png" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-100 text-slate-800">
 
-  <!-- Auth gate: shown when there is no active Supabase session -->
-  <div id="auth-screen" class="hidden min-h-screen flex items-center justify-center p-4"></div>
+  <!-- Faint logo watermark behind every screen. z-0 vs. z-10 on the two
+       screens below is an explicit (not relied-on-DOM-order) stacking
+       guarantee that content always renders above it. -->
+  <div aria-hidden="true" class="fixed inset-0 z-0 pointer-events-none bg-no-repeat bg-center"
+       style="background-image: url('img/vpd-logo.png'); background-size: min(60vw, 640px); opacity: 0.06;"></div>
 
-  <div id="app-shell" class="hidden flex flex-col md:flex-row min-h-screen">
+  <!-- Auth gate: shown when there is no active Supabase session -->
+  <div id="auth-screen" class="relative z-10 hidden min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0a1628] to-[#0B1F3A]"></div>
+
+  <div id="app-shell" class="relative z-10 hidden flex flex-col md:flex-row min-h-screen">
 
     <!-- Mobile top bar -->
     <header class="md:hidden flex items-center justify-between bg-slate-900 text-white px-4 py-3 sticky top-0 z-20">
-      <span class="text-lg font-semibold" data-i18n="app.brand">Choir Hub</span>
+      <span class="text-lg font-semibold" data-i18n="app.brand">VPD Choir Program</span>
       <button type="button" id="menu-open-btn" data-i18n-aria-label="menu.open" aria-label="Open menu"
               class="p-2 -mr-2 rounded-lg hover:bg-slate-800">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -31,7 +38,7 @@
     <aside id="sidebar"
            class="fixed md:static inset-y-0 left-0 z-40 w-64 shrink-0 bg-slate-900 text-slate-300 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
       <div class="px-6 py-5 flex items-center justify-between border-b border-slate-800">
-        <span class="text-xl font-semibold text-white" data-i18n="app.brand">Choir Hub</span>
+        <span class="text-xl font-semibold text-white" data-i18n="app.brand">VPD Choir Program</span>
         <button type="button" id="menu-close-btn" data-i18n-aria-label="menu.close" aria-label="Close menu" class="md:hidden p-1 text-slate-400 hover:text-white">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

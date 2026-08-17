@@ -7,39 +7,47 @@ export function renderAuthScreen(container, { supabase }) {
 
   container.innerHTML = `
     <div class="w-full max-w-md">
-      <div class="bg-white rounded-xl shadow-xl p-6 sm:p-8">
-        <h1 class="text-2xl font-bold text-center mb-1">${t('app.brand')}</h1>
-        <p class="text-center text-slate-500 text-sm mb-6">${t('auth.subtitle')}</p>
+      <div class="flex justify-center mb-6">
+        <img src="img/vpd-logo.png" alt="${t('app.brand')}" class="h-24 w-auto drop-shadow-md" />
+      </div>
 
-        <div class="flex mb-6 rounded-lg bg-slate-100 p-1">
-          <button type="button" data-mode="login"
-                  class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signIn')}</button>
-          <button type="button" data-mode="signup"
-                  class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signUp')}</button>
+      <div class="bg-white rounded-xl shadow-xl overflow-hidden">
+        <div class="h-1.5 bg-gradient-to-r from-[#0B1F3A] via-[#D4AF37] to-[#0B1F3A]"></div>
+
+        <div class="p-6 sm:p-8">
+          <h1 class="text-2xl font-bold text-center mb-1 text-[#0B1F3A]">${t('app.brand')}</h1>
+          <p class="text-center text-slate-500 text-sm mb-6">${t('auth.subtitle')}</p>
+
+          <div class="flex mb-6 rounded-lg bg-slate-100 p-1">
+            <button type="button" data-mode="login"
+                    class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signIn')}</button>
+            <button type="button" data-mode="signup"
+                    class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signUp')}</button>
+          </div>
+
+          <form data-el="form" class="space-y-4">
+            <div data-el="full-name-field" class="hidden">
+              <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.fullName')}</label>
+              <input type="text" name="full_name" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.email')}</label>
+              <input type="email" name="email" required class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.password')}</label>
+              <input type="password" name="password" required minlength="6"
+                     class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+            </div>
+
+            <p data-el="status" class="text-sm"></p>
+
+            <button type="submit" data-el="submit-btn"
+                    class="w-full py-2 rounded-lg bg-[#0B1F3A] text-white font-medium hover:bg-[#0a1628] disabled:opacity-50 transition-colors">
+              ${t('auth.signIn')}
+            </button>
+          </form>
         </div>
-
-        <form data-el="form" class="space-y-4">
-          <div data-el="full-name-field" class="hidden">
-            <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.fullName')}</label>
-            <input type="text" name="full_name" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.email')}</label>
-            <input type="email" name="email" required class="w-full border border-slate-300 rounded-lg px-3 py-2" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.password')}</label>
-            <input type="password" name="password" required minlength="6"
-                   class="w-full border border-slate-300 rounded-lg px-3 py-2" />
-          </div>
-
-          <p data-el="status" class="text-sm"></p>
-
-          <button type="submit" data-el="submit-btn"
-                  class="w-full py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">
-            ${t('auth.signIn')}
-          </button>
-        </form>
       </div>
     </div>
   `;
@@ -56,7 +64,7 @@ export function renderAuthScreen(container, { supabase }) {
       const active = btn.dataset.mode === mode;
       btn.classList.toggle('bg-white', active);
       btn.classList.toggle('shadow', active);
-      btn.classList.toggle('text-indigo-700', active);
+      btn.classList.toggle('text-[#0B1F3A]', active);
       btn.classList.toggle('text-slate-500', !active);
     });
     fullNameField.classList.toggle('hidden', mode !== 'signup');
