@@ -1,6 +1,6 @@
-// Dashboard content: the full roster grouped by voice part, plus a
-// snapshot of the next upcoming service (who's approved, who's actually
-// programmed, and its song list, if one exists yet).
+// Dashboard content: the full roster grouped by voice part, plus every
+// service scheduled this week (Monday through Sunday) — who's approved,
+// who's actually programmed, and the song list, if one exists yet.
 import { formatDateLocal } from '../utils/date.js';
 import { t, voicePartLabel } from '../i18n.js';
 
@@ -14,14 +14,26 @@ export function renderDashboard(container, { supabase }) {
         <div data-el="roster" class="text-sm text-slate-500">${t('common.loading')}</div>
       </div>
       <div class="bg-white rounded-xl shadow p-4 sm:p-6">
-        <h2 class="text-lg font-semibold mb-4">${t('dashboard.nextService')}</h2>
-        <div data-el="next-service" class="text-sm text-slate-500">${t('common.loading')}</div>
+        <h2 class="text-lg font-semibold mb-4">${t('dashboard.thisWeek')}</h2>
+        <div data-el="week-services" class="text-sm text-slate-500 space-y-4">${t('common.loading')}</div>
       </div>
     </div>
   `;
 
   loadRoster(container.querySelector('[data-el="roster"]'), supabase);
-  loadNextService(container.querySelector('[data-el="next-service"]'), supabase);
+  loadWeekServices(container.querySelector('[data-el="week-services"]'), supabase);
+}
+
+// Monday-through-Sunday range containing `date`. getDay() is 0=Sun..6=Sat,
+// so Sunday needs to look back 6 days to reach that same week's Monday.
+function getWeekRange(date) {
+  const day = date.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { monday, sunday };
 }
 
 async function loadRoster(el, supabase) {
@@ -65,27 +77,33 @@ async function loadRoster(el, supabase) {
   `).join('');
 }
 
-async function loadNextService(el, supabase) {
-  const todayStr = formatDateLocal(new Date());
+async function loadWeekServices(el, supabase) {
+  const { monday, sunday } = getWeekRange(new Date());
+  const mondayStr = formatDateLocal(monday);
+  const sundayStr = formatDateLocal(sunday);
 
-  const { data: plan, error: planError } = await supabase
+  const { data: plans, error: plansError } = await supabase
     .from('service_plans')
     .select('id, date, title, song_ids')
-    .gte('date', todayStr)
-    .order('date', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .gte('date', mondayStr)
+    .lte('date', sundayStr)
+    .order('date', { ascending: true });
 
-  if (planError) {
-    el.innerHTML = `<p class="text-rose-600">${t('dashboard.nextServiceFailed', { message: planError.message })}</p>`;
+  if (plansError) {
+    el.innerHTML = `<p class="text-rose-600">${t('dashboard.weekServicesFailed', { message: plansError.message })}</p>`;
     return;
   }
 
-  if (!plan) {
-    el.innerHTML = `<p>${t('dashboard.noUpcomingService')}</p>`;
+  if (plans.length === 0) {
+    el.innerHTML = `<p>${t('dashboard.noServicesThisWeek')}</p>`;
     return;
   }
 
+  const cards = await Promise.all(plans.map((plan) => buildServiceCardHtml(plan, supabase)));
+  el.innerHTML = cards.join('');
+}
+
+async function buildServiceCardHtml(plan, supabase) {
   const hasSongs = Array.isArray(plan.song_ids) && plan.song_ids.length > 0;
 
   const [{ data: assigned }, { data: approvedRsvps }, { data: songs }] = await Promise.all([
@@ -98,23 +116,25 @@ async function loadNextService(el, supabase) {
   const availableNames = (approvedRsvps || []).map((row) => row.profiles?.full_name).filter(Boolean);
   const songTitles = (songs || []).map((song) => song.title);
 
-  el.innerHTML = `
-    <div class="mb-4">
-      <div class="text-xl font-bold text-slate-800">${escapeHtml(plan.title || t('dashboard.untitledService'))}</div>
-      <div class="text-sm text-slate-500">${escapeHtml(plan.date)}</div>
-    </div>
+  return `
+    <div class="border border-slate-200 rounded-lg p-3">
+      <div class="mb-3">
+        <div class="text-lg font-bold text-slate-800">${escapeHtml(plan.title || t('dashboard.untitledService'))}</div>
+        <div class="text-sm text-slate-500">${escapeHtml(plan.date)}</div>
+      </div>
 
-    <div class="grid sm:grid-cols-2 gap-4 mb-4">
-      ${renderNameGroup(t('dashboard.available'), availableNames, 'bg-emerald-50 text-emerald-700')}
-      ${renderNameGroup(t('dashboard.programmed'), assignedNames, 'bg-indigo-50 text-indigo-700')}
-    </div>
+      <div class="grid sm:grid-cols-2 gap-4 mb-3">
+        ${renderNameGroup(t('dashboard.available'), availableNames, 'bg-emerald-50 text-emerald-700')}
+        ${renderNameGroup(t('dashboard.programmed'), assignedNames, 'bg-indigo-50 text-indigo-700')}
+      </div>
 
-    <div>
-      <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${t('dashboard.songs')}</div>
-      ${songTitles.length > 0
-        ? `<ul class="list-disc list-inside text-sm text-slate-700 space-y-0.5">${songTitles.map((title) => `<li>${escapeHtml(title)}</li>`).join('')}</ul>`
-        : `<p class="text-sm text-slate-400">${t('dashboard.noSongsYet')}</p>`
-      }
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${t('dashboard.songs')}</div>
+        ${songTitles.length > 0
+          ? `<ul class="list-disc list-inside text-sm text-slate-700 space-y-0.5">${songTitles.map((title) => `<li>${escapeHtml(title)}</li>`).join('')}</ul>`
+          : `<p class="text-sm text-slate-400">${t('dashboard.noSongsYet')}</p>`
+        }
+      </div>
     </div>
   `;
 }

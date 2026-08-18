@@ -171,7 +171,7 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
     const planIds = plans.map((p) => p.id);
     const { data: rsvps, error: rsvpsError } = await supabase
       .from('service_rsvps')
-      .select('service_plan_id, status, profiles ( full_name )')
+      .select('id, service_plan_id, status, reason, profiles ( full_name )')
       .in('service_plan_id', planIds);
 
     if (rsvpsError) {
@@ -210,16 +210,13 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
         </div>
         <details class="mt-2">
           <summary class="text-xs font-medium text-slate-500 cursor-pointer">${t('requests.viewResponses')}</summary>
-          <ul class="mt-2 space-y-1 text-sm">
-            ${planRsvps.map((r) => `
-              <li class="flex items-center justify-between">
-                <span class="text-slate-700">${escapeHtml(r.profiles?.full_name || '')}</span>
-                <span class="text-xs ${statusColorClass(r.status)}">${statusLabel(r.status)}</span>
-              </li>
-            `).join('')}
-          </ul>
+          <p class="text-xs text-slate-400 mt-2 mb-2">${t('requests.onBehalfHint')}</p>
+          <ul class="mt-1 space-y-2 text-sm" data-el="rsvp-list"></ul>
         </details>
       `;
+
+      const rsvpListEl = card.querySelector('[data-el="rsvp-list"]');
+      planRsvps.forEach((rsvp) => rsvpListEl.appendChild(renderRsvpRow(rsvp)));
 
       card.querySelector('[data-action="cancel"]').addEventListener('click', () => cancelRequest(plan));
       card.querySelector('[data-action="edit"]').addEventListener('click', () => {
@@ -229,6 +226,74 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
       });
       listEl.appendChild(card);
     });
+  }
+
+  function renderRsvpRow(rsvp) {
+    const li = document.createElement('li');
+    li.className = 'border-b border-slate-100 last:border-0 pb-2 last:pb-0';
+    li.innerHTML = `
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-slate-700">${escapeHtml(rsvp.profiles?.full_name || '')}</span>
+        <select data-el="status-select" class="border border-slate-300 rounded px-1.5 py-1 text-xs">
+          <option value="pending" ${rsvp.status === 'pending' ? 'selected' : ''}>${t('requests.statusPending')}</option>
+          <option value="approved" ${rsvp.status === 'approved' ? 'selected' : ''}>${t('requests.statusApproved')}</option>
+          <option value="declined" ${rsvp.status === 'declined' ? 'selected' : ''}>${t('requests.statusDeclined')}</option>
+        </select>
+      </div>
+      <div data-el="reason-row" class="mt-1.5 flex gap-2 ${rsvp.status === 'declined' ? '' : 'hidden'}">
+        <input type="text" data-el="reason-input" value="${escapeAttr(rsvp.reason || '')}"
+               placeholder="${t('requests.reasonPlaceholder')}"
+               class="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
+        <button type="button" data-el="save-reason"
+                class="px-2 py-1 rounded bg-slate-700 text-white text-xs font-medium hover:bg-slate-800 whitespace-nowrap">
+          ${t('requests.saveReason')}
+        </button>
+      </div>
+      <p data-el="row-status" class="text-xs mt-1"></p>
+    `;
+
+    const statusSelect = li.querySelector('[data-el="status-select"]');
+    const reasonRow = li.querySelector('[data-el="reason-row"]');
+    const reasonInput = li.querySelector('[data-el="reason-input"]');
+    const saveReasonBtn = li.querySelector('[data-el="save-reason"]');
+    const rowStatusEl = li.querySelector('[data-el="row-status"]');
+
+    statusSelect.addEventListener('change', async () => {
+      const newStatus = statusSelect.value;
+      reasonRow.classList.toggle('hidden', newStatus !== 'declined');
+
+      const { error } = await supabase
+        .from('service_rsvps')
+        .update({ status: newStatus, responded_at: new Date().toISOString() })
+        .eq('id', rsvp.id);
+
+      if (error) {
+        rowStatusEl.className = 'text-xs mt-1 text-rose-600';
+        rowStatusEl.textContent = t('requests.statusUpdateFailed', { message: error.message });
+        return;
+      }
+
+      rsvp.status = newStatus;
+      rowStatusEl.textContent = '';
+      loadRequests();
+    });
+
+    saveReasonBtn.addEventListener('click', async () => {
+      const reason = reasonInput.value.trim() || null;
+      const { error } = await supabase.from('service_rsvps').update({ reason }).eq('id', rsvp.id);
+
+      if (error) {
+        rowStatusEl.className = 'text-xs mt-1 text-rose-600';
+        rowStatusEl.textContent = t('requests.reasonSaveFailed', { message: error.message });
+        return;
+      }
+
+      rsvp.reason = reason;
+      rowStatusEl.className = 'text-xs mt-1 text-emerald-600';
+      rowStatusEl.textContent = t('requests.reasonSaved');
+    });
+
+    return li;
   }
 
   async function cancelRequest(plan) {
@@ -243,20 +308,12 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
   }
 }
 
-function statusLabel(status) {
-  if (status === 'approved') return t('requests.statusApproved');
-  if (status === 'declined') return t('requests.statusDeclined');
-  return t('requests.statusPending');
-}
-
-function statusColorClass(status) {
-  if (status === 'approved') return 'text-emerald-600';
-  if (status === 'declined') return 'text-rose-600';
-  return 'text-slate-400';
-}
-
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, '&quot;');
 }
