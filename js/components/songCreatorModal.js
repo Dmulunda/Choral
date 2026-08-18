@@ -1,21 +1,35 @@
 // Admin "Add/Edit Song" modal — manual entry, LRCLIB lyrics lookup,
 // browser speech-to-text dictation into the lyrics field, and uploading
-// audio directly (stored in the "song-tracks" Supabase Storage bucket)
-// for the lead and per-part rehearsal tracks instead of needing an
-// already-hosted URL.
+// audio/video directly (stored in the "song-tracks" Supabase Storage
+// bucket) for the lead track, per-part rehearsal tracks, and a video
+// file, instead of needing an already-hosted URL for each.
 import { searchLrclib, extractPlainLyrics } from '../utils/lrclib.js';
 import { t, tn, getLang } from '../i18n.js';
 
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 const SPEECH_LANG_BY_APP_LANG = { en: 'en-US', fr: 'fr-FR' };
 
-const TRACK_FIELDS = ['audio_lead_track', 'audio_soprano_track', 'audio_alto_track', 'audio_tenor_track'];
+const TRACK_FIELDS = [
+  { field: 'audio_lead_track', accept: 'audio/*' },
+  { field: 'audio_soprano_track', accept: 'audio/*' },
+  { field: 'audio_alto_track', accept: 'audio/*' },
+  { field: 'audio_tenor_track', accept: 'audio/*' },
+  { field: 'video_track', accept: 'video/*' },
+];
 
-function trackUploadRow(field, urlPlaceholder) {
+// Each slot is a URL box (editable directly, or auto-filled by an
+// upload) plus an explicit Remove button and a file picker that doubles
+// as "add new" and "replace" — picking a file always overwrites
+// whatever URL was there.
+function trackUploadRow(field, urlPlaceholder, accept) {
   return `
-    <input type="url" name="${field}" placeholder="${urlPlaceholder}" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-1.5" />
+    <div class="flex gap-1.5 mb-1.5">
+      <input type="url" name="${field}" placeholder="${urlPlaceholder}" class="flex-1 min-w-0 border border-slate-300 rounded-lg px-3 py-2" />
+      <button type="button" data-track-remove="${field}" title="${t('songCreator.removeTrack')}"
+              class="px-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-lg leading-none">&times;</button>
+    </div>
     <div class="flex items-center gap-2">
-      <input type="file" accept="audio/*" data-track-upload="${field}" class="text-xs text-slate-600 flex-1 min-w-0" />
+      <input type="file" accept="${accept}" data-track-upload="${field}" class="text-xs text-slate-600 flex-1 min-w-0" />
       <span data-track-status="${field}" class="text-xs shrink-0"></span>
     </div>
   `;
@@ -51,16 +65,21 @@ export function createSongCreatorModal({ supabase, onCreated }) {
         </div>
 
         <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('songCreator.videoFile')}</label>
+          ${trackUploadRow('video_track', t('songCreator.videoFilePlaceholder'), 'video/*')}
+        </div>
+
+        <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('songCreator.leadTrackUrl')}</label>
-          ${trackUploadRow('audio_lead_track', 'https://…')}
+          ${trackUploadRow('audio_lead_track', 'https://…', 'audio/*')}
         </div>
 
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('songCreator.partTracksOptional')}</label>
           <div class="grid sm:grid-cols-3 gap-3">
-            <div>${trackUploadRow('audio_soprano_track', t('songCreator.sopranoTrackPlaceholder'))}</div>
-            <div>${trackUploadRow('audio_alto_track', t('songCreator.altoTrackPlaceholder'))}</div>
-            <div>${trackUploadRow('audio_tenor_track', t('songCreator.tenorTrackPlaceholder'))}</div>
+            <div>${trackUploadRow('audio_soprano_track', t('songCreator.sopranoTrackPlaceholder'), 'audio/*')}</div>
+            <div>${trackUploadRow('audio_alto_track', t('songCreator.altoTrackPlaceholder'), 'audio/*')}</div>
+            <div>${trackUploadRow('audio_tenor_track', t('songCreator.tenorTrackPlaceholder'), 'audio/*')}</div>
           </div>
         </div>
 
@@ -120,10 +139,16 @@ export function createSongCreatorModal({ supabase, onCreated }) {
   root.querySelector('[data-action="lrclib-search"]').addEventListener('click', handleLrclibSearch);
   form.addEventListener('submit', handleSubmit);
 
-  // ---- Audio uploads ----
-  TRACK_FIELDS.forEach((field) => {
+  // ---- Audio/video uploads ----
+  TRACK_FIELDS.forEach(({ field }) => {
     const fileInput = root.querySelector(`[data-track-upload="${field}"]`);
     const statusEl = root.querySelector(`[data-track-status="${field}"]`);
+    const removeBtn = root.querySelector(`[data-track-remove="${field}"]`);
+
+    removeBtn.addEventListener('click', () => {
+      form.elements[field].value = '';
+      statusEl.textContent = '';
+    });
 
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0];
@@ -254,6 +279,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
       title: form.elements.title.value.trim(),
       key: form.elements.key.value.trim() || null,
       youtube_url: form.elements.youtube_url.value.trim() || null,
+      video_track: form.elements.video_track.value.trim() || null,
       audio_lead_track: form.elements.audio_lead_track.value.trim() || null,
       audio_soprano_track: form.elements.audio_soprano_track.value.trim() || null,
       audio_alto_track: form.elements.audio_alto_track.value.trim() || null,
@@ -303,6 +329,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
       form.elements.title.value = song.title || '';
       form.elements.key.value = song.key || '';
       form.elements.youtube_url.value = song.youtube_url || '';
+      form.elements.video_track.value = song.video_track || '';
       form.elements.audio_lead_track.value = song.audio_lead_track || '';
       form.elements.audio_soprano_track.value = song.audio_soprano_track || '';
       form.elements.audio_alto_track.value = song.audio_alto_track || '';

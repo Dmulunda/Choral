@@ -84,7 +84,7 @@ async function loadWeekServices(el, supabase) {
 
   const { data: plans, error: plansError } = await supabase
     .from('service_plans')
-    .select('id, date, title, song_ids')
+    .select('id, date, title')
     .gte('date', mondayStr)
     .lte('date', sundayStr)
     .order('date', { ascending: true });
@@ -104,17 +104,16 @@ async function loadWeekServices(el, supabase) {
 }
 
 async function buildServiceCardHtml(plan, supabase) {
-  const hasSongs = Array.isArray(plan.song_ids) && plan.song_ids.length > 0;
-
-  const [{ data: assigned }, { data: approvedRsvps }, { data: songs }] = await Promise.all([
+  const [{ data: assigned }, { data: approvedRsvps }, { data: planSongs }] = await Promise.all([
     supabase.from('service_plan_singers').select('profiles ( full_name )').eq('service_plan_id', plan.id),
     supabase.from('service_rsvps').select('profiles ( full_name )').eq('service_plan_id', plan.id).eq('status', 'approved'),
-    hasSongs ? supabase.from('songs').select('title').in('id', plan.song_ids) : Promise.resolve({ data: [] }),
+    supabase.from('service_plan_songs').select('category, songs ( title )').eq('service_plan_id', plan.id).order('position'),
   ]);
 
   const assignedNames = (assigned || []).map((row) => row.profiles?.full_name).filter(Boolean);
   const availableNames = (approvedRsvps || []).map((row) => row.profiles?.full_name).filter(Boolean);
-  const songTitles = (songs || []).map((song) => song.title);
+  const praiseTitles = (planSongs || []).filter((row) => row.category === 'praise' && row.songs).map((row) => row.songs.title);
+  const worshipTitles = (planSongs || []).filter((row) => row.category === 'worship' && row.songs).map((row) => row.songs.title);
 
   return `
     <div class="border border-slate-200 rounded-lg p-3">
@@ -128,13 +127,22 @@ async function buildServiceCardHtml(plan, supabase) {
         ${renderNameGroup(t('dashboard.programmed'), assignedNames, 'bg-indigo-50 text-indigo-700')}
       </div>
 
-      <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${t('dashboard.songs')}</div>
-        ${songTitles.length > 0
-          ? `<ul class="list-disc list-inside text-sm text-slate-700 space-y-0.5">${songTitles.map((title) => `<li>${escapeHtml(title)}</li>`).join('')}</ul>`
-          : `<p class="text-sm text-slate-400">${t('dashboard.noSongsYet')}</p>`
-        }
+      <div class="grid sm:grid-cols-2 gap-4">
+        ${renderSongGroup(t('requests.praiseSongs'), praiseTitles)}
+        ${renderSongGroup(t('requests.worshipSongs'), worshipTitles)}
       </div>
+    </div>
+  `;
+}
+
+function renderSongGroup(label, titles) {
+  return `
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${escapeHtml(label)}</div>
+      ${titles.length > 0
+        ? `<ul class="list-disc list-inside text-sm text-slate-700 space-y-0.5">${titles.map((title) => `<li>${escapeHtml(title)}</li>`).join('')}</ul>`
+        : `<p class="text-sm text-slate-400">${t('dashboard.noSongsYet')}</p>`
+      }
     </div>
   `;
 }

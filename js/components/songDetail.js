@@ -36,9 +36,11 @@ export function renderSongDetail(container, song, { supabase, isAdmin, onBack, o
 
     <div class="grid md:grid-cols-2 gap-6">
       <div>
-        ${videoId
-          ? `<div class="aspect-video rounded-xl overflow-hidden bg-black" id="${playerId}"></div>`
-          : `<div class="aspect-video rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">${t('songDetail.noVideoLinked')}</div>`
+        ${song.video_track
+          ? `<video controls class="aspect-video w-full rounded-xl bg-black" src="${escapeAttr(song.video_track)}"></video>`
+          : videoId
+            ? `<div class="aspect-video rounded-xl overflow-hidden bg-black" id="${playerId}"></div>`
+            : `<div class="aspect-video rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">${t('songDetail.noVideoLinked')}</div>`
         }
         ${song.audio_lead_track ? `
           <div class="mt-4">
@@ -75,7 +77,7 @@ export function renderSongDetail(container, song, { supabase, isAdmin, onBack, o
     });
   }
 
-  if (videoId) {
+  if (videoId && !song.video_track) {
     loadYouTubeIframeAPI().then((YT) => {
       new YT.Player(playerId, {
         videoId,
