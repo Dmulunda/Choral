@@ -75,7 +75,14 @@ export function renderSongLibrary(container, { supabase, isAdmin, viewerVoicePar
     listEl.querySelectorAll('[data-song-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const song = data.find((s) => s.id === btn.dataset.songId);
-        renderSongDetail(viewEl, song, { supabase, isAdmin, onBack: showList, onDeleted: showList, viewerVoiceParts });
+        renderSongDetail(viewEl, song, {
+          supabase,
+          isAdmin,
+          onBack: showList,
+          onDeleted: showList,
+          onEdit: () => modal.open(song),
+          viewerVoiceParts,
+        });
       });
     });
 

@@ -11,7 +11,7 @@ const PART_TRACK_FIELDS = {
   Tenor: 'audio_tenor_track',
 };
 
-export function renderSongDetail(container, song, { supabase, isAdmin, onBack, onDeleted, viewerVoiceParts }) {
+export function renderSongDetail(container, song, { supabase, isAdmin, onBack, onDeleted, onEdit, viewerVoiceParts }) {
   const playerId = `yt-player-${++playerInstanceCounter}`;
   const videoId = extractYouTubeId(song.youtube_url);
 
@@ -20,8 +20,12 @@ export function renderSongDetail(container, song, { supabase, isAdmin, onBack, o
       <button type="button" data-action="back"
               class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">${t('songDetail.back')}</button>
       ${isAdmin ? `
-        <button type="button" data-action="delete"
-                class="text-sm font-medium text-rose-600 hover:text-rose-800">${t('songDetail.delete')}</button>
+        <div class="flex items-center gap-4">
+          <button type="button" data-action="edit"
+                  class="text-sm font-medium text-indigo-600 hover:text-indigo-800">${t('songDetail.edit')}</button>
+          <button type="button" data-action="delete"
+                  class="text-sm font-medium text-rose-600 hover:text-rose-800">${t('songDetail.delete')}</button>
+        </div>
       ` : ''}
     </div>
 
@@ -57,6 +61,8 @@ export function renderSongDetail(container, song, { supabase, isAdmin, onBack, o
   container.querySelector('[data-action="back"]').addEventListener('click', onBack);
 
   if (isAdmin) {
+    container.querySelector('[data-action="edit"]').addEventListener('click', () => onEdit?.());
+
     container.querySelector('[data-action="delete"]').addEventListener('click', async () => {
       if (!window.confirm(t('songDetail.confirmDelete', { title: song.title }))) return;
 

@@ -1,18 +1,35 @@
-// Admin "Add Song" modal — manual entry, LRCLIB lyrics lookup, and
-// browser speech-to-text dictation into the lyrics field.
+// Admin "Add/Edit Song" modal — manual entry, LRCLIB lyrics lookup,
+// browser speech-to-text dictation into the lyrics field, and uploading
+// audio directly (stored in the "song-tracks" Supabase Storage bucket)
+// for the lead and per-part rehearsal tracks instead of needing an
+// already-hosted URL.
 import { searchLrclib, extractPlainLyrics } from '../utils/lrclib.js';
 import { t, tn, getLang } from '../i18n.js';
 
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 const SPEECH_LANG_BY_APP_LANG = { en: 'en-US', fr: 'fr-FR' };
 
+const TRACK_FIELDS = ['audio_lead_track', 'audio_soprano_track', 'audio_alto_track', 'audio_tenor_track'];
+
+function trackUploadRow(field, urlPlaceholder) {
+  return `
+    <input type="url" name="${field}" placeholder="${urlPlaceholder}" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-1.5" />
+    <div class="flex items-center gap-2">
+      <input type="file" accept="audio/*" data-track-upload="${field}" class="text-xs text-slate-600 flex-1 min-w-0" />
+      <span data-track-status="${field}" class="text-xs shrink-0"></span>
+    </div>
+  `;
+}
+
 export function createSongCreatorModal({ supabase, onCreated }) {
+  let editingSongId = null;
+
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
   root.innerHTML = `
     <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">${t('songCreator.title')}</h2>
+        <h2 data-el="heading" class="text-xl font-bold">${t('songCreator.title')}</h2>
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
 
@@ -35,15 +52,15 @@ export function createSongCreatorModal({ supabase, onCreated }) {
 
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('songCreator.leadTrackUrl')}</label>
-          <input type="url" name="audio_lead_track" placeholder="https://…" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          ${trackUploadRow('audio_lead_track', 'https://…')}
         </div>
 
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('songCreator.partTracksOptional')}</label>
           <div class="grid sm:grid-cols-3 gap-3">
-            <input type="url" name="audio_soprano_track" placeholder="${t('songCreator.sopranoTrackPlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
-            <input type="url" name="audio_alto_track" placeholder="${t('songCreator.altoTrackPlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
-            <input type="url" name="audio_tenor_track" placeholder="${t('songCreator.tenorTrackPlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+            <div>${trackUploadRow('audio_soprano_track', t('songCreator.sopranoTrackPlaceholder'))}</div>
+            <div>${trackUploadRow('audio_alto_track', t('songCreator.altoTrackPlaceholder'))}</div>
+            <div>${trackUploadRow('audio_tenor_track', t('songCreator.tenorTrackPlaceholder'))}</div>
           </div>
         </div>
 
@@ -88,6 +105,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
   document.body.appendChild(root);
 
   const form = root.querySelector('[data-el="form"]');
+  const headingEl = root.querySelector('[data-el="heading"]');
   const titleInput = form.elements.title;
   const lyricsInput = form.elements.lyrics;
   const lrclibQueryInput = root.querySelector('[data-el="lrclib-query"]');
@@ -101,6 +119,43 @@ export function createSongCreatorModal({ supabase, onCreated }) {
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
   root.querySelector('[data-action="lrclib-search"]').addEventListener('click', handleLrclibSearch);
   form.addEventListener('submit', handleSubmit);
+
+  // ---- Audio uploads ----
+  TRACK_FIELDS.forEach((field) => {
+    const fileInput = root.querySelector(`[data-track-upload="${field}"]`);
+    const statusEl = root.querySelector(`[data-track-status="${field}"]`);
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      fileInput.disabled = true;
+      statusEl.className = 'text-xs shrink-0 text-slate-500';
+      statusEl.textContent = t('songCreator.uploading');
+
+      try {
+        const url = await uploadTrack(file);
+        form.elements[field].value = url;
+        statusEl.className = 'text-xs shrink-0 text-emerald-600';
+        statusEl.textContent = t('songCreator.uploadDone', { name: file.name });
+      } catch (error) {
+        statusEl.className = 'text-xs shrink-0 text-rose-600';
+        statusEl.textContent = t('songCreator.uploadFailed', { message: error.message });
+      } finally {
+        fileInput.disabled = false;
+        fileInput.value = '';
+      }
+    });
+  });
+
+  async function uploadTrack(file) {
+    const ext = file.name.includes('.') ? file.name.split('.').pop() : 'mp3';
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from('song-tracks').upload(path, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from('song-tracks').getPublicUrl(path);
+    return data.publicUrl;
+  }
 
   // ---- Speech-to-text dictation ----
   let recognition = null;
@@ -216,7 +271,9 @@ export function createSongCreatorModal({ supabase, onCreated }) {
     formStatusEl.textContent = t('common.saving');
     formStatusEl.className = 'text-sm text-slate-500';
 
-    const { data, error } = await supabase.from('songs').insert(payload).select().single();
+    const { data, error } = editingSongId
+      ? await supabase.from('songs').update(payload).eq('id', editingSongId).select().single()
+      : await supabase.from('songs').insert(payload).select().single();
 
     if (error) {
       formStatusEl.textContent = t('songCreator.failedToSave', { message: error.message });
@@ -230,11 +287,29 @@ export function createSongCreatorModal({ supabase, onCreated }) {
     onCreated?.(data);
   }
 
-  function open() {
+  // Pass an existing song to edit it in place; omit it to create a new one.
+  function open(song = null) {
     form.reset();
     lrclibResultsEl.innerHTML = '';
     lrclibStatusEl.textContent = '';
     formStatusEl.textContent = '';
+    root.querySelectorAll('[data-track-status]').forEach((el) => { el.textContent = ''; });
+
+    editingSongId = song?.id ?? null;
+    headingEl.textContent = editingSongId ? t('songCreator.editTitle') : t('songCreator.title');
+    saveBtn.textContent = editingSongId ? t('songCreator.saveChanges') : t('songCreator.saveSong');
+
+    if (song) {
+      form.elements.title.value = song.title || '';
+      form.elements.key.value = song.key || '';
+      form.elements.youtube_url.value = song.youtube_url || '';
+      form.elements.audio_lead_track.value = song.audio_lead_track || '';
+      form.elements.audio_soprano_track.value = song.audio_soprano_track || '';
+      form.elements.audio_alto_track.value = song.audio_alto_track || '';
+      form.elements.audio_tenor_track.value = song.audio_tenor_track || '';
+      form.elements.lyrics.value = song.lyrics || '';
+    }
+
     root.classList.remove('hidden');
     root.classList.add('flex');
   }
