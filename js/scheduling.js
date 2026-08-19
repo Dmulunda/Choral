@@ -48,15 +48,20 @@ export async function renderSchedulingTab() {
 
   container.innerHTML = '';
   const requestsEl = document.createElement('div');
+  const replacementEl = document.createElement('div');
   const plannerEl = document.createElement('div');
   plannerEl.className = 'bg-white rounded-xl shadow p-4 sm:p-6';
 
   if (isChoirAdmin) {
-    container.append(requestsEl, plannerEl);
+    // An admin can also be scheduled as a singer for a service, so they
+    // need the same "request a replacement for myself" access as any
+    // other member — it just sits alongside their admin tools instead
+    // of replacing them.
+    container.append(requestsEl, replacementEl, plannerEl);
     renderServiceRequestAdmin(requestsEl, { supabase, adminUserId: userId });
+    renderReplacementRequests(replacementEl, { supabase, userId, myVoiceParts: profile.voice_parts });
     renderAdminAutoPlanner(plannerEl, { supabase, adminUserId: userId });
   } else {
-    const replacementEl = document.createElement('div');
     container.append(requestsEl, replacementEl, plannerEl);
     renderServiceRequestSinger(requestsEl, { supabase, userId });
     renderReplacementRequests(replacementEl, { supabase, userId, myVoiceParts: profile.voice_parts });
