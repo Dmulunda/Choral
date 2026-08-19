@@ -7,6 +7,7 @@ import { renderAuthScreen } from './components/authScreen.js';
 import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
+import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
 import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
 
@@ -18,6 +19,8 @@ const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wr
 const departmentSwitcherEl = document.querySelector('#department-switcher');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
 const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
+const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
+const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
 
 // Tabs whose content is fetched from Supabase on first visit rather than
@@ -92,6 +95,16 @@ function applyActiveDepartment() {
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonDeptNameEl.textContent = departmentLabel(active.key);
     comingSoonPanelEl.classList.remove('hidden');
+
+    const canAdminister = active.role === 'admin' || active.role === 'super_admin';
+    comingSoonApprovalsEl.classList.toggle('hidden', !canAdminister);
+    if (canAdminister) {
+      renderDepartmentApprovals(comingSoonApprovalsListEl, {
+        supabase,
+        departmentId: active.id,
+        adminUserId: currentUserId,
+      });
+    }
   }
 }
 

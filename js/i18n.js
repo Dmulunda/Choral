@@ -37,6 +37,16 @@ const TRANSLATIONS = {
     'department.comingSoon': 'This department\'s tools are coming soon.',
     'department.noAccess': 'You don\'t have access to any department yet. Ask an admin to approve your membership.',
 
+    'approvals.title': 'Pending Membership Requests',
+    'approvals.loadFailed': 'Failed to load requests: {message}',
+    'approvals.none': 'No pending requests.',
+    'approvals.approve': 'Approve',
+    'approvals.reject': 'Reject',
+    'approvals.updateFailed': 'Failed to update: {message}',
+
+    'auth.joinDepartments': 'Which departments would you like to join?',
+    'auth.joinDepartmentsHint': 'An admin for each department needs to approve your request before you can access it.',
+
     'dashboard.placeholder': 'Dashboard content will be rendered here.',
     'scheduling.placeholder': 'Availability calendar and service plans will be rendered here.',
     'songbook.placeholder': 'Song list, lyrics, and track links will be rendered here.',
@@ -373,6 +383,16 @@ const TRANSLATIONS = {
     'department.evangelism': 'Évangélisation',
     'department.comingSoon': 'Les outils de ce département arrivent bientôt.',
     'department.noAccess': "Vous n'avez pas encore accès à un département. Demandez à un administrateur d'approuver votre adhésion.",
+
+    'approvals.title': "Demandes d'adhésion en attente",
+    'approvals.loadFailed': 'Échec du chargement des demandes : {message}',
+    'approvals.none': 'Aucune demande en attente.',
+    'approvals.approve': 'Approuver',
+    'approvals.reject': 'Refuser',
+    'approvals.updateFailed': 'Échec de la mise à jour : {message}',
+
+    'auth.joinDepartments': 'À quels départements souhaitez-vous adhérer ?',
+    'auth.joinDepartmentsHint': "Un administrateur de chaque département doit approuver votre demande avant que vous puissiez y accéder.",
 
     'dashboard.placeholder': 'Le contenu du tableau de bord sera affiché ici.',
     'scheduling.placeholder': 'Le calendrier de disponibilité et les plans de service seront affichés ici.',

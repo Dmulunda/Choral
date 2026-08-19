@@ -1,6 +1,7 @@
 // Login / sign-up card. On success, supabase.auth's session change fires
 // and app.js's onAuthStateChange listener swaps the auth screen for the app.
-import { t } from '../i18n.js';
+import { t, departmentLabel } from '../i18n.js';
+import { DEPARTMENT_KEYS, requestDepartmentMemberships } from '../departments.js';
 
 export function renderAuthScreen(container, { supabase }) {
   let mode = 'login';
@@ -30,6 +31,19 @@ export function renderAuthScreen(container, { supabase }) {
               <div data-el="full-name-field" class="hidden">
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.fullName')}</label>
                 <input type="text" name="full_name" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+              </div>
+
+              <div data-el="departments-field" class="hidden">
+                <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.joinDepartments')}</label>
+                <div class="grid grid-cols-2 gap-1.5 border border-slate-300 rounded-lg p-2 max-h-40 overflow-y-auto text-sm">
+                  ${DEPARTMENT_KEYS.map((key) => `
+                    <label class="flex items-center gap-1.5">
+                      <input type="checkbox" value="${key}" data-dept-checkbox />
+                      <span>${departmentLabel(key)}</span>
+                    </label>
+                  `).join('')}
+                </div>
+                <p class="text-xs text-slate-400 mt-1">${t('auth.joinDepartmentsHint')}</p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.email')}</label>
@@ -85,6 +99,7 @@ export function renderAuthScreen(container, { supabase }) {
 
   const modeButtons = container.querySelectorAll('[data-mode]');
   const fullNameField = container.querySelector('[data-el="full-name-field"]');
+  const departmentsField = container.querySelector('[data-el="departments-field"]');
   const form = container.querySelector('[data-el="form"]');
   const statusEl = container.querySelector('[data-el="status"]');
   const submitBtn = container.querySelector('[data-el="submit-btn"]');
@@ -106,6 +121,7 @@ export function renderAuthScreen(container, { supabase }) {
     });
     fullNameField.classList.toggle('hidden', mode !== 'signup');
     fullNameField.querySelector('input').required = mode === 'signup';
+    departmentsField.classList.toggle('hidden', mode !== 'signup');
     submitBtn.textContent = mode === 'signup' ? t('auth.createAccount') : t('auth.signIn');
     container.querySelector('[data-el="forgot-link"]').classList.toggle('hidden', mode !== 'login');
     statusEl.textContent = '';
@@ -161,6 +177,7 @@ export function renderAuthScreen(container, { supabase }) {
 
     if (mode === 'signup') {
       const fullName = form.elements.full_name.value.trim();
+      const selectedDepartments = Array.from(form.querySelectorAll('[data-dept-checkbox]:checked')).map((cb) => cb.value);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -171,10 +188,15 @@ export function renderAuthScreen(container, { supabase }) {
         statusEl.className = 'text-sm text-rose-600';
         statusEl.textContent = error.message;
       } else if (!data.session) {
+        // Email confirmation is required, so there's no session yet to
+        // file membership requests under — they'll need to select
+        // departments again after confirming and logging in.
         statusEl.className = 'text-sm text-emerald-600';
         statusEl.textContent = t('auth.accountCreatedCheckEmail');
+      } else {
+        await requestDepartmentMemberships(data.user.id, selectedDepartments);
+        // onAuthStateChange in app.js takes over from here.
       }
-      // If data.session exists, onAuthStateChange in app.js takes over.
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
