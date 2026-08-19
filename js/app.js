@@ -505,7 +505,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 // reload restoring an existing session) — the real app renders
 // underneath in the background so the wait doesn't add to actual load
 // time, then the overlay fades away to reveal it.
-const SPLASH_MIN_DURATION_MS = 4000;
+const SPLASH_MIN_DURATION_MS = 3000;
 
 async function showSplashThenApp(session) {
   loginSplashEl.classList.remove('hidden', 'opacity-0');
