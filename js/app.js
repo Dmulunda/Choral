@@ -9,6 +9,7 @@ import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
+import { renderPreachingTab } from './preachingSchedule.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
 import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
@@ -38,6 +39,7 @@ const lazyTabs = {
   members: renderMembersTab,
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
+  preaching: renderPreachingTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -110,9 +112,13 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
     activateTab('dept-dashboard');
+  } else if (active.key === 'preaching') {
+    comingSoonPanelEl.classList.add('hidden');
+    loadedTabs.delete('preaching');
+    activateTab('preaching');
   } else {
     // "custom" departments without bespoke tooling yet (Media & Tech,
-    // Preaching & Moderation, Ecodem) — later phases replace this branch.
+    // Ecodem) — later phases replace this branch.
     currentTabName = null;
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonDeptNameEl.textContent = departmentLabel(active.key);
