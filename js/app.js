@@ -12,7 +12,7 @@ import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderPreachingTab } from './preachingSchedule.js';
 import { renderMediaTechTab } from './mediaTechSchedule.js';
 import { renderEcodemTab } from './ecodemSchedule.js';
-import { renderDirectoryTab } from './userDirectory.js';
+import { renderSuperAdminHomeTab } from './superAdminHome.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
@@ -21,6 +21,8 @@ import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabe
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
+  hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
+  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
 } from './departments.js';
 
 const tabs = document.querySelectorAll('[data-tab-target]');
@@ -47,6 +49,12 @@ const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
 const viewAsBannerTextEl = viewAsBannerEl.querySelector('[data-el="text"]');
 const viewAsExitBtn = document.querySelector('#view-as-exit-btn');
+const previewAsMemberWrapEl = document.querySelector('#preview-as-member-wrap');
+const previewAsMemberBtn = document.querySelector('#preview-as-member-btn');
+const roleSwitcherWrapEl = document.querySelector('#role-switcher-wrap');
+const roleSwitcherAdminBtn = document.querySelector('#role-switcher-admin-btn');
+const roleSwitcherStandardBtn = document.querySelector('#role-switcher-standard-btn');
+const loginSplashEl = document.querySelector('#login-splash');
 
 // Tabs whose content is fetched from Supabase on first visit rather than
 // baked into the initial page load.
@@ -61,7 +69,7 @@ const lazyTabs = {
   preaching: renderPreachingTab,
   'media-tech': renderMediaTechTab,
   ecodem: renderEcodemTab,
-  directory: renderDirectoryTab,
+  'super-home': renderSuperAdminHomeTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -101,36 +109,47 @@ function activateTab(name) {
 // access to (or every department, for a super admin/viewer).
 function populateDepartmentSwitcher() {
   const departments = getMyDepartments();
-  departmentSwitcherWrapEl.classList.toggle('hidden', departments.length === 0);
+  const showHomeOption = hasGlobalReach();
+  departmentSwitcherWrapEl.classList.toggle('hidden', departments.length === 0 && !showHomeOption);
 
-  departmentSwitcherEl.innerHTML = departments
+  const homeOption = showHomeOption ? `<option value="${HOME_KEY}">${t('nav.home')}</option>` : '';
+  departmentSwitcherEl.innerHTML = homeOption + departments
     .map((d) => `<option value="${d.key}">${departmentLabel(d.key)}</option>`)
     .join('');
 
   const active = getActiveDepartment();
-  if (active) departmentSwitcherEl.value = active.key;
+  departmentSwitcherEl.value = active ? active.key : (isHomeActive() ? HOME_KEY : '');
 }
-
-const GLOBAL_ROLES = ['super_admin', 'super_viewer', 'pastor_admin', 'church_secretary'];
 
 function applyActiveDepartment() {
   const active = getActiveDepartment();
 
-  // Every department carries the same synthesized .role for a global-role
-  // holder (see departments.js's loadMyDepartments/startViewAs), so
-  // checking the active department's role here — rather than
-  // getGlobalRole() directly — is what makes this correctly reflect the
-  // *simulated* identity during View-As, exactly like membersNavBtn below.
-  globalNavGroupEl.classList.toggle('hidden', !GLOBAL_ROLES.includes(active?.role));
+  // hasGlobalReach() (not the active department's role) drives this,
+  // since active is intentionally null while on the Home console —
+  // Home itself lives inside this same nav group.
+  globalNavGroupEl.classList.toggle('hidden', !hasGlobalReach());
 
-  noAccessPanelEl.classList.toggle('hidden', !!active);
   if (!active) {
+    if (isHomeActive()) {
+      noAccessPanelEl.classList.add('hidden');
+      choirNavGroupEl.classList.add('hidden');
+      lightweightNavGroupEl.classList.add('hidden');
+      membersNavBtn.classList.add('hidden');
+      comingSoonPanelEl.classList.add('hidden');
+      loadedTabs.delete('super-home');
+      activateTab('super-home');
+      return;
+    }
+
+    noAccessPanelEl.classList.remove('hidden');
     choirNavGroupEl.classList.add('hidden');
     lightweightNavGroupEl.classList.add('hidden');
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonPanelEl.classList.add('hidden');
     return;
   }
+
+  noAccessPanelEl.classList.add('hidden');
 
   const isChoir = active.key === 'choir';
   const isLightweight = active.kind === 'lightweight';
@@ -183,21 +202,76 @@ function applyActiveDepartment() {
 departmentSwitcherEl.addEventListener('change', () => {
   setActiveDepartmentKey(departmentSwitcherEl.value);
   applyActiveDepartment();
+  updatePreviewAsMemberUI();
   closeSidebar();
 });
+
+// ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
+function updateRoleSwitcherUI() {
+  roleSwitcherWrapEl.classList.toggle('hidden', !getGlobalRole() || isViewingAs());
+
+  const standard = isActingAsStandardUser();
+  roleSwitcherAdminBtn.classList.toggle('bg-indigo-600', !standard);
+  roleSwitcherAdminBtn.classList.toggle('text-white', !standard);
+  roleSwitcherAdminBtn.classList.toggle('text-slate-400', standard);
+  roleSwitcherStandardBtn.classList.toggle('bg-indigo-600', standard);
+  roleSwitcherStandardBtn.classList.toggle('text-white', standard);
+  roleSwitcherStandardBtn.classList.toggle('text-slate-400', !standard);
+}
+
+function refreshAfterRoleModeChange() {
+  loadedTabs = new Set();
+  populateDepartmentSwitcher();
+  applyActiveDepartment();
+  updateRoleSwitcherUI();
+  updateViewAsUI();
+  updatePreviewAsMemberUI();
+  updateMemberActionsUI();
+  refreshInboxBadge();
+  closeSidebar();
+}
+
+roleSwitcherAdminBtn.addEventListener('click', () => {
+  setActingAsStandardUser(false);
+  refreshAfterRoleModeChange();
+});
+
+roleSwitcherStandardBtn.addEventListener('click', () => {
+  setActingAsStandardUser(true);
+  refreshAfterRoleModeChange();
+});
+
+// ---- Shared banner for View-As / Preview-as-Member ----
+// The two are mutually exclusive in practice — View-As is Super-Admin-
+// only and only available in Super Admin Mode; Preview-as-Member only
+// applies to a literal department admin role, which only surfaces in
+// Standard User Mode for a global-role holder (or all the time for a
+// regular admin, who never sees View-As at all) — so one banner element
+// serving both, keyed off whichever is actually active, is enough.
+function updateIdentityBanner() {
+  const viewAsTarget = getViewAsTarget();
+  const previewing = isPreviewingAsMember();
+  const showBanner = !!viewAsTarget || previewing;
+
+  viewAsBannerEl.classList.toggle('hidden', !showBanner);
+  viewAsBannerEl.classList.toggle('flex', showBanner);
+
+  if (viewAsTarget) {
+    viewAsBannerTextEl.textContent = t('viewAs.banner', { name: viewAsTarget.full_name });
+  } else if (previewing) {
+    viewAsBannerTextEl.textContent = t('previewAsMember.banner');
+  }
+}
 
 // ---- Super Admin "View As" mode ----
 // getGlobalRole() always reflects the real signed-in user, even while
 // isViewingAs() is true, so the entry point itself never disappears
-// because of the simulated role — only because view-as is already active.
+// because of the simulated role — only because view-as is already
+// active, or Standard User Mode has stepped out of Super Admin reach.
 function updateViewAsUI() {
-  const isSuperAdmin = getGlobalRole() === 'super_admin';
-  viewAsWrapEl.classList.toggle('hidden', !isSuperAdmin || isViewingAs());
-
-  const target = getViewAsTarget();
-  viewAsBannerEl.classList.toggle('hidden', !target);
-  viewAsBannerEl.classList.toggle('flex', !!target);
-  if (target) viewAsBannerTextEl.textContent = t('viewAs.banner', { name: target.full_name });
+  const canViewAs = getGlobalRole() === 'super_admin' && !isActingAsStandardUser();
+  viewAsWrapEl.classList.toggle('hidden', !canViewAs || isViewingAs());
+  updateIdentityBanner();
 }
 
 function refreshAfterViewAsChange() {
@@ -208,6 +282,7 @@ function refreshAfterViewAsChange() {
   populateDepartmentSwitcher();
   applyActiveDepartment();
   updateViewAsUI();
+  updatePreviewAsMemberUI();
   updateMemberActionsUI();
   refreshInboxBadge();
   closeSidebar();
@@ -226,7 +301,24 @@ viewAsBtn.addEventListener('click', () => {
 });
 
 viewAsExitBtn.addEventListener('click', () => {
-  stopViewAs();
+  if (isViewingAs()) stopViewAs();
+  if (isPreviewingAsMember()) stopPreviewAsMember();
+  refreshAfterViewAsChange();
+});
+
+// ---- Department Admin "Preview as Member" ----
+// Only offered for a literal department_role of 'admin' — Department
+// Secretary is deliberately excluded (announcements-only, no admin
+// powers to preview away from), and a global role uses View-As instead.
+function updatePreviewAsMemberUI() {
+  const active = getActiveDepartment();
+  const canPreview = !isPreviewingAsMember() && !isViewingAs() && active?.role === 'admin';
+  previewAsMemberWrapEl.classList.toggle('hidden', !canPreview);
+  updateIdentityBanner();
+}
+
+previewAsMemberBtn.addEventListener('click', () => {
+  startPreviewAsMember();
   refreshAfterViewAsChange();
 });
 
@@ -309,7 +401,9 @@ onLangChange(() => {
     populateDepartmentSwitcher();
     applyActiveDepartment();
   }
+  updateRoleSwitcherUI();
   updateViewAsUI();
+  updatePreviewAsMemberUI();
   // Dynamic tab content is generated with hardcoded strings, not
   // data-i18n attributes, so the visible tab needs a full re-render.
   if (currentTabName && lazyTabs[currentTabName]) lazyTabs[currentTabName]();
@@ -369,7 +463,7 @@ function showPasswordRecovery() {
   });
 }
 
-async function showApp(session) {
+async function showApp(session, { isFreshSignIn = false } = {}) {
   if (isRecovering) return;
 
   passwordRecoveryEl.classList.add('hidden');
@@ -391,11 +485,42 @@ async function showApp(session) {
   currentUserNameEl.textContent = profile?.full_name || session.user.email;
 
   await loadMyDepartments(session.user.id);
+
+  // A fresh sign-in (not a page-refresh session restore) always resets
+  // a global-role holder to Super Admin Mode and their Home console —
+  // "upon login" per the routing requirement, not "on every page load."
+  // setActingAsStandardUser(false) also calls goHome() internally.
+  if (isFreshSignIn && getGlobalRole()) setActingAsStandardUser(false);
+
   populateDepartmentSwitcher();
   applyActiveDepartment();
+  updateRoleSwitcherUI();
   updateViewAsUI();
+  updatePreviewAsMemberUI();
   updateMemberActionsUI();
   refreshInboxBadge();
+}
+
+// Shown for a few seconds right after a genuine sign-in (not a page
+// reload restoring an existing session) — the real app renders
+// underneath in the background so the wait doesn't add to actual load
+// time, then the overlay fades away to reveal it.
+const SPLASH_MIN_DURATION_MS = 4000;
+
+async function showSplashThenApp(session) {
+  loginSplashEl.classList.remove('hidden', 'opacity-0');
+  loginSplashEl.classList.add('flex');
+
+  await Promise.all([
+    showApp(session, { isFreshSignIn: true }),
+    new Promise((resolve) => setTimeout(resolve, SPLASH_MIN_DURATION_MS)),
+  ]);
+
+  loginSplashEl.classList.add('opacity-0');
+  setTimeout(() => {
+    loginSplashEl.classList.add('hidden');
+    loginSplashEl.classList.remove('flex');
+  }, 700);
 }
 
 function showAuth() {
@@ -409,6 +534,8 @@ function showAuth() {
   departmentSwitcherWrapEl.classList.add('hidden');
   viewAsWrapEl.classList.add('hidden');
   viewAsBannerEl.classList.add('hidden');
+  previewAsMemberWrapEl.classList.add('hidden');
+  roleSwitcherWrapEl.classList.add('hidden');
   memberActionsWrapEl.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
 }
@@ -423,7 +550,15 @@ supabase.auth.onAuthStateChange((event, session) => {
     showPasswordRecovery();
     return;
   }
-  if (session) showApp(session); else showAuth();
+  if (!session) {
+    showAuth();
+    return;
+  }
+  if (event === 'SIGNED_IN') {
+    showSplashThenApp(session);
+  } else {
+    showApp(session);
+  }
 });
 
 signOutBtn.addEventListener('click', () => supabase.auth.signOut());

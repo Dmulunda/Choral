@@ -376,9 +376,20 @@ const TRANSLATIONS = {
     'memberCreator.roleAssignFailed': 'Account created, but the role/voice part could not be set: {message}',
     'memberCreator.success': 'Account created for {name}. Share this password with them: {password}',
 
-    'nav.directory': 'Directory',
+    'nav.home': 'Home',
     'directory.title': 'User Directory',
     'directory.intro': 'Every user across every department, in one place.',
+
+    'superHome.metricUsers': 'Total Users',
+    'superHome.metricDepartments': 'Departments',
+    'superHome.metricMemberships': 'Approved Memberships',
+    'superHome.metricPending': 'Pending Requests',
+
+    'sidebar.roleSwitcher': 'Mode',
+    'sidebar.superAdminMode': 'Super Admin',
+    'sidebar.standardUserMode': 'Standard User',
+    'sidebar.previewAsMember': 'Preview as Member',
+    'previewAsMember.banner': 'Previewing as a Member — read-only',
 
     'users.addUser': '+ Add User',
     'users.searchPlaceholder': 'Search by name or email…',
@@ -933,9 +944,20 @@ const TRANSLATIONS = {
     'memberCreator.roleAssignFailed': "Compte créé, mais le rôle/pupitre n'a pas pu être défini : {message}",
     'memberCreator.success': 'Compte créé pour {name}. Partagez ce mot de passe avec cette personne : {password}',
 
-    'nav.directory': 'Annuaire',
+    'nav.home': 'Accueil',
     'directory.title': 'Annuaire des utilisateurs',
     'directory.intro': 'Tous les utilisateurs, tous départements confondus, en un seul endroit.',
+
+    'superHome.metricUsers': 'Utilisateurs',
+    'superHome.metricDepartments': 'Départements',
+    'superHome.metricMemberships': 'Adhésions approuvées',
+    'superHome.metricPending': 'Demandes en attente',
+
+    'sidebar.roleSwitcher': 'Mode',
+    'sidebar.superAdminMode': 'Super Admin',
+    'sidebar.standardUserMode': 'Utilisateur standard',
+    'sidebar.previewAsMember': 'Aperçu en tant que membre',
+    'previewAsMember.banner': 'Aperçu en tant que membre — lecture seule',
 
     'users.addUser': '+ Ajouter un utilisateur',
     'users.searchPlaceholder': 'Rechercher par nom ou e-mail…',

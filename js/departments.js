@@ -6,6 +6,12 @@ import { supabase } from './supabaseClient.js';
 
 const ACTIVE_DEPT_STORAGE_KEY = 'choir-hub-active-department';
 
+// Sentinel stored in place of a real department key when a global-role
+// holder is on their Super Admin Home console rather than any specific
+// department — see isHomeActive()/goHome() below. Exported so app.js's
+// department switcher can offer "Home" as a real, selectable option.
+export const HOME_KEY = '__home__';
+
 // Static catalog of department keys, matching the seed data in
 // sql/014_departments_rbac.sql. Hardcoded (rather than queried) because
 // the sign-up form needs to list departments before the applicant has a
@@ -17,35 +23,43 @@ export const DEPARTMENT_KEYS = [
   'cleaning', 'preaching', 'ushers', 'security', 'ecodem', 'evangelism',
 ];
 
-let myDepartments = null; // [{ id, key, name, kind, role }] — role is 'admin'/'member', or the global role for super users
+let myDepartments = null; // [{ id, key, name, kind, role }] — synthesized: role is the global role string for a global-role holder, else their real department_role
+let literalDepartments = null; // the same shape, but always from their real department_memberships rows, ignoring any global role — what "Standard User Mode" below shows
 let globalRole = null;
+let actingAsStandardUser = false;
 
 export async function loadMyDepartments(userId) {
-  const { data: profile } = await supabase.from('profiles').select('global_role').eq('id', userId).single();
+  const [{ data: profile }, { data: memberships }] = await Promise.all([
+    supabase.from('profiles').select('global_role').eq('id', userId).single(),
+    supabase
+      .from('department_memberships')
+      .select('role, departments ( id, key, name, kind )')
+      .eq('user_id', userId)
+      .eq('status', 'approved'),
+  ]);
+
   globalRole = profile?.global_role || null;
+  literalDepartments = (memberships || [])
+    .filter((m) => m.departments)
+    .map((m) => ({ ...m.departments, role: m.role }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (globalRole) {
     const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind').order('name');
     myDepartments = (allDepartments || []).map((d) => ({ ...d, role: globalRole }));
-    return myDepartments;
+  } else {
+    myDepartments = literalDepartments;
   }
-
-  const { data: memberships } = await supabase
-    .from('department_memberships')
-    .select('role, departments ( id, key, name, kind )')
-    .eq('user_id', userId)
-    .eq('status', 'approved');
-
-  myDepartments = (memberships || [])
-    .filter((m) => m.departments)
-    .map((m) => ({ ...m.departments, role: m.role }))
-    .sort((a, b) => a.name.localeCompare(b.name));
 
   return myDepartments;
 }
 
 export function getMyDepartments() {
   if (isViewingAs()) return viewAsDepartments || [];
+  if (globalRole && actingAsStandardUser) return literalDepartments || [];
+  if (isPreviewingAsMember() && previewDepartmentId) {
+    return (myDepartments || []).map((d) => (d.id === previewDepartmentId ? { ...d, role: 'member' } : d));
+  }
   return myDepartments || [];
 }
 
@@ -55,6 +69,46 @@ export function getGlobalRole() {
 
 export function isSuperRole() {
   return globalRole === 'super_admin' || globalRole === 'super_viewer';
+}
+
+// Whether this session currently has cross-department reach — a global
+// role holder, unless they've switched into Standard User Mode (or are
+// mid-View-As, which has its own independent identity entirely).
+export function hasGlobalReach() {
+  return !!globalRole && !actingAsStandardUser && !isViewingAs();
+}
+
+// ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
+// A global-role holder's own account may also carry real, literal
+// department_memberships (e.g. the original Choir admin who was later
+// promoted to Super Admin) — this lets them preview their own ordinary
+// access instead of the global override, without impersonating anyone
+// else. Purely a client-side display preference: the database still
+// enforces their real global role regardless of this toggle, so unlike
+// View-As/Preview-as-Member there's no need to block writes here — if
+// they have no literal memberships at all, Standard User Mode simply
+// (and correctly) shows them as having no department access.
+export function isActingAsStandardUser() {
+  return actingAsStandardUser;
+}
+
+export function setActingAsStandardUser(value) {
+  actingAsStandardUser = value;
+  if (!value) goHome();
+}
+
+// ---- Super Admin Home ----
+// A global-role holder with no explicit department choice yet (fresh
+// login, or having explicitly navigated back) lands on their Home
+// console instead of whichever department happens to sort first.
+export function isHomeActive() {
+  if (!hasGlobalReach()) return false;
+  const storedKey = localStorage.getItem(ACTIVE_DEPT_STORAGE_KEY);
+  return !storedKey || storedKey === HOME_KEY;
+}
+
+export function goHome() {
+  localStorage.setItem(ACTIVE_DEPT_STORAGE_KEY, HOME_KEY);
 }
 
 // A department's synthesized `.role` (see loadMyDepartments/startViewAs
@@ -120,6 +174,9 @@ export async function startViewAs(targetUserId, targetFullName) {
 export function stopViewAs() {
   viewAsTarget = null;
   viewAsDepartments = null;
+  // Land back on Home rather than wherever the simulated target's own
+  // first department happened to be (startViewAs() stores their key).
+  if (globalRole) goHome();
 }
 
 const VIEW_AS_BLOCKED_MESSAGE = 'This action is disabled while viewing as another user.';
@@ -178,17 +235,44 @@ function getReadOnlyClient() {
   return readOnlyClient;
 }
 
+// ---- Department Admin "Preview as Member" ----
+// A lighter counterpart to View-As for a literal (non-global)
+// department admin: no target picker, just "show me my own active
+// department as a plain member would see it." Reuses the same
+// read-only client as View-As for the same reason — write controls
+// that are still visible simply can't succeed while this is active.
+let previewingAsMember = false;
+let previewDepartmentId = null;
+
+export function isPreviewingAsMember() {
+  return previewingAsMember;
+}
+
+export function startPreviewAsMember() {
+  const active = getActiveDepartment();
+  if (!active) return;
+  previewDepartmentId = active.id;
+  previewingAsMember = true;
+}
+
+export function stopPreviewAsMember() {
+  previewingAsMember = false;
+  previewDepartmentId = null;
+}
+
 // Every tab-entry file should call this instead of importing `supabase`
 // directly, and pass the result down to its child components as usual —
-// it's the real client when not viewing-as, and the write-blocked one
-// when it is.
+// it's the real client except while viewing-as or previewing-as-member,
+// when it's swapped for the write-blocked one.
 export function getEffectiveSupabase() {
-  return isViewingAs() ? getReadOnlyClient() : supabase;
+  return (isViewingAs() || isPreviewingAsMember()) ? getReadOnlyClient() : supabase;
 }
 
 export function getActiveDepartment() {
   const departments = getMyDepartments();
   if (departments.length === 0) return null;
+
+  if (isHomeActive()) return null;
 
   const storedKey = localStorage.getItem(ACTIVE_DEPT_STORAGE_KEY);
   const stored = departments.find((d) => d.key === storedKey);
