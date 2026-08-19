@@ -1,6 +1,6 @@
 // Scheduling tab entry point: loads the current user's profile and
 // routes to the singer calendar or the admin auto-planner.
-import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment, getViewAsTarget } from './departments.js';
 import { renderAvailabilityCalendar } from './components/calendar.js';
 import { renderAdminAutoPlanner } from './components/autoPlanner.js';
 import { renderServiceRequestAdmin } from './components/serviceRequestAdmin.js';
@@ -20,10 +20,18 @@ export async function renderSchedulingTab() {
     return;
   }
 
+  // supabase.auth.getUser() always resolves to the real signed-in
+  // account, even through the View-As read-only wrapper (only
+  // .from()/.rpc()/.storage are intercepted, not .auth) — so every
+  // read scoped to "me" below has to resolve through the simulated
+  // target instead, or View-As would show the admin's own (usually
+  // empty) assignments/voice parts rather than the target's.
+  const userId = getViewAsTarget()?.id || user.id;
+
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('voice_parts')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single();
 
   if (profileError) {
@@ -45,13 +53,13 @@ export async function renderSchedulingTab() {
 
   if (isChoirAdmin) {
     container.append(requestsEl, plannerEl);
-    renderServiceRequestAdmin(requestsEl, { supabase, adminUserId: user.id });
-    renderAdminAutoPlanner(plannerEl, { supabase, adminUserId: user.id });
+    renderServiceRequestAdmin(requestsEl, { supabase, adminUserId: userId });
+    renderAdminAutoPlanner(plannerEl, { supabase, adminUserId: userId });
   } else {
     const replacementEl = document.createElement('div');
     container.append(requestsEl, replacementEl, plannerEl);
-    renderServiceRequestSinger(requestsEl, { supabase, userId: user.id });
-    renderReplacementRequests(replacementEl, { supabase, userId: user.id, myVoiceParts: profile.voice_parts });
-    renderAvailabilityCalendar(plannerEl, { supabase, userId: user.id });
+    renderServiceRequestSinger(requestsEl, { supabase, userId });
+    renderReplacementRequests(replacementEl, { supabase, userId, myVoiceParts: profile.voice_parts });
+    renderAvailabilityCalendar(plannerEl, { supabase, userId });
   }
 }

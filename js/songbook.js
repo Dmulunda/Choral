@@ -1,6 +1,6 @@
 // Songbook tab entry point: loads the current user's role (to decide
 // whether the "Add Song" admin controls are shown) and renders the library.
-import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment, getViewAsTarget } from './departments.js';
 import { renderSongLibrary } from './components/songLibrary.js';
 import { t } from './i18n.js';
 
@@ -15,10 +15,17 @@ export async function renderSongbookTab() {
     return;
   }
 
+  // supabase.auth.getUser() always resolves to the real signed-in
+  // account even through the View-As read-only wrapper (it only
+  // intercepts .from()/.rpc()/.storage, not .auth) — resolve through
+  // the simulated target so "my voice parts" reflects who's actually
+  // being previewed, matching the same fix in scheduling.js.
+  const userId = getViewAsTarget()?.id || user.id;
+
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('voice_parts')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single();
 
   if (profileError) {
