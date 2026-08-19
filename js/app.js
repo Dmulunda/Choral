@@ -7,11 +7,18 @@ import { renderAuthScreen } from './components/authScreen.js';
 import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
-import { getLang, setLang, onLangChange, applyStaticTranslations } from './i18n.js';
+import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
+import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
 
 const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
 const membersNavBtn = document.querySelector('#members-nav-btn');
+const choirNavGroupEl = document.querySelector('#choir-nav-group');
+const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wrap');
+const departmentSwitcherEl = document.querySelector('#department-switcher');
+const comingSoonPanelEl = document.querySelector('#department-coming-soon');
+const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
+const noAccessPanelEl = document.querySelector('#no-department-access');
 
 // Tabs whose content is fetched from Supabase on first visit rather than
 // baked into the initial page load.
@@ -45,6 +52,55 @@ function activateTab(name) {
   }
 }
 
+// ---- Department switcher ----
+// Only Choir has real screens today — other departments show a
+// placeholder until their own phase ships. The switcher itself only
+// ever lists departments the signed-in user actually has approved
+// access to (or every department, for a super admin/viewer).
+function populateDepartmentSwitcher() {
+  const departments = getMyDepartments();
+  departmentSwitcherWrapEl.classList.toggle('hidden', departments.length === 0);
+
+  departmentSwitcherEl.innerHTML = departments
+    .map((d) => `<option value="${d.key}">${departmentLabel(d.key)}</option>`)
+    .join('');
+
+  const active = getActiveDepartment();
+  if (active) departmentSwitcherEl.value = active.key;
+}
+
+function applyActiveDepartment() {
+  const active = getActiveDepartment();
+
+  noAccessPanelEl.classList.toggle('hidden', !!active);
+  if (!active) {
+    choirNavGroupEl.classList.add('hidden');
+    panels.forEach((panel) => panel.classList.add('hidden'));
+    comingSoonPanelEl.classList.add('hidden');
+    return;
+  }
+
+  const isChoir = active.key === 'choir';
+  choirNavGroupEl.classList.toggle('hidden', !isChoir);
+  membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
+
+  if (isChoir) {
+    comingSoonPanelEl.classList.add('hidden');
+    activateTab('dashboard');
+  } else {
+    currentTabName = null;
+    panels.forEach((panel) => panel.classList.add('hidden'));
+    comingSoonDeptNameEl.textContent = departmentLabel(active.key);
+    comingSoonPanelEl.classList.remove('hidden');
+  }
+}
+
+departmentSwitcherEl.addEventListener('change', () => {
+  setActiveDepartmentKey(departmentSwitcherEl.value);
+  applyActiveDepartment();
+  closeSidebar();
+});
+
 // ---- Language switcher ----
 document.documentElement.lang = getLang();
 applyStaticTranslations();
@@ -71,6 +127,12 @@ onLangChange(() => {
   renderAuthScreen(authScreenEl, { supabase });
   if (!passwordRecoveryEl.classList.contains('hidden')) {
     renderPasswordRecovery(passwordRecoveryEl, { supabase, onDone: () => supabase.auth.signOut() });
+  }
+  // The switcher's option labels and any "coming soon" department name
+  // are built from t()/departmentLabel() at render time, not data-i18n.
+  if (getMyDepartments().length > 0) {
+    populateDepartmentSwitcher();
+    applyActiveDepartment();
   }
   // Dynamic tab content is generated with hardcoded strings, not
   // data-i18n attributes, so the visible tab needs a full re-render.
@@ -151,9 +213,10 @@ async function showApp(session) {
     .eq('id', session.user.id)
     .single();
   currentUserNameEl.textContent = profile?.full_name || session.user.email;
-  membersNavBtn.classList.toggle('hidden', profile?.role !== 'admin');
 
-  activateTab('dashboard');
+  await loadMyDepartments(session.user.id);
+  populateDepartmentSwitcher();
+  applyActiveDepartment();
 }
 
 function showAuth() {
@@ -163,6 +226,7 @@ function showAuth() {
   appShellEl.classList.add('hidden');
   authScreenEl.classList.remove('hidden');
   membersNavBtn.classList.add('hidden');
+  departmentSwitcherWrapEl.classList.add('hidden');
 }
 
 supabase.auth.getSession().then(({ data: { session }, error }) => {

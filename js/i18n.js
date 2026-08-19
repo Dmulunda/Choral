@@ -7,7 +7,7 @@ const SUPPORTED = ['en', 'fr'];
 
 const TRANSLATIONS = {
   en: {
-    'app.brand': 'VPD Choir Program',
+    'app.brand': 'VPD Church Organisation',
     'menu.open': 'Open menu',
     'menu.close': 'Close menu',
 
@@ -21,6 +21,21 @@ const TRANSLATIONS = {
     'sidebar.guest': 'Guest',
     'sidebar.signOut': 'Sign out',
     'sidebar.language': 'Language',
+    'sidebar.department': 'Department',
+
+    'department.choir': 'Choir',
+    'department.social': 'Social',
+    'department.intercession': 'Intercession',
+    'department.media_tech': 'Media & Tech',
+    'department.interpreting': 'Interpreting',
+    'department.cleaning': 'Cleaning',
+    'department.preaching': 'Preaching & Moderation',
+    'department.ushers': 'Ushers',
+    'department.security': 'Security',
+    'department.ecodem': 'Ecodem',
+    'department.evangelism': 'Evangelism',
+    'department.comingSoon': 'This department\'s tools are coming soon.',
+    'department.noAccess': 'You don\'t have access to any department yet. Ask an admin to approve your membership.',
 
     'dashboard.placeholder': 'Dashboard content will be rendered here.',
     'scheduling.placeholder': 'Availability calendar and service plans will be rendered here.',
@@ -329,7 +344,7 @@ const TRANSLATIONS = {
   },
 
   fr: {
-    'app.brand': 'VPD Choir Program',
+    'app.brand': 'VPD Church Organisation',
     'menu.open': 'Ouvrir le menu',
     'menu.close': 'Fermer le menu',
 
@@ -343,6 +358,21 @@ const TRANSLATIONS = {
     'sidebar.guest': 'Invité',
     'sidebar.signOut': 'Déconnexion',
     'sidebar.language': 'Langue',
+    'sidebar.department': 'Département',
+
+    'department.choir': 'Chorale',
+    'department.social': 'Social',
+    'department.intercession': 'Intercession',
+    'department.media_tech': 'Médias & Technique',
+    'department.interpreting': 'Interprétation',
+    'department.cleaning': 'Entretien',
+    'department.preaching': 'Prédication & Modération',
+    'department.ushers': 'Accueil',
+    'department.security': 'Sécurité',
+    'department.ecodem': 'Ecodem',
+    'department.evangelism': 'Évangélisation',
+    'department.comingSoon': 'Les outils de ce département arrivent bientôt.',
+    'department.noAccess': "Vous n'avez pas encore accès à un département. Demandez à un administrateur d'approuver votre adhésion.",
 
     'dashboard.placeholder': 'Le contenu du tableau de bord sera affiché ici.',
     'scheduling.placeholder': 'Le calendrier de disponibilité et les plans de service seront affichés ici.',
@@ -700,6 +730,10 @@ export function voicePartLabel(part) {
 
 export function roleLabel(role) {
   return role ? t(`role.${role}`) : role;
+}
+
+export function departmentLabel(key) {
+  return key ? t(`department.${key}`) : key;
 }
 
 // Applies text/placeholder/aria-label translations to every element
