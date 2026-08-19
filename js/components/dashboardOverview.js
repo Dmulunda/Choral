@@ -107,13 +107,13 @@ async function buildServiceCardHtml(plan, supabase) {
   const [{ data: assigned }, { data: approvedRsvps }, { data: planSongs }] = await Promise.all([
     supabase.from('service_plan_singers').select('profiles ( full_name )').eq('service_plan_id', plan.id),
     supabase.from('service_rsvps').select('profiles ( full_name )').eq('service_plan_id', plan.id).eq('status', 'approved'),
-    supabase.from('service_plan_songs').select('category, songs ( title )').eq('service_plan_id', plan.id).order('position'),
+    supabase.from('service_plan_songs').select('category, note, songs ( title )').eq('service_plan_id', plan.id).order('position'),
   ]);
 
   const assignedNames = (assigned || []).map((row) => row.profiles?.full_name).filter(Boolean);
   const availableNames = (approvedRsvps || []).map((row) => row.profiles?.full_name).filter(Boolean);
-  const praiseTitles = (planSongs || []).filter((row) => row.category === 'praise' && row.songs).map((row) => row.songs.title);
-  const worshipTitles = (planSongs || []).filter((row) => row.category === 'worship' && row.songs).map((row) => row.songs.title);
+  const praiseSongs = (planSongs || []).filter((row) => row.category === 'praise' && row.songs).map((row) => ({ title: row.songs.title, note: row.note }));
+  const worshipSongs = (planSongs || []).filter((row) => row.category === 'worship' && row.songs).map((row) => ({ title: row.songs.title, note: row.note }));
 
   return `
     <div class="border border-slate-200 rounded-lg p-3">
@@ -128,19 +128,21 @@ async function buildServiceCardHtml(plan, supabase) {
       </div>
 
       <div class="grid sm:grid-cols-2 gap-4">
-        ${renderSongGroup(t('requests.praiseSongs'), praiseTitles)}
-        ${renderSongGroup(t('requests.worshipSongs'), worshipTitles)}
+        ${renderSongGroup(t('requests.praiseSongs'), praiseSongs)}
+        ${renderSongGroup(t('requests.worshipSongs'), worshipSongs)}
       </div>
     </div>
   `;
 }
 
-function renderSongGroup(label, titles) {
+function renderSongGroup(label, songs) {
   return `
     <div>
       <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${escapeHtml(label)}</div>
-      ${titles.length > 0
-        ? `<ul class="list-disc list-inside text-sm text-slate-700 space-y-0.5">${titles.map((title) => `<li>${escapeHtml(title)}</li>`).join('')}</ul>`
+      ${songs.length > 0
+        ? `<ul class="list-disc list-inside text-sm text-slate-700 space-y-0.5">${songs.map(({ title, note }) => `
+            <li>${escapeHtml(title)}${note ? `<span class="text-slate-400"> — ${escapeHtml(note)}</span>` : ''}</li>
+          `).join('')}</ul>`
         : `<p class="text-sm text-slate-400">${t('dashboard.noSongsYet')}</p>`
       }
     </div>

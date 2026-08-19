@@ -70,15 +70,29 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
     wireExclusivity(worshipChecklistEl, praiseChecklistEl);
   }
 
+  // Each row is a checkbox plus a note field (e.g. "start at 1:15") that
+  // only appears once the song is checked, since the note only makes
+  // sense for songs actually attached to this service.
   function renderChecklist(el, songs) {
     el.innerHTML = songs.length === 0
       ? `<p class="text-slate-400 text-xs">${t('requests.noSongsAvailable')}</p>`
       : songs.map((song) => `
-          <label class="flex items-center gap-2">
-            <input type="checkbox" value="${song.id}" data-song-checkbox />
-            <span>${escapeHtml(song.title)}</span>
-          </label>
+          <div data-song-row="${song.id}">
+            <label class="flex items-center gap-2">
+              <input type="checkbox" value="${song.id}" data-song-checkbox />
+              <span>${escapeHtml(song.title)}</span>
+            </label>
+            <input type="text" data-song-note="${song.id}" placeholder="${t('requests.notePlaceholder')}"
+                   class="hidden mt-1 ml-6 w-[calc(100%-1.5rem)] text-xs border border-slate-300 rounded px-2 py-1" />
+          </div>
         `).join('');
+
+    el.querySelectorAll('[data-song-checkbox]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const noteInput = el.querySelector(`[data-song-note="${checkbox.value}"]`);
+        noteInput.classList.toggle('hidden', !checkbox.checked);
+      });
+    });
   }
 
   function wireExclusivity(el, otherEl) {
@@ -86,18 +100,28 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
       checkbox.addEventListener('change', () => {
         if (!checkbox.checked) return;
         const twin = otherEl.querySelector(`[data-song-checkbox][value="${checkbox.value}"]`);
-        if (twin) twin.checked = false;
+        if (twin) {
+          twin.checked = false;
+          otherEl.querySelector(`[data-song-note="${checkbox.value}"]`)?.classList.add('hidden');
+        }
       });
     });
   }
 
-  function checkedSongIds(el) {
-    return Array.from(el.querySelectorAll('[data-song-checkbox]:checked')).map((cb) => cb.value);
+  function checkedSongsWithNotes(el) {
+    return Array.from(el.querySelectorAll('[data-song-checkbox]:checked')).map((cb) => ({
+      song_id: cb.value,
+      note: el.querySelector(`[data-song-note="${cb.value}"]`)?.value.trim() || null,
+    }));
   }
 
   async function prefillFromDate(dateStr) {
     [praiseChecklistEl, worshipChecklistEl].forEach((el) => {
       el.querySelectorAll('[data-song-checkbox]').forEach((cb) => { cb.checked = false; });
+      el.querySelectorAll('[data-song-note]').forEach((input) => {
+        input.value = '';
+        input.classList.add('hidden');
+      });
     });
     if (!dateStr) return;
 
@@ -113,13 +137,18 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
 
     const { data: planSongs } = await supabase
       .from('service_plan_songs')
-      .select('song_id, category')
+      .select('song_id, category, note')
       .eq('service_plan_id', plan.id);
 
     (planSongs || []).forEach((row) => {
       const el = row.category === 'praise' ? praiseChecklistEl : worshipChecklistEl;
       const checkbox = el.querySelector(`[data-song-checkbox][value="${row.song_id}"]`);
+      const noteInput = el.querySelector(`[data-song-note="${row.song_id}"]`);
       if (checkbox) checkbox.checked = true;
+      if (noteInput) {
+        noteInput.value = row.note || '';
+        noteInput.classList.remove('hidden');
+      }
     });
   }
 
@@ -128,8 +157,8 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
 
     const dateStr = form.elements.date.value;
     const title = form.elements.title.value.trim();
-    const praiseSongIds = checkedSongIds(praiseChecklistEl);
-    const worshipSongIds = checkedSongIds(worshipChecklistEl);
+    const praiseSongs = checkedSongsWithNotes(praiseChecklistEl);
+    const worshipSongs = checkedSongsWithNotes(worshipChecklistEl);
 
     if (!dateStr || !title) {
       formStatusEl.className = 'text-sm text-rose-600';
@@ -173,8 +202,8 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
       if (deleteSongsError) throw deleteSongsError;
 
       const songRows = [
-        ...praiseSongIds.map((song_id, position) => ({ service_plan_id: planId, song_id, category: 'praise', position })),
-        ...worshipSongIds.map((song_id, position) => ({ service_plan_id: planId, song_id, category: 'worship', position })),
+        ...praiseSongs.map(({ song_id, note }, position) => ({ service_plan_id: planId, song_id, category: 'praise', position, note })),
+        ...worshipSongs.map(({ song_id, note }, position) => ({ service_plan_id: planId, song_id, category: 'worship', position, note })),
       ];
       if (songRows.length > 0) {
         const { error: insertSongsError } = await supabase.from('service_plan_songs').insert(songRows);
@@ -234,7 +263,7 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
     const planIds = plans.map((p) => p.id);
     const [{ data: rsvps, error: rsvpsError }, { data: planSongs, error: planSongsError }] = await Promise.all([
       supabase.from('service_rsvps').select('id, service_plan_id, status, reason, profiles ( full_name )').in('service_plan_id', planIds),
-      supabase.from('service_plan_songs').select('service_plan_id, category, songs ( title )').in('service_plan_id', planIds).order('position'),
+      supabase.from('service_plan_songs').select('service_plan_id, category, note, songs ( title )').in('service_plan_id', planIds).order('position'),
     ]);
 
     if (rsvpsError || planSongsError) {
@@ -247,7 +276,7 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
 
     const songsByPlan = new Map(planIds.map((id) => [id, { praise: [], worship: [] }]));
     (planSongs || []).forEach((row) => {
-      if (row.songs) songsByPlan.get(row.service_plan_id)?.[row.category].push(row.songs.title);
+      if (row.songs) songsByPlan.get(row.service_plan_id)?.[row.category].push({ title: row.songs.title, note: row.note });
     });
 
     listEl.innerHTML = '';
@@ -279,8 +308,8 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
         </div>
         ${(praise.length > 0 || worship.length > 0) ? `
           <div class="grid sm:grid-cols-2 gap-2 mt-2 text-xs text-slate-600">
-            ${praise.length > 0 ? `<div><span class="font-semibold">${t('requests.praiseSongs')}:</span> ${praise.map(escapeHtml).join(', ')}</div>` : '<div></div>'}
-            ${worship.length > 0 ? `<div><span class="font-semibold">${t('requests.worshipSongs')}:</span> ${worship.map(escapeHtml).join(', ')}</div>` : ''}
+            ${praise.length > 0 ? `<div><span class="font-semibold">${t('requests.praiseSongs')}:</span> ${formatSongList(praise)}</div>` : '<div></div>'}
+            ${worship.length > 0 ? `<div><span class="font-semibold">${t('requests.worshipSongs')}:</span> ${formatSongList(worship)}</div>` : ''}
           </div>
         ` : ''}
         <details class="mt-2">
@@ -381,6 +410,12 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
     }
     loadRequests();
   }
+}
+
+function formatSongList(songs) {
+  return songs
+    .map(({ title, note }) => note ? `${escapeHtml(title)} (${escapeHtml(note)})` : escapeHtml(title))
+    .join(', ');
 }
 
 function escapeHtml(str) {
