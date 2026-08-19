@@ -1,6 +1,7 @@
 // Admin "Members" tab: view the full roster, promote/demote roles, edit
 // voice parts inline, and launch the "Add Singer" account-creation modal.
 import { createMemberCreatorModal } from './memberCreatorModal.js';
+import { isViewingAs } from '../departments.js';
 import { t, voicePartLabel, roleLabel } from '../i18n.js';
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
@@ -8,13 +9,20 @@ const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist',
 export function renderMemberManager(container, { supabase, currentUserId }) {
   let members = [];
 
-  container.innerHTML = `
-    <div class="flex items-center justify-between mb-4">
-      <span data-el="status" class="text-sm text-slate-500"></span>
+  // "Add Singer" creates a real auth account via its own scoped client
+  // (see memberCreatorModal.js), which the View-As read-only wrapper
+  // can't intercept — so the entry point itself is hidden during
+  // View-As rather than relying on the wrapper to block it.
+  const addSingerBtn = isViewingAs() ? '' : `
       <button type="button" data-action="add-singer"
               class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 whitespace-nowrap">
         ${t('members.addSinger')}
-      </button>
+      </button>`;
+
+  container.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <span data-el="status" class="text-sm text-slate-500"></span>
+      ${addSingerBtn}
     </div>
     <div data-el="view" class="bg-white rounded-xl shadow overflow-x-auto"></div>
   `;
@@ -22,8 +30,10 @@ export function renderMemberManager(container, { supabase, currentUserId }) {
   const statusEl = container.querySelector('[data-el="status"]');
   const viewEl = container.querySelector('[data-el="view"]');
 
-  const modal = createMemberCreatorModal({ supabase, onCreated: loadMembers });
-  container.querySelector('[data-action="add-singer"]').addEventListener('click', () => modal.open());
+  if (!isViewingAs()) {
+    const modal = createMemberCreatorModal({ supabase, onCreated: loadMembers });
+    container.querySelector('[data-action="add-singer"]').addEventListener('click', () => modal.open());
+  }
 
   loadMembers();
 

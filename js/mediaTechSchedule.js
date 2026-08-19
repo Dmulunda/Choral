@@ -1,12 +1,12 @@
 // Media & Tech tab entry point: pending approvals (admins only) + the
 // duty-role assignment board.
-import { supabase } from './supabaseClient.js';
-import { getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderMediaTechBoard } from './components/mediaTechBoard.js';
 import { t } from './i18n.js';
 
 export async function renderMediaTechTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#media-tech-content');
   const active = getActiveDepartment();
   if (!active) return;

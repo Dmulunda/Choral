@@ -3,13 +3,13 @@
 // pending approvals (admins only) + the announcements feed. Reads which
 // department is active from departments.js rather than taking a param,
 // since it's invoked from app.js's generic lazyTabs table.
-import { supabase } from './supabaseClient.js';
-import { getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { t } from './i18n.js';
 
 export async function renderDeptDashboardTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#dept-dashboard-content');
   const active = getActiveDepartment();
   if (!active) return;

@@ -13,8 +13,12 @@ import { renderPreachingTab } from './preachingSchedule.js';
 import { renderMediaTechTab } from './mediaTechSchedule.js';
 import { renderEcodemTab } from './ecodemSchedule.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
-import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
-import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
+import { createViewAsPickerModal } from './components/viewAsPicker.js';
+import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
+import {
+  loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
+  getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs,
+} from './departments.js';
 
 const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
@@ -30,6 +34,11 @@ const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-nam
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
 const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
+const viewAsWrapEl = document.querySelector('#view-as-wrap');
+const viewAsBtn = document.querySelector('#view-as-btn');
+const viewAsBannerEl = document.querySelector('#view-as-banner');
+const viewAsBannerTextEl = viewAsBannerEl.querySelector('[data-el="text"]');
+const viewAsExitBtn = document.querySelector('#view-as-exit-btn');
 
 // Tabs whose content is fetched from Supabase on first visit rather than
 // baked into the initial page load.
@@ -159,6 +168,48 @@ departmentSwitcherEl.addEventListener('change', () => {
   closeSidebar();
 });
 
+// ---- Super Admin "View As" mode ----
+// getGlobalRole() always reflects the real signed-in user, even while
+// isViewingAs() is true, so the entry point itself never disappears
+// because of the simulated role — only because view-as is already active.
+function updateViewAsUI() {
+  const isSuperAdmin = getGlobalRole() === 'super_admin';
+  viewAsWrapEl.classList.toggle('hidden', !isSuperAdmin || isViewingAs());
+
+  const target = getViewAsTarget();
+  viewAsBannerEl.classList.toggle('hidden', !target);
+  viewAsBannerEl.classList.toggle('flex', !!target);
+  if (target) viewAsBannerTextEl.textContent = t('viewAs.banner', { name: target.full_name });
+}
+
+function refreshAfterViewAsChange() {
+  // The effective Supabase client and the active department both change
+  // underneath every tab, so cached tab content can't be trusted — force
+  // every tab to re-fetch on next visit, same as a real user switch.
+  loadedTabs = new Set();
+  populateDepartmentSwitcher();
+  applyActiveDepartment();
+  updateViewAsUI();
+  closeSidebar();
+}
+
+viewAsBtn.addEventListener('click', () => {
+  const modal = createViewAsPickerModal({
+    supabase,
+    currentUserId,
+    onSelect: async (targetUserId, targetFullName) => {
+      await startViewAs(targetUserId, targetFullName);
+      refreshAfterViewAsChange();
+    },
+  });
+  modal.open();
+});
+
+viewAsExitBtn.addEventListener('click', () => {
+  stopViewAs();
+  refreshAfterViewAsChange();
+});
+
 // ---- Language switcher ----
 document.documentElement.lang = getLang();
 applyStaticTranslations();
@@ -192,6 +243,7 @@ onLangChange(() => {
     populateDepartmentSwitcher();
     applyActiveDepartment();
   }
+  updateViewAsUI();
   // Dynamic tab content is generated with hardcoded strings, not
   // data-i18n attributes, so the visible tab needs a full re-render.
   if (currentTabName && lazyTabs[currentTabName]) lazyTabs[currentTabName]();
@@ -275,16 +327,20 @@ async function showApp(session) {
   await loadMyDepartments(session.user.id);
   populateDepartmentSwitcher();
   applyActiveDepartment();
+  updateViewAsUI();
 }
 
 function showAuth() {
   currentUserId = null;
   isRecovering = false;
+  stopViewAs();
   passwordRecoveryEl.classList.add('hidden');
   appShellEl.classList.add('hidden');
   authScreenEl.classList.remove('hidden');
   membersNavBtn.classList.add('hidden');
   departmentSwitcherWrapEl.classList.add('hidden');
+  viewAsWrapEl.classList.add('hidden');
+  viewAsBannerEl.classList.add('hidden');
 }
 
 supabase.auth.getSession().then(({ data: { session }, error }) => {

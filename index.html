@@ -97,6 +97,13 @@
         </div>
       </nav>
 
+      <div id="view-as-wrap" class="hidden px-6 py-3 border-t border-slate-800">
+        <button type="button" id="view-as-btn" data-i18n="sidebar.viewAs"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">
+          View As…
+        </button>
+      </div>
+
       <div class="px-6 py-3 border-t border-slate-800 flex items-center gap-2" role="group" data-i18n-aria-label="sidebar.language" aria-label="Language">
         <button type="button" data-lang="en"
                 class="flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">EN</button>
@@ -112,6 +119,15 @@
 
     <!-- Main content -->
     <main class="flex-1 w-full min-w-0 p-4 sm:p-6 md:p-8">
+
+      <!-- Shown only while a Super Admin is previewing another user's view -->
+      <div id="view-as-banner" class="hidden items-center justify-between gap-3 bg-amber-100 border border-amber-300 text-amber-900 rounded-xl px-4 py-2.5 mb-4 text-sm">
+        <span data-el="text"></span>
+        <button type="button" id="view-as-exit-btn" data-i18n="viewAs.exit"
+                class="shrink-0 px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700">
+          Exit
+        </button>
+      </div>
 
       <section data-tab-panel="dashboard" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-i18n="nav.dashboard">Dashboard</h1>

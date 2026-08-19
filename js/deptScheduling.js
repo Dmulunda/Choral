@@ -2,12 +2,12 @@
 // rosters/shifts and an event list, shared across every department
 // without bespoke tooling. Reads which department is active from
 // departments.js rather than taking a param.
-import { supabase } from './supabaseClient.js';
-import { getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderShiftBoard } from './components/departmentShiftBoard.js';
 import { t } from './i18n.js';
 
 export async function renderDeptSchedulingTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#dept-scheduling-content');
   const active = getActiveDepartment();
   if (!active) return;

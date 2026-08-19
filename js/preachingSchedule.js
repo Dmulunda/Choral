@@ -1,12 +1,12 @@
 // Preaching & Moderation tab entry point: pending approvals (admins
 // only) + the monthly schedule board.
-import { supabase } from './supabaseClient.js';
-import { getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderPreachingSchedule } from './components/preachingScheduleBoard.js';
 import { t } from './i18n.js';
 
 export async function renderPreachingTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#preaching-content');
   const active = getActiveDepartment();
   if (!active) return;

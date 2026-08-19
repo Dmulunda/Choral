@@ -1,10 +1,11 @@
 // Songbook tab entry point: loads the current user's role (to decide
 // whether the "Add Song" admin controls are shown) and renders the library.
-import { supabase } from './supabaseClient.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderSongLibrary } from './components/songLibrary.js';
 import { t } from './i18n.js';
 
 export async function renderSongbookTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#songbook-content');
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
@@ -16,7 +17,7 @@ export async function renderSongbookTab() {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('role, voice_parts')
+    .select('voice_parts')
     .eq('id', user.id)
     .single();
 
@@ -25,9 +26,14 @@ export async function renderSongbookTab() {
     return;
   }
 
+  // Admin gating comes from the active department context, not a raw
+  // profiles.role lookup, so it correctly reflects View-As simulation.
+  const activeDept = getActiveDepartment();
+  const isAdmin = activeDept?.role === 'admin' || activeDept?.role === 'super_admin';
+
   renderSongLibrary(container, {
     supabase,
-    isAdmin: profile.role === 'admin',
+    isAdmin,
     viewerVoiceParts: profile.voice_parts,
   });
 }

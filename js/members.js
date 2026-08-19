@@ -1,11 +1,11 @@
 // Members tab entry point: admin-only roster and role management.
-import { supabase } from './supabaseClient.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderMemberManager } from './components/memberManager.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
-import { getActiveDepartment } from './departments.js';
 import { t } from './i18n.js';
 
 export async function renderMembersTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#members-content');
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
@@ -15,25 +15,17 @@ export async function renderMembersTab() {
     return;
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profileError) {
-    container.innerHTML = `<p class="text-rose-600">${t('scheduling.failedToLoadProfile', { message: profileError.message })}</p>`;
-    return;
-  }
-
-  if (profile.role !== 'admin') {
+  // Admin gating comes from the active department context (not a raw
+  // profiles.role lookup), so it correctly reflects View-As simulation.
+  const activeDepartment = getActiveDepartment();
+  const canAdminister = activeDepartment?.role === 'admin' || activeDepartment?.role === 'super_admin';
+  if (!canAdminister) {
     container.innerHTML = `<p class="text-slate-500">${t('members.notAuthorized')}</p>`;
     return;
   }
 
   container.innerHTML = '';
 
-  const activeDepartment = getActiveDepartment();
   if (activeDepartment) {
     const approvalsCard = document.createElement('div');
     approvalsCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';

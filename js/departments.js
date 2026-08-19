@@ -45,6 +45,7 @@ export async function loadMyDepartments(userId) {
 }
 
 export function getMyDepartments() {
+  if (isViewingAs()) return viewAsDepartments || [];
   return myDepartments || [];
 }
 
@@ -54,6 +55,120 @@ export function getGlobalRole() {
 
 export function isSuperRole() {
   return globalRole === 'super_admin' || globalRole === 'super_viewer';
+}
+
+// ---- Super Admin "View-As" mode ----
+// True impersonation (actually holding the target's session) would need
+// a service-role backend we don't have, and would be indistinguishable
+// from really being logged in as them. Instead: simulate the target's
+// department memberships/roles (so the switcher, nav, and admin-gated
+// UI reflect *their* world, not the super admin's), and — for the
+// "write operations are completely disabled" requirement — swap in a
+// wrapped Supabase client that blocks every mutating call at the
+// network layer. That's a stronger guarantee than trying to hide every
+// write button across the app; even a control that's still visible
+// simply can't succeed while this is active.
+let viewAsTarget = null; // { id, full_name } | null
+let viewAsDepartments = null;
+
+export function isViewingAs() {
+  return viewAsTarget !== null;
+}
+
+export function getViewAsTarget() {
+  return viewAsTarget;
+}
+
+export async function startViewAs(targetUserId, targetFullName) {
+  const { data: profile } = await supabase.from('profiles').select('global_role').eq('id', targetUserId).single();
+  const targetGlobalRole = profile?.global_role || null;
+
+  if (targetGlobalRole) {
+    const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind').order('name');
+    viewAsDepartments = (allDepartments || []).map((d) => ({ ...d, role: targetGlobalRole }));
+  } else {
+    const { data: memberships } = await supabase
+      .from('department_memberships')
+      .select('role, departments ( id, key, name, kind )')
+      .eq('user_id', targetUserId)
+      .eq('status', 'approved');
+    viewAsDepartments = (memberships || [])
+      .filter((m) => m.departments)
+      .map((m) => ({ ...m.departments, role: m.role }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  viewAsTarget = { id: targetUserId, full_name: targetFullName };
+  setActiveDepartmentKey(viewAsDepartments[0]?.key || '');
+}
+
+export function stopViewAs() {
+  viewAsTarget = null;
+  viewAsDepartments = null;
+}
+
+const VIEW_AS_BLOCKED_MESSAGE = 'This action is disabled while viewing as another user.';
+
+// A chainable stand-in for a blocked query: any method call (.eq(),
+// .select(), .single(), .match(), ...) returns itself again, and
+// awaiting it (its `.then`) always resolves to a blocked-action error —
+// so code written for the real query builder works unmodified, it just
+// never succeeds.
+function createBlockedQuery() {
+  const chainable = {
+    then(resolve) {
+      resolve({ data: null, error: { message: VIEW_AS_BLOCKED_MESSAGE } });
+    },
+  };
+  return new Proxy(chainable, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
+      return () => chainable;
+    },
+  });
+}
+
+let readOnlyClient = null;
+
+function getReadOnlyClient() {
+  if (readOnlyClient) return readOnlyClient;
+
+  readOnlyClient = new Proxy(supabase, {
+    get(target, prop) {
+      if (prop === 'from') {
+        return (table) => {
+          const builder = target.from(table);
+          return new Proxy(builder, {
+            get(builderTarget, builderProp) {
+              if (['insert', 'update', 'delete', 'upsert'].includes(builderProp)) {
+                return () => createBlockedQuery();
+              }
+              const value = builderTarget[builderProp];
+              return typeof value === 'function' ? value.bind(builderTarget) : value;
+            },
+          });
+        };
+      }
+      if (prop === 'rpc') {
+        return () => createBlockedQuery();
+      }
+      if (prop === 'storage') {
+        return { from: () => ({ upload: () => Promise.resolve({ data: null, error: { message: VIEW_AS_BLOCKED_MESSAGE } }) }) };
+      }
+      const value = target[prop];
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+
+  return readOnlyClient;
+}
+
+// Every tab-entry file should call this instead of importing `supabase`
+// directly, and pass the result down to its child components as usual —
+// it's the real client when not viewing-as, and the write-blocked one
+// when it is.
+export function getEffectiveSupabase() {
+  return isViewingAs() ? getReadOnlyClient() : supabase;
 }
 
 export function getActiveDepartment() {

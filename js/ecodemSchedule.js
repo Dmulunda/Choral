@@ -1,12 +1,12 @@
 // Ecodem (Children's Ministry) tab entry point: pending approvals
 // (admins only) + the age-group session board.
-import { supabase } from './supabaseClient.js';
-import { getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderEcodemBoard } from './components/ecodemBoard.js';
 import { t } from './i18n.js';
 
 export async function renderEcodemTab() {
+  const supabase = getEffectiveSupabase();
   const container = document.querySelector('#ecodem-content');
   const active = getActiveDepartment();
   if (!active) return;
