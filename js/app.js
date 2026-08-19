@@ -15,10 +15,12 @@ import { renderEcodemTab } from './ecodemSchedule.js';
 import { renderDirectoryTab } from './userDirectory.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
+import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
+import { createNotificationsModal } from './components/notificationsModal.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
-  getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs,
+  getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
 } from './departments.js';
 
 const tabs = document.querySelectorAll('[data-tab-target]');
@@ -36,6 +38,9 @@ const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-ap
 const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
 const globalNavGroupEl = document.querySelector('#global-nav-group');
+const memberActionsWrapEl = document.querySelector('#member-actions-wrap');
+const reportAbsenceBtn = document.querySelector('#report-absence-btn');
+const notificationsBtn = document.querySelector('#notifications-btn');
 const viewAsWrapEl = document.querySelector('#view-as-wrap');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -202,6 +207,7 @@ function refreshAfterViewAsChange() {
   populateDepartmentSwitcher();
   applyActiveDepartment();
   updateViewAsUI();
+  updateMemberActionsUI();
   closeSidebar();
 }
 
@@ -220,6 +226,31 @@ viewAsBtn.addEventListener('click', () => {
 viewAsExitBtn.addEventListener('click', () => {
   stopViewAs();
   refreshAfterViewAsChange();
+});
+
+// ---- Report Absence / Notifications ----
+// Available to anyone with at least one department, independent of
+// which one is currently active. Report Absence is hidden during
+// View-As (its RPC call would just be blocked by the read-only
+// wrapper — hiding it is clearer than showing a control that can't
+// succeed); Notifications stays visible so a Super Admin previewing
+// another user's view sees what that user would see.
+function updateMemberActionsUI() {
+  const hasAccess = getMyDepartments().length > 0;
+  memberActionsWrapEl.classList.toggle('hidden', !hasAccess);
+  reportAbsenceBtn.classList.toggle('hidden', !hasAccess || isViewingAs());
+}
+
+reportAbsenceBtn.addEventListener('click', () => {
+  const modal = createReportAbsenceModal({ supabase: getEffectiveSupabase() });
+  modal.open();
+  closeSidebar();
+});
+
+notificationsBtn.addEventListener('click', () => {
+  const modal = createNotificationsModal({ supabase: getEffectiveSupabase(), currentUserId });
+  modal.open();
+  closeSidebar();
 });
 
 // ---- Language switcher ----
@@ -340,6 +371,7 @@ async function showApp(session) {
   populateDepartmentSwitcher();
   applyActiveDepartment();
   updateViewAsUI();
+  updateMemberActionsUI();
 }
 
 function showAuth() {
@@ -353,6 +385,7 @@ function showAuth() {
   departmentSwitcherWrapEl.classList.add('hidden');
   viewAsWrapEl.classList.add('hidden');
   viewAsBannerEl.classList.add('hidden');
+  memberActionsWrapEl.classList.add('hidden');
 }
 
 supabase.auth.getSession().then(({ data: { session }, error }) => {

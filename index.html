@@ -107,6 +107,19 @@
         </div>
       </nav>
 
+      <!-- Available to any signed-in member of at least one department —
+           not tied to which department is active. -->
+      <div id="member-actions-wrap" class="hidden px-6 py-3 border-t border-slate-800 space-y-1">
+        <button type="button" id="report-absence-btn" data-i18n="sidebar.reportAbsence"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          Report Absence
+        </button>
+        <button type="button" id="notifications-btn" data-i18n="sidebar.notifications"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          Notifications
+        </button>
+      </div>
+
       <div id="view-as-wrap" class="hidden px-6 py-3 border-t border-slate-800">
         <button type="button" id="view-as-btn" data-i18n="sidebar.viewAs"
                 class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">

@@ -35,6 +35,21 @@ const TRANSLATIONS = {
     'viewAs.exit': 'Exit',
     'viewAs.blocked': 'This action is disabled while viewing as another user.',
 
+    'sidebar.reportAbsence': 'Report Absence',
+    'sidebar.notifications': 'Notifications',
+
+    'absence.title': 'Report Absence',
+    'absence.intro': 'Lets your departments and church leadership know you won’t be available.',
+    'absence.date': 'Date',
+    'absence.reason': 'Reason (optional)',
+    'absence.submit': 'Submit',
+    'absence.submitFailed': 'Failed to submit: {message}',
+    'absence.submitted': 'Reported. Your departments and church leadership have been notified.',
+
+    'notifications.title': 'Notifications',
+    'notifications.loadFailed': 'Failed to load notifications: {message}',
+    'notifications.none': 'No notifications yet.',
+
     'department.choir': 'Choir',
     'department.social': 'Social',
     'department.intercession': 'Intercession',
@@ -540,6 +555,21 @@ const TRANSLATIONS = {
     'viewAs.banner': 'Vous visualisez en tant que {name} — lecture seule',
     'viewAs.exit': 'Quitter',
     'viewAs.blocked': 'Cette action est désactivée en mode de prévisualisation.',
+
+    'sidebar.reportAbsence': 'Signaler une absence',
+    'sidebar.notifications': 'Notifications',
+
+    'absence.title': 'Signaler une absence',
+    'absence.intro': 'Informe vos départements et la direction de l’église que vous ne serez pas disponible.',
+    'absence.date': 'Date',
+    'absence.reason': 'Motif (optionnel)',
+    'absence.submit': 'Envoyer',
+    'absence.submitFailed': "Échec de l'envoi : {message}",
+    'absence.submitted': 'Signalé. Vos départements et la direction de l’église ont été informés.',
+
+    'notifications.title': 'Notifications',
+    'notifications.loadFailed': 'Échec du chargement des notifications : {message}',
+    'notifications.none': 'Aucune notification pour le moment.',
 
     'department.choir': 'Chorale',
     'department.social': 'Social',
