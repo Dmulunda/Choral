@@ -66,6 +66,8 @@ const TRANSLATIONS = {
     'inbox.emptyBody': 'Write a message first.',
     'inbox.from': 'From',
     'inbox.to': 'To',
+    'inbox.allOf': 'All of',
+    'inbox.admins': 'Admins',
 
     'department.choir': 'Choir',
     'department.social': 'Social',
@@ -611,6 +613,8 @@ const TRANSLATIONS = {
     'inbox.emptyBody': "Écrivez d'abord un message.",
     'inbox.from': 'De',
     'inbox.to': 'À',
+    'inbox.allOf': 'Tous les membres de',
+    'inbox.admins': 'Admins',
 
     'department.choir': 'Chorale',
     'department.social': 'Social',

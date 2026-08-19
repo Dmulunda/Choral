@@ -5,9 +5,35 @@
 // notifications-only modal — same createXModal({ ... }) => { open }
 // shape as every other modal in this app.
 import { getGlobalRole } from '../departments.js';
-import { t } from '../i18n.js';
+import { t, departmentLabel } from '../i18n.js';
 
 const GLOBAL_MESSAGE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+
+// One department produces two selectable recipient-search targets — a
+// broadcast to everyone in it, and one to just its admins/secretaries —
+// alongside the individual people built by buildPersonTarget() below.
+function buildDepartmentTargets(departments) {
+  return departments.flatMap((d) => {
+    const name = departmentLabel(d.key);
+    return [
+      { type: 'department-all', departmentId: d.id, label: `${t('inbox.allOf')} ${name}`, searchText: name.toLowerCase() },
+      { type: 'department-admins', departmentId: d.id, label: `${name} ${t('inbox.admins')}`, searchText: `${name.toLowerCase()} ${t('inbox.admins').toLowerCase()}` },
+    ];
+  });
+}
+
+// searchText includes the person's department names too, so typing a
+// department also surfaces its individual members, not just the
+// whole-department targets above.
+function buildPersonTarget(person, deptKeys) {
+  const deptNames = Array.from(deptKeys || []).map(departmentLabel).join(' ');
+  return {
+    type: 'person',
+    id: person.id,
+    label: person.full_name,
+    searchText: `${person.full_name} ${deptNames}`.toLowerCase(),
+  };
+}
 
 export function createInboxModal({ supabase, currentUserId, onRead }) {
   const root = document.createElement('div');
@@ -93,45 +119,80 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
     const statusEl = composeEl.querySelector('[data-el="compose-status"]');
     const sendBtn = composeEl.querySelector('[data-action="send"]');
 
+    // Every entry is either a single person or a whole-department target
+    // ("All of X" / "X Admins") — a regular member only gets these for
+    // departments they belong to (mirroring who they're allowed to
+    // message at all, per shares_department() in sql/026); a church-wide
+    // role gets every department and every person, matching their
+    // "message anyone" access. searchText lets one search box match by
+    // either a person's name or a department's name.
+    const isGlobalSender = GLOBAL_MESSAGE_ROLES.includes(getGlobalRole());
     let candidates = [];
-    let selectedRecipientId = null;
+    let selectedTarget = null;
+    let filteredResults = [];
 
-    if (GLOBAL_MESSAGE_ROLES.includes(getGlobalRole())) {
-      const { data } = await supabase.from('profiles').select('id, full_name').neq('id', currentUserId).order('full_name');
-      candidates = data || [];
+    if (isGlobalSender) {
+      const [{ data: departments }, { data: profiles }, { data: memberships }] = await Promise.all([
+        supabase.from('departments').select('id, key, name').order('name'),
+        supabase.from('profiles').select('id, full_name').neq('id', currentUserId).order('full_name'),
+        supabase.from('department_memberships').select('user_id, departments ( key )').eq('status', 'approved'),
+      ]);
+
+      const deptKeysByUser = new Map();
+      (memberships || []).forEach((m) => {
+        if (!m.departments) return;
+        if (!deptKeysByUser.has(m.user_id)) deptKeysByUser.set(m.user_id, new Set());
+        deptKeysByUser.get(m.user_id).add(m.departments.key);
+      });
+
+      candidates = buildDepartmentTargets(departments || []).concat(
+        (profiles || []).map((p) => buildPersonTarget(p, deptKeysByUser.get(p.id)))
+      );
     } else {
       const { data: myMemberships } = await supabase
         .from('department_memberships')
-        .select('department_id')
+        .select('department_id, departments ( id, key, name )')
         .eq('user_id', currentUserId)
         .eq('status', 'approved');
-      const deptIds = (myMemberships || []).map((m) => m.department_id);
+      const myDepartments = (myMemberships || []).filter((m) => m.departments).map((m) => m.departments);
+      const deptIds = myDepartments.map((d) => d.id);
+
+      let people = [];
       if (deptIds.length > 0) {
         const { data } = await supabase
           .from('department_memberships')
-          .select('user_id, member:profiles!user_id ( id, full_name )')
+          .select('user_id, member:profiles!user_id ( id, full_name ), departments ( key )')
           .in('department_id', deptIds)
           .eq('status', 'approved');
-        const seen = new Map();
+
+        const peopleById = new Map();
         (data || []).forEach((row) => {
-          if (row.member && row.member.id !== currentUserId) seen.set(row.member.id, row.member);
+          if (!row.member || row.member.id === currentUserId) return;
+          if (!peopleById.has(row.member.id)) peopleById.set(row.member.id, { full_name: row.member.full_name, deptKeys: new Set() });
+          if (row.departments?.key) peopleById.get(row.member.id).deptKeys.add(row.departments.key);
         });
-        candidates = Array.from(seen.values()).sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+        people = Array.from(peopleById.entries())
+          .map(([id, p]) => buildPersonTarget({ id, full_name: p.full_name }, p.deptKeys))
+          .sort((a, b) => a.label.localeCompare(b.label));
       }
+
+      candidates = buildDepartmentTargets(myDepartments).concat(people);
     }
 
     function renderResults(query) {
-      const filtered = query
-        ? candidates.filter((c) => c.full_name.toLowerCase().includes(query.toLowerCase()))
-        : candidates;
-      resultsEl.innerHTML = filtered.slice(0, 20).map((c) => `
-        <button type="button" data-id="${c.id}" data-name="${c.full_name.replace(/"/g, '&quot;')}"
-                class="w-full text-left px-2 py-1.5 text-sm hover:bg-slate-100">${escapeHtml(c.full_name)}</button>
+      const q = query.toLowerCase();
+      filteredResults = q ? candidates.filter((c) => c.searchText.includes(q)) : candidates;
+      resultsEl.innerHTML = filteredResults.slice(0, 20).map((c, i) => `
+        <button type="button" data-index="${i}"
+                class="w-full text-left px-2 py-1.5 text-sm hover:bg-slate-100 ${c.type !== 'person' ? 'font-medium text-indigo-700' : ''}">
+          ${escapeHtml(c.label)}
+        </button>
       `).join('');
-      resultsEl.querySelectorAll('[data-id]').forEach((btn) => {
+      resultsEl.querySelectorAll('[data-index]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          selectedRecipientId = btn.dataset.id;
-          recipientSelectedEl.textContent = `${t('inbox.composeTo')}: ${btn.dataset.name}`;
+          selectedTarget = filteredResults[Number(btn.dataset.index)];
+          recipientSelectedEl.textContent = `${t('inbox.composeTo')}: ${selectedTarget.label}`;
           resultsEl.innerHTML = '';
           searchEl.value = '';
         });
@@ -142,7 +203,7 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
 
     sendBtn.addEventListener('click', async () => {
       const body = bodyEl.value.trim();
-      if (!selectedRecipientId) {
+      if (!selectedTarget) {
         statusEl.className = 'text-sm text-rose-600';
         statusEl.textContent = t('inbox.noRecipient');
         return;
@@ -157,11 +218,36 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
       statusEl.className = 'text-sm text-slate-500';
       statusEl.textContent = t('common.saving');
 
-      const { error } = await supabase.from('direct_messages').insert({
-        sender_id: currentUserId,
-        recipient_id: selectedRecipientId,
-        body,
-      });
+      let recipientIds;
+      if (selectedTarget.type === 'person') {
+        recipientIds = [selectedTarget.id];
+      } else {
+        let membershipQuery = supabase
+          .from('department_memberships')
+          .select('user_id')
+          .eq('department_id', selectedTarget.departmentId)
+          .eq('status', 'approved');
+        if (selectedTarget.type === 'department-admins') membershipQuery = membershipQuery.in('role', ['admin', 'secretary']);
+
+        const { data, error: fetchError } = await membershipQuery;
+        if (fetchError) {
+          sendBtn.disabled = false;
+          statusEl.className = 'text-sm text-rose-600';
+          statusEl.textContent = t('inbox.sendFailed', { message: fetchError.message });
+          return;
+        }
+        recipientIds = (data || []).map((r) => r.user_id).filter((id) => id !== currentUserId);
+      }
+
+      if (recipientIds.length === 0) {
+        sendBtn.disabled = false;
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = t('inbox.noRecipient');
+        return;
+      }
+
+      const rows = recipientIds.map((id) => ({ sender_id: currentUserId, recipient_id: id, body }));
+      const { error } = await supabase.from('direct_messages').insert(rows);
 
       sendBtn.disabled = false;
       if (error) {
