@@ -12,6 +12,7 @@ import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderPreachingTab } from './preachingSchedule.js';
 import { renderMediaTechTab } from './mediaTechSchedule.js';
 import { renderEcodemTab } from './ecodemSchedule.js';
+import { renderDirectoryTab } from './userDirectory.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
@@ -34,6 +35,7 @@ const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-nam
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
 const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
+const globalNavGroupEl = document.querySelector('#global-nav-group');
 const viewAsWrapEl = document.querySelector('#view-as-wrap');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -53,6 +55,7 @@ const lazyTabs = {
   preaching: renderPreachingTab,
   'media-tech': renderMediaTechTab,
   ecodem: renderEcodemTab,
+  directory: renderDirectoryTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -102,8 +105,17 @@ function populateDepartmentSwitcher() {
   if (active) departmentSwitcherEl.value = active.key;
 }
 
+const GLOBAL_ROLES = ['super_admin', 'super_viewer', 'pastor_admin', 'church_secretary'];
+
 function applyActiveDepartment() {
   const active = getActiveDepartment();
+
+  // Every department carries the same synthesized .role for a global-role
+  // holder (see departments.js's loadMyDepartments/startViewAs), so
+  // checking the active department's role here — rather than
+  // getGlobalRole() directly — is what makes this correctly reflect the
+  // *simulated* identity during View-As, exactly like membersNavBtn below.
+  globalNavGroupEl.classList.toggle('hidden', !GLOBAL_ROLES.includes(active?.role));
 
   noAccessPanelEl.classList.toggle('hidden', !!active);
   if (!active) {

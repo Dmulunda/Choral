@@ -3,6 +3,7 @@
 import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderPreachingSchedule } from './components/preachingScheduleBoard.js';
+import { renderUserManager } from './components/userManager.js';
 import { t } from './i18n.js';
 
 export async function renderPreachingTab() {
@@ -27,6 +28,16 @@ export async function renderPreachingTab() {
       supabase,
       departmentId: active.id,
       adminUserId: user.id,
+    });
+
+    const userManagerCard = document.createElement('div');
+    userManagerCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
+    userManagerCard.innerHTML = `<h2 class="text-lg font-semibold mb-4">${t('nav.members')}</h2><div data-el="user-manager"></div>`;
+    container.appendChild(userManagerCard);
+    renderUserManager(userManagerCard.querySelector('[data-el="user-manager"]'), {
+      supabase,
+      scope: { type: 'department', departmentId: active.id, departmentKey: active.key },
+      currentUserId: user.id,
     });
   }
 
