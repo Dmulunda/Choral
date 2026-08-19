@@ -3,7 +3,7 @@
 // pending approvals (admins only) + the announcements feed. Reads which
 // department is active from departments.js rather than taking a param,
 // since it's invoked from app.js's generic lazyTabs table.
-import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderUserManager } from './components/userManager.js';
@@ -47,5 +47,10 @@ export async function renderDeptDashboardTab() {
   const announcementsCard = document.createElement('div');
   announcementsCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6';
   container.appendChild(announcementsCard);
-  renderAnnouncements(announcementsCard, { supabase, departmentId: active.id, canAdminister });
+  renderAnnouncements(announcementsCard, {
+    supabase,
+    departmentId: active.id,
+    canPost: canPostAnnouncements(active.role),
+    isGlobalPoster: isGlobalAnnouncer(active.role),
+  });
 }

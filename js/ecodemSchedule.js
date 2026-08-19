@@ -1,7 +1,8 @@
 // Ecodem (Children's Ministry) tab entry point: pending approvals
 // (admins only) + the age-group session board.
-import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
+import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderEcodemBoard } from './components/ecodemBoard.js';
 import { renderUserManager } from './components/userManager.js';
 import { t } from './i18n.js';
@@ -18,6 +19,16 @@ export async function renderEcodemTab() {
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
 
   container.innerHTML = '';
+
+  const announcementsCard = document.createElement('div');
+  announcementsCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
+  container.appendChild(announcementsCard);
+  renderAnnouncements(announcementsCard, {
+    supabase,
+    departmentId: active.id,
+    canPost: canPostAnnouncements(active.role),
+    isGlobalPoster: isGlobalAnnouncer(active.role),
+  });
 
   if (canAdminister) {
     const approvalsCard = document.createElement('div');

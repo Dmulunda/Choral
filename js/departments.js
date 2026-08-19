@@ -57,6 +57,21 @@ export function isSuperRole() {
   return globalRole === 'super_admin' || globalRole === 'super_viewer';
 }
 
+// A department's synthesized `.role` (see loadMyDepartments/startViewAs
+// above) is either a department_role ('admin'/'secretary'/'member') or,
+// for a global-role holder, the literal global_role string — these two
+// helpers classify that value for the announcements feature, mirroring
+// can_post_department_announcement()/can_approve_department_membership()
+// in sql/021 and sql/023 so the UI predicts the same outcome the RLS
+// policies will actually enforce.
+export function canPostAnnouncements(role) {
+  return ['admin', 'secretary', 'super_admin', 'pastor_admin', 'church_secretary'].includes(role);
+}
+
+export function isGlobalAnnouncer(role) {
+  return ['super_admin', 'pastor_admin', 'church_secretary'].includes(role);
+}
+
 // ---- Super Admin "View-As" mode ----
 // True impersonation (actually holding the target's session) would need
 // a service-role backend we don't have, and would be indistinguishable

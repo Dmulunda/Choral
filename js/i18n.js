@@ -66,6 +66,9 @@ const TRANSLATIONS = {
     'announcements.postFailed': 'Failed to post: {message}',
     'announcements.loadFailed': 'Failed to load announcements: {message}',
     'announcements.none': 'No announcements yet.',
+    'announcements.postTo': 'Post to',
+    'announcements.allDepartments': 'All Departments',
+    'announcements.noTargets': 'Select at least one department.',
 
     'deptScheduling.createShift': 'Schedule a Shift',
     'deptScheduling.shiftTitle': 'Title',
@@ -569,6 +572,9 @@ const TRANSLATIONS = {
     'announcements.postFailed': 'Échec de la publication : {message}',
     'announcements.loadFailed': 'Échec du chargement des annonces : {message}',
     'announcements.none': 'Aucune annonce pour le moment.',
+    'announcements.postTo': 'Publier vers',
+    'announcements.allDepartments': 'Tous les départements',
+    'announcements.noTargets': 'Sélectionnez au moins un département.',
 
     'deptScheduling.createShift': 'Planifier un service',
     'deptScheduling.shiftTitle': 'Titre',

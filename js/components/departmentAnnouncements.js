@@ -1,14 +1,24 @@
-// Announcements feed for a department — part of the shared Dashboard
-// module reused by every "lightweight" department (no bespoke tooling
-// needed for a simple announcements board). Admins can post; everyone
-// with department access can read.
-import { t } from '../i18n.js';
+// Announcements feed for a department — read by anyone with access to
+// that department; posting is gated by `canPost` (department
+// admin/secretary, or a church-wide role). A `canPost` poster who also
+// holds a church-wide role (`isGlobalPoster`) gets a "Post to" checklist
+// above the compose form and can target several departments — or every
+// department — at once; the row is simply duplicated once per selected
+// department, reusing the existing single-department schema rather than
+// adding a join table.
+import { t, departmentLabel } from '../i18n.js';
 
-export function renderAnnouncements(container, { supabase, departmentId, canAdminister }) {
+export function renderAnnouncements(container, { supabase, departmentId, canPost, isGlobalPoster }) {
   container.innerHTML = `
     <h2 class="text-lg font-semibold mb-4">${t('announcements.title')}</h2>
-    ${canAdminister ? `
+    ${canPost ? `
       <form data-el="form" class="space-y-2 mb-4 pb-4 border-b border-slate-200">
+        ${isGlobalPoster ? `
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('announcements.postTo')}</label>
+            <div data-el="targets" class="flex flex-wrap gap-3 mb-2 text-sm text-slate-600"></div>
+          </div>
+        ` : ''}
         <input type="text" name="title" required placeholder="${t('announcements.titlePlaceholder')}"
                class="w-full border border-slate-300 rounded-lg px-3 py-2" />
         <textarea name="body" rows="3" placeholder="${t('announcements.bodyPlaceholder')}"
@@ -27,6 +37,32 @@ export function renderAnnouncements(container, { supabase, departmentId, canAdmi
   const listEl = container.querySelector('[data-el="list"]');
   const form = container.querySelector('[data-el="form"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
+  const targetsEl = container.querySelector('[data-el="targets"]');
+
+  if (targetsEl) loadTargets();
+
+  async function loadTargets() {
+    const { data } = await supabase.from('departments').select('id, key, name').order('name');
+    const departments = data || [];
+
+    targetsEl.innerHTML = `
+      <label class="flex items-center gap-1.5 font-medium">
+        <input type="checkbox" data-el="all-departments" /> ${t('announcements.allDepartments')}
+      </label>
+      ${departments.map((d) => `
+        <label class="flex items-center gap-1.5">
+          <input type="checkbox" data-el="dept-target" value="${d.id}" ${d.id === departmentId ? 'checked' : ''} />
+          ${departmentLabel(d.key)}
+        </label>
+      `).join('')}
+    `;
+
+    const allCheckbox = targetsEl.querySelector('[data-el="all-departments"]');
+    const deptCheckboxes = targetsEl.querySelectorAll('[data-el="dept-target"]');
+    allCheckbox.addEventListener('change', () => {
+      deptCheckboxes.forEach((cb) => { cb.disabled = allCheckbox.checked; });
+    });
+  }
 
   if (form) {
     form.addEventListener('submit', async (e) => {
@@ -36,12 +72,31 @@ export function renderAnnouncements(container, { supabase, departmentId, canAdmi
       if (!title) return;
 
       const { data: { user } } = await supabase.auth.getUser();
+
+      let targetDeptIds;
+      if (targetsEl) {
+        const allChecked = targetsEl.querySelector('[data-el="all-departments"]').checked;
+        if (allChecked) {
+          const { data: allDepts } = await supabase.from('departments').select('id');
+          targetDeptIds = (allDepts || []).map((d) => d.id);
+        } else {
+          targetDeptIds = Array.from(targetsEl.querySelectorAll('[data-el="dept-target"]:checked')).map((cb) => cb.value);
+        }
+      } else {
+        targetDeptIds = [departmentId];
+      }
+
+      if (targetDeptIds.length === 0) {
+        formStatusEl.className = 'text-sm text-rose-600';
+        formStatusEl.textContent = t('announcements.noTargets');
+        return;
+      }
+
       formStatusEl.className = 'text-sm text-slate-500';
       formStatusEl.textContent = t('common.saving');
 
-      const { error } = await supabase
-        .from('department_announcements')
-        .insert({ department_id: departmentId, title, body, created_by: user.id });
+      const rows = targetDeptIds.map((id) => ({ department_id: id, title, body, created_by: user.id }));
+      const { error } = await supabase.from('department_announcements').insert(rows);
 
       if (error) {
         formStatusEl.className = 'text-sm text-rose-600';

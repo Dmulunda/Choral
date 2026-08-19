@@ -1,7 +1,8 @@
-// Dashboard tab entry point: roster overview + a snapshot of the next
-// upcoming service.
-import { getEffectiveSupabase } from './departments.js';
+// Dashboard tab entry point: department announcements, roster overview,
+// and a snapshot of the next upcoming service.
+import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDashboard } from './components/dashboardOverview.js';
+import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -16,6 +17,21 @@ export async function renderDashboardTab() {
     return;
   }
 
+  const active = getActiveDepartment();
+
   container.innerHTML = '';
-  renderDashboard(container, { supabase });
+
+  const announcementsCard = document.createElement('div');
+  announcementsCard.className = `${cardClass} mb-6`;
+  container.appendChild(announcementsCard);
+  renderAnnouncements(announcementsCard, {
+    supabase,
+    departmentId: active.id,
+    canPost: canPostAnnouncements(active.role),
+    isGlobalPoster: isGlobalAnnouncer(active.role),
+  });
+
+  const dashboardEl = document.createElement('div');
+  container.appendChild(dashboardEl);
+  renderDashboard(dashboardEl, { supabase });
 }
