@@ -281,6 +281,12 @@ const TRANSLATIONS = {
 
     'role.admin': 'Admin',
     'role.singer': 'Singer',
+    'role.member': 'Member',
+    'role.secretary': 'Secretary',
+    'role.super_admin': 'Super Admin',
+    'role.super_viewer': 'Super Viewer',
+    'role.pastor_admin': 'Pastor Admin',
+    'role.church_secretary': 'Church Secretary',
 
     'members.addSinger': '+ Add Singer',
     'members.name': 'Name',
@@ -706,6 +712,12 @@ const TRANSLATIONS = {
 
     'role.admin': 'Admin',
     'role.singer': 'Choriste',
+    'role.member': 'Membre',
+    'role.secretary': 'Secrétaire',
+    'role.super_admin': 'Super Admin',
+    'role.super_viewer': 'Super Observateur',
+    'role.pastor_admin': 'Pasteur Admin',
+    'role.church_secretary': 'Secrétaire Général',
 
     'members.addSinger': '+ Ajouter un choriste',
     'members.name': 'Nom',
