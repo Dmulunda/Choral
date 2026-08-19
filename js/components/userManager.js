@@ -162,9 +162,22 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     filtered.forEach((row) => {
       const tr = document.createElement('tr');
 
+      const openEdit = () => editModal.open({
+        id: row.id,
+        full_name: row.full_name,
+        phone: row.phone,
+        profile_emails: { email: row.email },
+        global_role: row.globalRole,
+      });
+
       const nameCell = document.createElement('td');
-      nameCell.className = 'px-4 py-2.5 font-medium text-slate-800 whitespace-nowrap';
-      nameCell.textContent = row.full_name;
+      nameCell.className = 'px-4 py-2.5 whitespace-nowrap';
+      const nameBtn = document.createElement('button');
+      nameBtn.type = 'button';
+      nameBtn.className = 'font-medium text-slate-800 hover:text-indigo-600 hover:underline';
+      nameBtn.textContent = row.full_name;
+      nameBtn.addEventListener('click', openEdit);
+      nameCell.appendChild(nameBtn);
       tr.appendChild(nameCell);
 
       if (showEmail) {
@@ -226,13 +239,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       editBtn.type = 'button';
       editBtn.className = 'text-sm font-medium text-indigo-600 hover:text-indigo-800 whitespace-nowrap block mb-1';
       editBtn.textContent = t('users.edit');
-      editBtn.addEventListener('click', () => editModal.open({
-        id: row.id,
-        full_name: row.full_name,
-        phone: row.phone,
-        profile_emails: { email: row.email },
-        global_role: row.globalRole,
-      }));
+      editBtn.addEventListener('click', openEdit);
       actionsCell.appendChild(editBtn);
 
       if (row.email) {
