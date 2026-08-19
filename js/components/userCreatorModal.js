@@ -13,6 +13,7 @@
 // just predicts it up front so the admin isn't surprised.
 import { createScopedClient } from '../supabaseClient.js';
 import { getMyDepartments, getGlobalRole } from '../departments.js';
+import { confirmDialog } from './confirmDialog.js';
 import { t, roleLabel } from '../i18n.js';
 
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
@@ -165,6 +166,8 @@ export function createUserCreatorModal({ supabase, scope, currentUserId, onCreat
       formStatusEl.textContent = t('userCreator.noDepartmentSelected');
       return;
     }
+
+    if (!(await confirmDialog({ message: t('userCreator.confirmCreate', { name: fullName }), confirmLabel: t('userCreator.save'), danger: false }))) return;
 
     saveBtn.disabled = true;
     formStatusEl.className = 'text-sm text-slate-500';

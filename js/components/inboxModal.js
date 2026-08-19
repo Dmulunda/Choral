@@ -5,6 +5,7 @@
 // notifications-only modal — same createXModal({ ... }) => { open }
 // shape as every other modal in this app.
 import { getGlobalRole } from '../departments.js';
+import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 
 const GLOBAL_MESSAGE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -212,6 +213,14 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
         statusEl.className = 'text-sm text-rose-600';
         statusEl.textContent = t('inbox.emptyBody');
         return;
+      }
+
+      // Only broadcasts (whole-department or admins-only targets) get a
+      // confirmation — an individual message is already a deliberate,
+      // multi-step action (search, select, type, click) with a much
+      // smaller blast radius if clicked by accident.
+      if (selectedTarget.type !== 'person') {
+        if (!(await confirmDialog({ message: t('inbox.confirmBroadcast', { target: selectedTarget.label }), confirmLabel: t('inbox.send'), danger: false }))) return;
       }
 
       sendBtn.disabled = true;

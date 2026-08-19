@@ -6,6 +6,7 @@
 // department — at once; the row is simply duplicated once per selected
 // department, reusing the existing single-department schema rather than
 // adding a join table.
+import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 
 export function renderAnnouncements(container, { supabase, departmentId, canPost, isGlobalPoster }) {
@@ -70,6 +71,8 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
       const title = form.elements.title.value.trim();
       const body = form.elements.body.value.trim() || null;
       if (!title) return;
+
+      if (!(await confirmDialog({ message: t('announcements.confirmPost'), confirmLabel: t('announcements.post'), danger: false }))) return;
 
       const { data: { user } } = await supabase.auth.getUser();
 

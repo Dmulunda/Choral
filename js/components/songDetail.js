@@ -1,6 +1,7 @@
 // Song detail view: YouTube player alongside lyrics, plus rehearsal
 // audio filtered to the viewer's own voice part.
 import { extractYouTubeId, loadYouTubeIframeAPI } from '../utils/youtube.js';
+import { confirmDialog } from './confirmDialog.js';
 import { t, tn, voicePartLabel } from '../i18n.js';
 
 let playerInstanceCounter = 0;
@@ -66,7 +67,7 @@ export function renderSongDetail(container, song, { supabase, isAdmin, onBack, o
     container.querySelector('[data-action="edit"]').addEventListener('click', () => onEdit?.());
 
     container.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      if (!window.confirm(t('songDetail.confirmDelete', { title: song.title }))) return;
+      if (!(await confirmDialog({ message: t('songDetail.confirmDelete', { title: song.title }) }))) return;
 
       const { error } = await supabase.from('songs').delete().eq('id', song.id);
       if (error) {

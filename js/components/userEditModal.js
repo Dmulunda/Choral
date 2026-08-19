@@ -6,6 +6,7 @@
 // target user so one modal instance can be reused across every row in
 // the roster.
 import { getMyDepartments, getGlobalRole } from '../departments.js';
+import { confirmDialog } from './confirmDialog.js';
 import { t, roleLabel } from '../i18n.js';
 
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
@@ -157,10 +158,13 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
   }
 
   async function removeMembership(membership) {
-    if (!window.confirm(t('userEdit.confirmRemoveDepartment', {
-      name: targetUser.full_name,
-      department: membership.departments.name,
-    }))) return;
+    const confirmed = await confirmDialog({
+      message: t('userEdit.confirmRemoveDepartment', {
+        name: targetUser.full_name,
+        department: membership.departments.name,
+      }),
+    });
+    if (!confirmed) return;
 
     const { error } = await supabase.from('department_memberships').delete().eq('id', membership.id);
     if (error) {

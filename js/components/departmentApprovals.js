@@ -3,6 +3,7 @@
 // Members tab, and the "coming soon" placeholder for every other
 // department, since approving members doesn't require that
 // department's full feature set to exist yet.
+import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
 
 export function renderDepartmentApprovals(container, { supabase, departmentId, adminUserId }) {
@@ -47,15 +48,22 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
       </div>
     `;
 
-    container.querySelectorAll('[data-action="approve"]').forEach((btn) => btn.addEventListener('click', () => respond(btn.dataset.id, 'approved')));
-    container.querySelectorAll('[data-action="reject"]').forEach((btn) => btn.addEventListener('click', () => respond(btn.dataset.id, 'rejected')));
+    const byId = new Map(data.map((row) => [row.id, row]));
+    container.querySelectorAll('[data-action="approve"]').forEach((btn) => btn.addEventListener('click', () => respond(byId.get(btn.dataset.id), 'approved')));
+    container.querySelectorAll('[data-action="reject"]').forEach((btn) => btn.addEventListener('click', () => respond(byId.get(btn.dataset.id), 'rejected')));
   }
 
-  async function respond(membershipId, status) {
+  async function respond(row, status) {
+    const name = row.applicant?.full_name || '';
+    const message = status === 'approved'
+      ? t('approvals.confirmApprove', { name })
+      : t('approvals.confirmReject', { name });
+    if (!(await confirmDialog({ message, confirmLabel: t(`approvals.${status === 'approved' ? 'approve' : 'reject'}`), danger: status === 'rejected' }))) return;
+
     const { error } = await supabase
       .from('department_memberships')
       .update({ status, approved_at: new Date().toISOString(), approved_by: adminUserId })
-      .eq('id', membershipId);
+      .eq('id', row.id);
 
     if (error) {
       window.alert(t('approvals.updateFailed', { message: error.message }));

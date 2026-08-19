@@ -14,6 +14,7 @@
 //     Access Level column (Super Admin only).
 import { createUserCreatorModal } from './userCreatorModal.js';
 import { createUserEditModal } from './userEditModal.js';
+import { confirmDialog } from './confirmDialog.js';
 import { isViewingAs } from '../departments.js';
 import { t, voicePartLabel, roleLabel } from '../i18n.js';
 
@@ -292,7 +293,8 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
 
   async function removeFromDepartment(row) {
     const departmentLabel = scope.departmentKey ? t(`department.${scope.departmentKey}`) : '';
-    if (!window.confirm(t('users.confirmRemove', { name: row.full_name, department: departmentLabel }))) return;
+    const confirmed = await confirmDialog({ message: t('users.confirmRemove', { name: row.full_name, department: departmentLabel }) });
+    if (!confirmed) return;
 
     const { error } = await supabase.from('department_memberships').delete().eq('id', row.membershipId);
     if (error) {

@@ -3,6 +3,7 @@
 // reason. The fan-out (to their departments' admins/secretaries plus
 // every church-wide role) happens entirely inside the report_absence()
 // RPC (sql/024), so this component just calls it and shows the result.
+import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
 
 export function createReportAbsenceModal({ supabase, onReported }) {
@@ -49,6 +50,8 @@ export function createReportAbsenceModal({ supabase, onReported }) {
     const date = form.elements.date.value;
     const reason = form.elements.reason.value.trim() || null;
     if (!date) return;
+
+    if (!(await confirmDialog({ message: t('absence.confirmSubmit', { date }), confirmLabel: t('absence.submit'), danger: false }))) return;
 
     saveBtn.disabled = true;
     formStatusEl.className = 'text-sm text-slate-500';

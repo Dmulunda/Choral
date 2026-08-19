@@ -3,6 +3,7 @@
 // RSVP request to every current member. Distinct from the free-form
 // availability calendar: each request needs an explicit approve/decline
 // response per member.
+import { confirmDialog } from './confirmDialog.js';
 import { t, tn } from '../i18n.js';
 
 export function renderServiceRequestAdmin(container, { supabase, adminUserId }) {
@@ -401,7 +402,7 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
   }
 
   async function cancelRequest(plan) {
-    if (!window.confirm(t('requests.confirmCancel', { title: plan.title }))) return;
+    if (!(await confirmDialog({ message: t('requests.confirmCancel', { title: plan.title }) }))) return;
 
     const { error } = await supabase.from('service_plans').delete().eq('id', plan.id);
     if (error) {

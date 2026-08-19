@@ -9,6 +9,7 @@
 // into service_plan_singers) happens atomically and safely without
 // needing broad write access to that table.
 import { formatDateLocal } from '../utils/date.js';
+import { confirmDialog } from './confirmDialog.js';
 import { t, voicePartLabel } from '../i18n.js';
 
 export function renderReplacementRequests(container, { supabase, userId, myVoiceParts }) {
@@ -174,6 +175,8 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
 
       if (mode === 'specific' && !targetSingerId) return;
 
+      if (!(await confirmDialog({ message: t('replacement.confirmSend'), confirmLabel: t('replacement.send'), danger: false }))) return;
+
       sendBtn.disabled = true;
       statusEl.textContent = t('replacement.sending');
 
@@ -242,7 +245,7 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
   }
 
   async function cancelRequest(request) {
-    if (!window.confirm(t('replacement.confirmCancelRequest'))) return;
+    if (!(await confirmDialog({ message: t('replacement.confirmCancelRequest') }))) return;
 
     const { error } = await supabase.from('replacement_requests').update({ status: 'cancelled' }).eq('id', request.id);
     if (error) {
@@ -314,6 +317,8 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
   }
 
   async function claim(request, button) {
+    if (!(await confirmDialog({ message: t('replacement.confirmClaim'), confirmLabel: t('replacement.accept'), danger: false }))) return;
+
     button.disabled = true;
     const { error } = await supabase.rpc('claim_replacement', { request_id: request.id });
 
@@ -328,7 +333,7 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
   }
 
   async function refuse(request, button) {
-    if (!window.confirm(t('replacement.confirmRefuse'))) return;
+    if (!(await confirmDialog({ message: t('replacement.confirmRefuse') }))) return;
 
     button.disabled = true;
     const { error } = await supabase.rpc('refuse_replacement', { p_request_id: request.id, p_message: null });
