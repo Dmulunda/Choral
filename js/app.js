@@ -248,7 +248,12 @@ reportAbsenceBtn.addEventListener('click', () => {
 });
 
 notificationsBtn.addEventListener('click', () => {
-  const modal = createNotificationsModal({ supabase: getEffectiveSupabase(), currentUserId });
+  // While viewing-as, "whose inbox is this" needs to follow the
+  // simulated user, not the real signed-in Super Admin — otherwise
+  // View-As shows the admin's own (much broader) notifications instead
+  // of previewing what the target user would actually see.
+  const inboxUserId = getViewAsTarget()?.id || currentUserId;
+  const modal = createNotificationsModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId });
   modal.open();
   closeSidebar();
 });
