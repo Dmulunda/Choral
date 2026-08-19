@@ -12,7 +12,7 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
   async function load() {
     const { data, error } = await supabase
       .from('department_memberships')
-      .select('id, requested_at, profiles ( full_name )')
+      .select('id, requested_at, applicant:profiles!user_id ( full_name )')
       .eq('department_id', departmentId)
       .eq('status', 'pending')
       .order('requested_at');
@@ -31,7 +31,7 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
       <div class="space-y-2">
         ${data.map((row) => `
           <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3">
-            <span class="text-sm font-medium text-slate-800">${escapeHtml(row.profiles?.full_name || '')}</span>
+            <span class="text-sm font-medium text-slate-800">${escapeHtml(row.applicant?.full_name || '')}</span>
             <div class="flex gap-2">
               <button type="button" data-action="approve" data-id="${row.id}"
                       class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">

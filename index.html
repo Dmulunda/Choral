@@ -81,6 +81,20 @@
             Members
           </button>
         </div>
+
+        <!-- Shared nav for every "lightweight" department (Social,
+             Intercession, Cleaning, Interpreting, Ushers, Security,
+             Evangelism) — same two tabs, content scoped per-department. -->
+        <div id="lightweight-nav-group" class="hidden space-y-1">
+          <button data-tab-target="dept-dashboard" data-i18n="nav.dashboard"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Dashboard
+          </button>
+          <button data-tab-target="dept-scheduling" data-i18n="nav.scheduling"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Scheduling
+          </button>
+        </div>
       </nav>
 
       <div class="px-6 py-3 border-t border-slate-800 flex items-center gap-2" role="group" data-i18n-aria-label="sidebar.language" aria-label="Language">
@@ -131,6 +145,23 @@
         <h1 class="text-2xl font-bold mb-4" data-i18n="nav.members">Members</h1>
         <div id="members-content" class="bg-white rounded-xl shadow p-4 sm:p-6">
           <p class="text-slate-500" data-i18n="members.placeholder">Member roster and role management will be rendered here.</p>
+        </div>
+      </section>
+
+      <!-- Shared tabs for every "lightweight" department — dept-*-name
+           labels which department is active, since the panel content
+           itself is generic. -->
+      <section data-tab-panel="dept-dashboard" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-el="dept-dashboard-name"></h1>
+        <div id="dept-dashboard-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="dept-scheduling" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-el="dept-scheduling-name"></h1>
+        <div id="dept-scheduling-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
         </div>
       </section>
 

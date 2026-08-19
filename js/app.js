@@ -7,6 +7,8 @@ import { renderAuthScreen } from './components/authScreen.js';
 import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
+import { renderDeptDashboardTab } from './deptDashboard.js';
+import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
 import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
@@ -15,8 +17,11 @@ const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
 const membersNavBtn = document.querySelector('#members-nav-btn');
 const choirNavGroupEl = document.querySelector('#choir-nav-group');
+const lightweightNavGroupEl = document.querySelector('#lightweight-nav-group');
 const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wrap');
 const departmentSwitcherEl = document.querySelector('#department-switcher');
+const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-name"]');
+const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
 const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
@@ -31,6 +36,8 @@ const lazyTabs = {
   songbook: renderSongbookTab,
   'voice-exercises': () => renderVoiceExercises(document.querySelector('#voice-exercises-content')),
   members: renderMembersTab,
+  'dept-dashboard': renderDeptDashboardTab,
+  'dept-scheduling': renderDeptSchedulingTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -78,19 +85,34 @@ function applyActiveDepartment() {
   noAccessPanelEl.classList.toggle('hidden', !!active);
   if (!active) {
     choirNavGroupEl.classList.add('hidden');
+    lightweightNavGroupEl.classList.add('hidden');
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonPanelEl.classList.add('hidden');
     return;
   }
 
   const isChoir = active.key === 'choir';
+  const isLightweight = active.kind === 'lightweight';
   choirNavGroupEl.classList.toggle('hidden', !isChoir);
+  lightweightNavGroupEl.classList.toggle('hidden', !isLightweight);
   membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     activateTab('dashboard');
+  } else if (isLightweight) {
+    comingSoonPanelEl.classList.add('hidden');
+    deptDashboardNameEl.textContent = departmentLabel(active.key);
+    deptSchedulingNameEl.textContent = departmentLabel(active.key);
+    // A different lightweight department may have been active last time
+    // these tab names were used, so force a fresh render rather than
+    // trusting the lazy-load cache.
+    loadedTabs.delete('dept-dashboard');
+    loadedTabs.delete('dept-scheduling');
+    activateTab('dept-dashboard');
   } else {
+    // "custom" departments without bespoke tooling yet (Media & Tech,
+    // Preaching & Moderation, Ecodem) — later phases replace this branch.
     currentTabName = null;
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonDeptNameEl.textContent = departmentLabel(active.key);
