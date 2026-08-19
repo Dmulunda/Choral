@@ -1,10 +1,13 @@
 // Singer "Replacement Requests" panel — lets a member who was
 // programmed for a service ask their voice part (or one specific
 // person) to cover for them, and lets members claim open requests that
-// match their own voice part. Claiming runs through the claim_replacement
-// RPC (see sql/008_replacement_requests.sql) so the swap into
-// service_plan_singers happens atomically and safely without needing
-// broad write access to that table.
+// match their own voice part. Sending goes through send_replacement_
+// request() (sql/026) — it creates the request, auto-messages a
+// specific target, and notifies the department's admins, all
+// atomically. Claiming/refusing run through claim_replacement()/
+// refuse_replacement() so the status change (and, for claim, the swap
+// into service_plan_singers) happens atomically and safely without
+// needing broad write access to that table.
 import { formatDateLocal } from '../utils/date.js';
 import { t, voicePartLabel } from '../i18n.js';
 
@@ -141,6 +144,9 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
         </label>
         <select data-el="specific-select" disabled class="border border-slate-300 rounded-lg px-2 py-1 text-sm"></select>
       </div>
+      <label class="block text-sm font-medium text-slate-600 mb-1">${t('replacement.messageLabel')}</label>
+      <textarea data-el="message" rows="2" placeholder="${t('replacement.messagePlaceholder')}"
+                class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mb-2"></textarea>
       <div class="flex items-center gap-3">
         <button type="button" data-action="send" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
           ${t('replacement.send')}
@@ -152,6 +158,7 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
 
     const radios = formWrap.querySelectorAll('input[name="target-mode"]');
     const specificSelect = formWrap.querySelector('[data-el="specific-select"]');
+    const messageEl = formWrap.querySelector('[data-el="message"]');
     const statusEl = formWrap.querySelector('[data-el="status"]');
     const sendBtn = formWrap.querySelector('[data-action="send"]');
 
@@ -170,11 +177,11 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
       sendBtn.disabled = true;
       statusEl.textContent = t('replacement.sending');
 
-      const { error } = await supabase.from('replacement_requests').insert({
-        service_plan_id: plan.id,
-        requested_by: userId,
-        voice_part: assignment.voice_part,
-        target_singer_id: targetSingerId,
+      const { error } = await supabase.rpc('send_replacement_request', {
+        p_service_plan_id: plan.id,
+        p_voice_part: assignment.voice_part,
+        p_target_singer_id: targetSingerId,
+        p_message: messageEl.value.trim() || null,
       });
 
       if (error) {
@@ -272,12 +279,35 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
         </div>
       `;
 
-      const coverBtn = document.createElement('button');
-      coverBtn.type = 'button';
-      coverBtn.className = 'px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 whitespace-nowrap';
-      coverBtn.textContent = t('replacement.cover');
-      coverBtn.addEventListener('click', () => claim(request, coverBtn));
-      row.appendChild(coverBtn);
+      if (targeted) {
+        // A specific candidate gets a real Accept/Refuse choice rather
+        // than just "Cover" — Refuse reopens the request to anyone
+        // eligible instead of leaving the requester stuck.
+        const btnWrap = document.createElement('div');
+        btnWrap.className = 'flex items-center gap-2';
+
+        const acceptBtn = document.createElement('button');
+        acceptBtn.type = 'button';
+        acceptBtn.className = 'px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 whitespace-nowrap';
+        acceptBtn.textContent = t('replacement.accept');
+        acceptBtn.addEventListener('click', () => claim(request, acceptBtn));
+
+        const refuseBtn = document.createElement('button');
+        refuseBtn.type = 'button';
+        refuseBtn.className = 'px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-rose-100 hover:text-rose-700 whitespace-nowrap';
+        refuseBtn.textContent = t('replacement.refuse');
+        refuseBtn.addEventListener('click', () => refuse(request, refuseBtn));
+
+        btnWrap.append(acceptBtn, refuseBtn);
+        row.appendChild(btnWrap);
+      } else {
+        const coverBtn = document.createElement('button');
+        coverBtn.type = 'button';
+        coverBtn.className = 'px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 whitespace-nowrap';
+        coverBtn.textContent = t('replacement.cover');
+        coverBtn.addEventListener('click', () => claim(request, coverBtn));
+        row.appendChild(coverBtn);
+      }
 
       coverableEl.appendChild(row);
     });
@@ -294,6 +324,22 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
     }
 
     window.alert(t('replacement.claimed'));
+    loadAll();
+  }
+
+  async function refuse(request, button) {
+    if (!window.confirm(t('replacement.confirmRefuse'))) return;
+
+    button.disabled = true;
+    const { error } = await supabase.rpc('refuse_replacement', { p_request_id: request.id, p_message: null });
+
+    if (error) {
+      window.alert(t('replacement.refuseFailed', { message: error.message }));
+      button.disabled = false;
+      return;
+    }
+
+    window.alert(t('replacement.refused'));
     loadAll();
   }
 }

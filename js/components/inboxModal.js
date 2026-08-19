@@ -1,0 +1,273 @@
+// Unified inbox: direct messages (with a compose flow restricted to
+// department-mates, unless the sender holds a church-wide role) and
+// notifications (absence reports, replacement-request activity), each
+// marked read as soon as its tab is viewed. Replaces Phase 4's
+// notifications-only modal — same createXModal({ ... }) => { open }
+// shape as every other modal in this app.
+import { getGlobalRole } from '../departments.js';
+import { t } from '../i18n.js';
+
+const GLOBAL_MESSAGE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+
+export function createInboxModal({ supabase, currentUserId, onRead }) {
+  const root = document.createElement('div');
+  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between p-6 pb-2">
+        <h2 class="text-xl font-bold">${t('inbox.title')}</h2>
+        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex gap-2 px-6 mb-3">
+        <button type="button" data-el="tab-messages" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('inbox.messagesTab')}</button>
+        <button type="button" data-el="tab-notifications" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('inbox.notificationsTab')}</button>
+      </div>
+
+      <div data-el="messages-panel" class="flex-1 overflow-y-auto px-6 pb-6">
+        <button type="button" data-action="compose" class="mb-3 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800">
+          ${t('inbox.newMessage')}
+        </button>
+        <div data-el="compose" class="hidden border border-slate-200 rounded-lg p-3 mb-3 space-y-2"></div>
+        <div data-el="messages-list" class="space-y-2"></div>
+      </div>
+
+      <div data-el="notifications-panel" class="hidden flex-1 overflow-y-auto px-6 pb-6 space-y-2"></div>
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  const tabMessagesBtn = root.querySelector('[data-el="tab-messages"]');
+  const tabNotificationsBtn = root.querySelector('[data-el="tab-notifications"]');
+  const messagesPanelEl = root.querySelector('[data-el="messages-panel"]');
+  const notificationsPanelEl = root.querySelector('[data-el="notifications-panel"]');
+  const messagesListEl = root.querySelector('[data-el="messages-list"]');
+  const composeEl = root.querySelector('[data-el="compose"]');
+  const composeBtn = root.querySelector('[data-action="compose"]');
+
+  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
+  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+
+  function setTabStyle(btn, active) {
+    btn.classList.toggle('bg-indigo-600', active);
+    btn.classList.toggle('text-white', active);
+    btn.classList.toggle('text-slate-600', !active);
+    btn.classList.toggle('hover:bg-slate-100', !active);
+  }
+
+  function activateTab(tab) {
+    const isMessages = tab === 'messages';
+    messagesPanelEl.classList.toggle('hidden', !isMessages);
+    notificationsPanelEl.classList.toggle('hidden', isMessages);
+    setTabStyle(tabMessagesBtn, isMessages);
+    setTabStyle(tabNotificationsBtn, !isMessages);
+  }
+
+  tabMessagesBtn.addEventListener('click', () => { activateTab('messages'); loadMessages(); });
+  tabNotificationsBtn.addEventListener('click', () => { activateTab('notifications'); loadNotifications(); });
+
+  composeBtn.addEventListener('click', () => {
+    const willShow = composeEl.classList.contains('hidden');
+    composeEl.classList.toggle('hidden');
+    if (willShow) renderCompose();
+  });
+
+  async function renderCompose() {
+    composeEl.innerHTML = `
+      <label class="block text-sm font-medium text-slate-600">${t('inbox.composeTo')}</label>
+      <input type="search" data-el="recipient-search" placeholder="${t('inbox.composeSearchPlaceholder')}"
+             class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+      <div data-el="recipient-results" class="max-h-32 overflow-y-auto border border-slate-100 rounded-lg divide-y"></div>
+      <p data-el="recipient-selected" class="text-sm text-slate-500"></p>
+      <label class="block text-sm font-medium text-slate-600">${t('inbox.composeBody')}</label>
+      <textarea data-el="compose-body" rows="2" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"></textarea>
+      <div class="flex items-center gap-3">
+        <button type="button" data-action="send" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('inbox.send')}</button>
+        <span data-el="compose-status" class="text-sm text-slate-500"></span>
+      </div>
+    `;
+
+    const searchEl = composeEl.querySelector('[data-el="recipient-search"]');
+    const resultsEl = composeEl.querySelector('[data-el="recipient-results"]');
+    const recipientSelectedEl = composeEl.querySelector('[data-el="recipient-selected"]');
+    const bodyEl = composeEl.querySelector('[data-el="compose-body"]');
+    const statusEl = composeEl.querySelector('[data-el="compose-status"]');
+    const sendBtn = composeEl.querySelector('[data-action="send"]');
+
+    let candidates = [];
+    let selectedRecipientId = null;
+
+    if (GLOBAL_MESSAGE_ROLES.includes(getGlobalRole())) {
+      const { data } = await supabase.from('profiles').select('id, full_name').neq('id', currentUserId).order('full_name');
+      candidates = data || [];
+    } else {
+      const { data: myMemberships } = await supabase
+        .from('department_memberships')
+        .select('department_id')
+        .eq('user_id', currentUserId)
+        .eq('status', 'approved');
+      const deptIds = (myMemberships || []).map((m) => m.department_id);
+      if (deptIds.length > 0) {
+        const { data } = await supabase
+          .from('department_memberships')
+          .select('user_id, member:profiles!user_id ( id, full_name )')
+          .in('department_id', deptIds)
+          .eq('status', 'approved');
+        const seen = new Map();
+        (data || []).forEach((row) => {
+          if (row.member && row.member.id !== currentUserId) seen.set(row.member.id, row.member);
+        });
+        candidates = Array.from(seen.values()).sort((a, b) => a.full_name.localeCompare(b.full_name));
+      }
+    }
+
+    function renderResults(query) {
+      const filtered = query
+        ? candidates.filter((c) => c.full_name.toLowerCase().includes(query.toLowerCase()))
+        : candidates;
+      resultsEl.innerHTML = filtered.slice(0, 20).map((c) => `
+        <button type="button" data-id="${c.id}" data-name="${c.full_name.replace(/"/g, '&quot;')}"
+                class="w-full text-left px-2 py-1.5 text-sm hover:bg-slate-100">${escapeHtml(c.full_name)}</button>
+      `).join('');
+      resultsEl.querySelectorAll('[data-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          selectedRecipientId = btn.dataset.id;
+          recipientSelectedEl.textContent = `${t('inbox.composeTo')}: ${btn.dataset.name}`;
+          resultsEl.innerHTML = '';
+          searchEl.value = '';
+        });
+      });
+    }
+
+    searchEl.addEventListener('input', () => renderResults(searchEl.value.trim()));
+
+    sendBtn.addEventListener('click', async () => {
+      const body = bodyEl.value.trim();
+      if (!selectedRecipientId) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = t('inbox.noRecipient');
+        return;
+      }
+      if (!body) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = t('inbox.emptyBody');
+        return;
+      }
+
+      sendBtn.disabled = true;
+      statusEl.className = 'text-sm text-slate-500';
+      statusEl.textContent = t('common.saving');
+
+      const { error } = await supabase.from('direct_messages').insert({
+        sender_id: currentUserId,
+        recipient_id: selectedRecipientId,
+        body,
+      });
+
+      sendBtn.disabled = false;
+      if (error) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = t('inbox.sendFailed', { message: error.message });
+        return;
+      }
+
+      composeEl.classList.add('hidden');
+      loadMessages();
+    });
+  }
+
+  async function loadMessages() {
+    messagesListEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+
+    const { data, error } = await supabase
+      .from('direct_messages')
+      .select('id, body, created_at, read_at, sender_id, recipient_id, sender:profiles!sender_id ( full_name ), recipient:profiles!recipient_id ( full_name )')
+      .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      messagesListEl.innerHTML = `<p class="text-sm text-rose-600">${t('inbox.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+
+    if (data.length === 0) {
+      messagesListEl.innerHTML = `<p class="text-sm text-slate-500">${t('inbox.noMessages')}</p>`;
+      return;
+    }
+
+    messagesListEl.innerHTML = data.map((m) => {
+      const isReceived = m.recipient_id === currentUserId;
+      const unread = isReceived && !m.read_at;
+      const who = isReceived
+        ? `${t('inbox.from')}: ${m.sender?.full_name || ''}`
+        : `${t('inbox.to')}: ${m.recipient?.full_name || ''}`;
+      return `
+        <div class="border rounded-lg p-3 ${unread ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}">
+          <div class="text-xs font-semibold text-slate-500">${escapeHtml(who)}</div>
+          <p class="text-sm text-slate-700 mt-1 whitespace-pre-wrap">${escapeHtml(m.body)}</p>
+          <div class="text-xs text-slate-400 mt-2">${escapeHtml(m.created_at.slice(0, 10))}</div>
+        </div>
+      `;
+    }).join('');
+
+    const unreadIds = data.filter((m) => m.recipient_id === currentUserId && !m.read_at).map((m) => m.id);
+    if (unreadIds.length > 0) {
+      await supabase.from('direct_messages').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
+      onRead?.();
+    }
+  }
+
+  async function loadNotifications() {
+    notificationsPanelEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, title, body, created_at, read_at')
+      .eq('recipient_id', currentUserId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      notificationsPanelEl.innerHTML = `<p class="text-sm text-rose-600">${t('notifications.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+
+    if (data.length === 0) {
+      notificationsPanelEl.innerHTML = `<p class="text-sm text-slate-500">${t('notifications.none')}</p>`;
+      return;
+    }
+
+    notificationsPanelEl.innerHTML = data.map((n) => `
+      <div class="border rounded-lg p-3 ${n.read_at ? 'border-slate-200' : 'border-indigo-300 bg-indigo-50'}">
+        <div class="font-medium text-slate-800">${escapeHtml(n.title)}</div>
+        ${n.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(n.body)}</p>` : ''}
+        <div class="text-xs text-slate-400 mt-2">${escapeHtml(n.created_at.slice(0, 10))}</div>
+      </div>
+    `).join('');
+
+    const unreadIds = data.filter((n) => !n.read_at).map((n) => n.id);
+    if (unreadIds.length > 0) {
+      await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
+      onRead?.();
+    }
+  }
+
+  function open() {
+    composeEl.classList.add('hidden');
+    activateTab('messages');
+    root.classList.remove('hidden');
+    root.classList.add('flex');
+    loadMessages();
+  }
+
+  function close() {
+    root.classList.add('hidden');
+    root.classList.remove('flex');
+  }
+
+  return { open };
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}

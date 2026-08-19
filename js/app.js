@@ -16,7 +16,7 @@ import { renderDirectoryTab } from './userDirectory.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
-import { createNotificationsModal } from './components/notificationsModal.js';
+import { createInboxModal } from './components/inboxModal.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -40,7 +40,8 @@ const noAccessPanelEl = document.querySelector('#no-department-access');
 const globalNavGroupEl = document.querySelector('#global-nav-group');
 const memberActionsWrapEl = document.querySelector('#member-actions-wrap');
 const reportAbsenceBtn = document.querySelector('#report-absence-btn');
-const notificationsBtn = document.querySelector('#notifications-btn');
+const inboxBtn = document.querySelector('#inbox-btn');
+const inboxBadgeEl = document.querySelector('#inbox-badge');
 const viewAsWrapEl = document.querySelector('#view-as-wrap');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -208,6 +209,7 @@ function refreshAfterViewAsChange() {
   applyActiveDepartment();
   updateViewAsUI();
   updateMemberActionsUI();
+  refreshInboxBadge();
   closeSidebar();
 }
 
@@ -228,17 +230,37 @@ viewAsExitBtn.addEventListener('click', () => {
   refreshAfterViewAsChange();
 });
 
-// ---- Report Absence / Notifications ----
+// ---- Report Absence / Inbox ----
 // Available to anyone with at least one department, independent of
 // which one is currently active. Report Absence is hidden during
 // View-As (its RPC call would just be blocked by the read-only
 // wrapper — hiding it is clearer than showing a control that can't
-// succeed); Notifications stays visible so a Super Admin previewing
-// another user's view sees what that user would see.
+// succeed); the Inbox stays visible so a Super Admin previewing another
+// user's view sees what that user would see — resolved via
+// getViewAsTarget() rather than the real currentUserId in both places
+// below, same as every other identity-sensitive spot in this file.
 function updateMemberActionsUI() {
   const hasAccess = getMyDepartments().length > 0;
   memberActionsWrapEl.classList.toggle('hidden', !hasAccess);
   reportAbsenceBtn.classList.toggle('hidden', !hasAccess || isViewingAs());
+}
+
+async function refreshInboxBadge() {
+  const inboxUserId = getViewAsTarget()?.id || currentUserId;
+  if (!inboxUserId) {
+    inboxBadgeEl.classList.add('hidden');
+    return;
+  }
+
+  const effectiveSupabase = getEffectiveSupabase();
+  const [{ count: unreadMessages }, { count: unreadNotifications }] = await Promise.all([
+    effectiveSupabase.from('direct_messages').select('id', { count: 'exact', head: true }).eq('recipient_id', inboxUserId).is('read_at', null),
+    effectiveSupabase.from('notifications').select('id', { count: 'exact', head: true }).eq('recipient_id', inboxUserId).is('read_at', null),
+  ]);
+
+  const total = (unreadMessages || 0) + (unreadNotifications || 0);
+  inboxBadgeEl.textContent = total > 9 ? '9+' : String(total);
+  inboxBadgeEl.classList.toggle('hidden', total === 0);
 }
 
 reportAbsenceBtn.addEventListener('click', () => {
@@ -247,13 +269,9 @@ reportAbsenceBtn.addEventListener('click', () => {
   closeSidebar();
 });
 
-notificationsBtn.addEventListener('click', () => {
-  // While viewing-as, "whose inbox is this" needs to follow the
-  // simulated user, not the real signed-in Super Admin — otherwise
-  // View-As shows the admin's own (much broader) notifications instead
-  // of previewing what the target user would actually see.
+inboxBtn.addEventListener('click', () => {
   const inboxUserId = getViewAsTarget()?.id || currentUserId;
-  const modal = createNotificationsModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId });
+  const modal = createInboxModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId, onRead: refreshInboxBadge });
   modal.open();
   closeSidebar();
 });
@@ -377,6 +395,7 @@ async function showApp(session) {
   applyActiveDepartment();
   updateViewAsUI();
   updateMemberActionsUI();
+  refreshInboxBadge();
 }
 
 function showAuth() {
@@ -391,6 +410,7 @@ function showAuth() {
   viewAsWrapEl.classList.add('hidden');
   viewAsBannerEl.classList.add('hidden');
   memberActionsWrapEl.classList.add('hidden');
+  inboxBadgeEl.classList.add('hidden');
 }
 
 supabase.auth.getSession().then(({ data: { session }, error }) => {
