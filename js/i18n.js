@@ -85,6 +85,18 @@ const TRANSLATIONS = {
     'preaching.songProgram': "Song Program",
     'preaching.noSongProgram': 'No song program available for this date yet.',
 
+    'mediaTech.assignForDate': 'Assign for a Service Date',
+    'mediaTech.role.stream_operator': 'Live & YouTube Stream Operator',
+    'mediaTech.role.sound_operator': 'Sound & Mixer Console Operator',
+    'mediaTech.role.media_inventory': 'Media Stores / Inventory Handler',
+    'mediaTech.role.camera_operator': 'Photography / Camera Operator',
+    'mediaTech.role.slides_operator': 'Bible Verse & Slides Projection Operator',
+    'mediaTech.save': 'Save Assignments',
+    'mediaTech.saveFailed': 'Failed to save: {message}',
+    'mediaTech.upcoming': 'Upcoming Assignments',
+    'mediaTech.loadFailed': 'Failed to load assignments: {message}',
+    'mediaTech.none': 'No assignments scheduled yet.',
+
     'dashboard.placeholder': 'Dashboard content will be rendered here.',
     'scheduling.placeholder': 'Availability calendar and service plans will be rendered here.',
     'songbook.placeholder': 'Song list, lyrics, and track links will be rendered here.',
@@ -470,6 +482,18 @@ const TRANSLATIONS = {
     'preaching.songProgram': 'Programme de chants',
     'preaching.noSongProgram': 'Aucun programme de chants disponible pour cette date.',
 
+    'mediaTech.assignForDate': 'Assigner pour une date de service',
+    'mediaTech.role.stream_operator': 'Opérateur de diffusion en direct & YouTube',
+    'mediaTech.role.sound_operator': 'Opérateur de la console de son',
+    'mediaTech.role.media_inventory': 'Responsable du matériel média',
+    'mediaTech.role.camera_operator': 'Opérateur photo / caméra',
+    'mediaTech.role.slides_operator': 'Opérateur de projection (versets & diapositives)',
+    'mediaTech.save': 'Enregistrer les assignations',
+    'mediaTech.saveFailed': "Échec de l'enregistrement : {message}",
+    'mediaTech.upcoming': 'Assignations à venir',
+    'mediaTech.loadFailed': 'Échec du chargement des assignations : {message}',
+    'mediaTech.none': 'Aucune assignation planifiée pour le moment.',
+
     'dashboard.placeholder': 'Le contenu du tableau de bord sera affiché ici.',
     'scheduling.placeholder': 'Le calendrier de disponibilité et les plans de service seront affichés ici.',
     'songbook.placeholder': 'La liste des chants, les paroles et les liens audio seront affichés ici.',
@@ -830,6 +854,10 @@ export function roleLabel(role) {
 
 export function departmentLabel(key) {
   return key ? t(`department.${key}`) : key;
+}
+
+export function mediaTechRoleLabel(role) {
+  return role ? t(`mediaTech.role.${role}`) : role;
 }
 
 // Applies text/placeholder/aria-label translations to every element

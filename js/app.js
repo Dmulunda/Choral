@@ -10,6 +10,7 @@ import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderPreachingTab } from './preachingSchedule.js';
+import { renderMediaTechTab } from './mediaTechSchedule.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
 import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
@@ -40,9 +41,17 @@ const lazyTabs = {
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
   preaching: renderPreachingTab,
+  'media-tech': renderMediaTechTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
+
+// Bespoke departments with exactly one view (no Dashboard/Scheduling
+// split) — maps department key to its tab/panel name.
+const SINGLE_VIEW_CUSTOM_TABS = {
+  preaching: 'preaching',
+  media_tech: 'media-tech',
+};
 
 function activateTab(name) {
   currentTabName = name;
@@ -99,6 +108,8 @@ function applyActiveDepartment() {
   lightweightNavGroupEl.classList.toggle('hidden', !isLightweight);
   membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
 
+  const singleViewTab = SINGLE_VIEW_CUSTOM_TABS[active.key];
+
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     activateTab('dashboard');
@@ -112,13 +123,16 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
     activateTab('dept-dashboard');
-  } else if (active.key === 'preaching') {
+  } else if (singleViewTab) {
+    // Bespoke single-view departments (Preaching & Moderation, Media &
+    // Tech) — each has its own tab name/panel but no sub-nav, so a fresh
+    // render is forced the same way as the lightweight tabs above.
     comingSoonPanelEl.classList.add('hidden');
-    loadedTabs.delete('preaching');
-    activateTab('preaching');
+    loadedTabs.delete(singleViewTab);
+    activateTab(singleViewTab);
   } else {
-    // "custom" departments without bespoke tooling yet (Media & Tech,
-    // Ecodem) — later phases replace this branch.
+    // "custom" departments without bespoke tooling yet (Ecodem) — its
+    // own phase replaces this branch.
     currentTabName = null;
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonDeptNameEl.textContent = departmentLabel(active.key);
