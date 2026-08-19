@@ -11,6 +11,7 @@ import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderPreachingTab } from './preachingSchedule.js';
 import { renderMediaTechTab } from './mediaTechSchedule.js';
+import { renderEcodemTab } from './ecodemSchedule.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel } from './i18n.js';
 import { loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey } from './departments.js';
@@ -42,6 +43,7 @@ const lazyTabs = {
   'dept-scheduling': renderDeptSchedulingTab,
   preaching: renderPreachingTab,
   'media-tech': renderMediaTechTab,
+  ecodem: renderEcodemTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -50,6 +52,7 @@ let currentTabName = null;
 // split) — maps department key to its tab/panel name.
 const SINGLE_VIEW_CUSTOM_TABS = {
   preaching: 'preaching',
+  ecodem: 'ecodem',
   media_tech: 'media-tech',
 };
 

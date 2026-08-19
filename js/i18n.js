@@ -97,6 +97,22 @@ const TRANSLATIONS = {
     'mediaTech.loadFailed': 'Failed to load assignments: {message}',
     'mediaTech.none': 'No assignments scheduled yet.',
 
+    'ecodem.ageGroup.group_1': 'Group 1 (2–6 years)',
+    'ecodem.ageGroup.group_2': 'Group 2 (7–11 years)',
+    'ecodem.ageGroup.group_3': 'Group 3 (12–17 years)',
+    'ecodem.scheduleSession': 'Schedule a Session',
+    'ecodem.topic': 'Lesson Subject / Topic',
+    'ecodem.topicPlaceholder': "e.g. David and Goliath",
+    'ecodem.worker1': 'Worker 1',
+    'ecodem.worker2': 'Worker 2',
+    'ecodem.save': 'Save Session',
+    'ecodem.saveFailed': 'Failed to save: {message}',
+    'ecodem.bothWorkersRequired': 'needs both workers selected (or leave both blank to skip it).',
+    'ecodem.upcoming': 'Upcoming Sessions',
+    'ecodem.loadFailed': 'Failed to load sessions: {message}',
+    'ecodem.none': 'No sessions scheduled yet.',
+    'ecodem.noTopic': 'No topic set',
+
     'dashboard.placeholder': 'Dashboard content will be rendered here.',
     'scheduling.placeholder': 'Availability calendar and service plans will be rendered here.',
     'songbook.placeholder': 'Song list, lyrics, and track links will be rendered here.',
@@ -494,6 +510,22 @@ const TRANSLATIONS = {
     'mediaTech.loadFailed': 'Échec du chargement des assignations : {message}',
     'mediaTech.none': 'Aucune assignation planifiée pour le moment.',
 
+    'ecodem.ageGroup.group_1': 'Groupe 1 (2–6 ans)',
+    'ecodem.ageGroup.group_2': 'Groupe 2 (7–11 ans)',
+    'ecodem.ageGroup.group_3': 'Groupe 3 (12–17 ans)',
+    'ecodem.scheduleSession': 'Planifier une séance',
+    'ecodem.topic': 'Sujet de la leçon',
+    'ecodem.topicPlaceholder': 'ex. David et Goliath',
+    'ecodem.worker1': 'Encadrant 1',
+    'ecodem.worker2': 'Encadrant 2',
+    'ecodem.save': 'Enregistrer la séance',
+    'ecodem.saveFailed': "Échec de l'enregistrement : {message}",
+    'ecodem.bothWorkersRequired': 'nécessite les deux encadrants sélectionnés (ou laissez les deux vides pour l\'ignorer).',
+    'ecodem.upcoming': 'Séances à venir',
+    'ecodem.loadFailed': 'Échec du chargement des séances : {message}',
+    'ecodem.none': 'Aucune séance planifiée pour le moment.',
+    'ecodem.noTopic': 'Aucun sujet défini',
+
     'dashboard.placeholder': 'Le contenu du tableau de bord sera affiché ici.',
     'scheduling.placeholder': 'Le calendrier de disponibilité et les plans de service seront affichés ici.',
     'songbook.placeholder': 'La liste des chants, les paroles et les liens audio seront affichés ici.',
@@ -858,6 +890,10 @@ export function departmentLabel(key) {
 
 export function mediaTechRoleLabel(role) {
   return role ? t(`mediaTech.role.${role}`) : role;
+}
+
+export function ecodemAgeGroupLabel(group) {
+  return group ? t(`ecodem.ageGroup.${group}`) : group;
 }
 
 // Applies text/placeholder/aria-label translations to every element
