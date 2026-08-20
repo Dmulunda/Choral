@@ -34,6 +34,7 @@ const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wr
 const departmentSwitcherEl = document.querySelector('#department-switcher');
 const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-name"]');
 const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
+const deptSchedulingNavBtn = document.querySelector('#dept-scheduling-nav-btn');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
 const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
@@ -156,6 +157,9 @@ function applyActiveDepartment() {
   choirNavGroupEl.classList.toggle('hidden', !isChoir);
   lightweightNavGroupEl.classList.toggle('hidden', !isLightweight);
   membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
+  // Finance keeps Dashboard but explicitly loses Scheduling — every
+  // other lightweight department gets both.
+  deptSchedulingNavBtn.classList.toggle('hidden', isLightweight && active.key === 'finance');
 
   const singleViewTab = SINGLE_VIEW_CUSTOM_TABS[active.key];
 

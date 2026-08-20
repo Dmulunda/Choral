@@ -28,6 +28,11 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
                    class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
           <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.guest')}</label>
+            <input type="text" name="guest_name" placeholder="${t('preaching.guestPlaceholder')}"
+                   class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.sermonTheme')}</label>
             <input type="text" name="sermon_theme" placeholder="${t('preaching.sermonThemePlaceholder')}"
                    class="w-full border border-slate-300 rounded-lg px-3 py-2" />
@@ -81,12 +86,13 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data: existing } = await supabase
       .from('preaching_schedule')
-      .select('moderator_id, preacher_name, sermon_theme')
+      .select('moderator_id, preacher_name, guest_name, sermon_theme')
       .eq('date', dateStr)
       .maybeSingle();
 
     form.elements.moderator.value = existing?.moderator_id || '';
     form.elements.preacher_name.value = existing?.preacher_name || '';
+    form.elements.guest_name.value = existing?.guest_name || '';
     form.elements.sermon_theme.value = existing?.sermon_theme || '';
   }
 
@@ -105,6 +111,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       date,
       moderator_id: form.elements.moderator.value || null,
       preacher_name: form.elements.preacher_name.value.trim() || null,
+      guest_name: form.elements.guest_name.value.trim() || null,
       sermon_theme: form.elements.sermon_theme.value.trim() || null,
       created_by: user.id,
     }, { onConflict: 'date' });
@@ -125,7 +132,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data, error } = await supabase
       .from('preaching_schedule')
-      .select('id, date, preacher_name, sermon_theme, moderator:profiles!moderator_id ( full_name )')
+      .select('id, date, preacher_name, guest_name, sermon_theme, moderator:profiles!moderator_id ( full_name )')
       .order('date', { ascending: true });
 
     if (error) {
@@ -154,6 +161,8 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
         ${t('preaching.moderator')}: ${row.moderator?.full_name ? escapeHtml(row.moderator.full_name) : `<span class="text-slate-400">${t('preaching.noModerator')}</span>`}
         &nbsp;·&nbsp;
         ${t('preaching.preacher')}: ${row.preacher_name ? escapeHtml(row.preacher_name) : `<span class="text-slate-400">${t('preaching.noPreacher')}</span>`}
+        &nbsp;·&nbsp;
+        ${t('preaching.guest')}: ${row.guest_name ? escapeHtml(row.guest_name) : `<span class="text-slate-400">${t('preaching.noGuest')}</span>`}
       </div>
       <details class="mt-2">
         <summary class="text-xs font-medium text-slate-500 cursor-pointer">${t('preaching.songProgram')}</summary>

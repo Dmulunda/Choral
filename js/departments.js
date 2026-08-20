@@ -13,14 +13,16 @@ const ACTIVE_DEPT_STORAGE_KEY = 'choir-hub-active-department';
 export const HOME_KEY = '__home__';
 
 // Static catalog of department keys, matching the seed data in
-// sql/014_departments_rbac.sql. Hardcoded (rather than queried) because
-// the sign-up form needs to list departments before the applicant has a
-// session — the `departments` table's RLS only allows authenticated
-// reads, and there's no reason for this rarely-changing catalog to need
-// a network round trip anyway.
+// sql/014_departments_rbac.sql (plus the additions in
+// sql/027_finance_departments_and_reports.sql). Hardcoded (rather than
+// queried) because the sign-up form needs to list departments before
+// the applicant has a session — the `departments` table's RLS only
+// allows authenticated reads, and there's no reason for this
+// rarely-changing catalog to need a network round trip anyway.
 export const DEPARTMENT_KEYS = [
   'choir', 'social', 'intercession', 'media_tech', 'interpreting',
   'cleaning', 'preaching', 'ushers', 'security', 'ecodem', 'evangelism',
+  'welcoming_socialisation', 'grand_jeunes_couples', 'finance',
 ];
 
 let myDepartments = null; // [{ id, key, name, kind, role }] — synthesized: role is the global role string for a global-role holder, else their real department_role

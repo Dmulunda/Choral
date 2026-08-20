@@ -7,6 +7,7 @@ import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlob
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderUserManager } from './components/userManager.js';
+import { renderBudgetRequestForm, renderBudgetRequestsInbox } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderDeptDashboardTab() {
@@ -42,6 +43,26 @@ export async function renderDeptDashboardTab() {
       scope: { type: 'department', departmentId: active.id, departmentKey: active.key },
       currentUserId: user.id,
     });
+  }
+
+  // Finance sees the incoming requests from every other department
+  // instead of a form to submit its own (admins only, matching who can
+  // resolve them per can_manage_finance() in sql/027); every other
+  // department gets the submit form (admin/secretary only, matching
+  // the insert policy on budget_requests).
+  if (active.key === 'finance') {
+    if (canAdminister) {
+      const financeCard = document.createElement('div');
+      financeCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
+      financeCard.innerHTML = `<h2 class="text-lg font-semibold mb-4">${t('finance.inboxTitle')}</h2><div data-el="inbox"></div>`;
+      container.appendChild(financeCard);
+      renderBudgetRequestsInbox(financeCard.querySelector('[data-el="inbox"]'), { supabase, adminUserId: user.id });
+    }
+  } else if (active.role === 'admin' || active.role === 'secretary' || active.role === 'super_admin') {
+    const budgetCard = document.createElement('div');
+    budgetCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
+    container.appendChild(budgetCard);
+    renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
   }
 
   const announcementsCard = document.createElement('div');
