@@ -5,7 +5,7 @@ import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderEcodemBoard } from './components/ecodemBoard.js';
 import { renderUserManager } from './components/userManager.js';
-import { renderBudgetRequestForm } from './components/budgetRequests.js';
+import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderEcodemTab() {
@@ -53,10 +53,14 @@ export async function renderEcodemTab() {
     });
   }
 
-  const budgetCard = document.createElement('div');
-  budgetCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
-  container.appendChild(budgetCard);
-  renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
+  const budgetBtn = document.createElement('button');
+  budgetBtn.type = 'button';
+  budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+  budgetBtn.textContent = t('finance.requestFunds');
+  container.appendChild(budgetBtn);
+  budgetBtn.addEventListener('click', () => {
+    createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
+  });
 
   const boardEl = document.createElement('div');
   container.appendChild(boardEl);

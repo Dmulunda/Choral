@@ -3,7 +3,7 @@
 import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDashboard } from './components/dashboardOverview.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
-import { renderBudgetRequestForm } from './components/budgetRequests.js';
+import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -32,10 +32,14 @@ export async function renderDashboardTab() {
     isGlobalPoster: isGlobalAnnouncer(active.role),
   });
 
-  const budgetCard = document.createElement('div');
-  budgetCard.className = `${cardClass} mb-6`;
-  container.appendChild(budgetCard);
-  renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
+  const budgetBtn = document.createElement('button');
+  budgetBtn.type = 'button';
+  budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+  budgetBtn.textContent = t('finance.requestFunds');
+  container.appendChild(budgetBtn);
+  budgetBtn.addEventListener('click', () => {
+    createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
+  });
 
   const dashboardEl = document.createElement('div');
   container.appendChild(dashboardEl);

@@ -7,7 +7,7 @@ import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlob
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderUserManager } from './components/userManager.js';
-import { renderBudgetRequestForm, renderBudgetRequestsInbox } from './components/budgetRequests.js';
+import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderDeptDashboardTab() {
@@ -52,17 +52,24 @@ export async function renderDeptDashboardTab() {
   // just admins/secretary (sql/028's insert policy matches).
   if (active.key === 'finance') {
     if (canAdminister) {
-      const financeCard = document.createElement('div');
-      financeCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
-      financeCard.innerHTML = `<h2 class="text-lg font-semibold mb-4">${t('finance.inboxTitle')}</h2><div data-el="inbox"></div>`;
-      container.appendChild(financeCard);
-      renderBudgetRequestsInbox(financeCard.querySelector('[data-el="inbox"]'), { supabase, adminUserId: user.id });
+      const inboxBtn = document.createElement('button');
+      inboxBtn.type = 'button';
+      inboxBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+      inboxBtn.textContent = t('finance.inboxTitle');
+      container.appendChild(inboxBtn);
+      inboxBtn.addEventListener('click', () => {
+        createBudgetRequestsInboxModal({ supabase, adminUserId: user.id }).open();
+      });
     }
   } else {
-    const budgetCard = document.createElement('div');
-    budgetCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
-    container.appendChild(budgetCard);
-    renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
+    const budgetBtn = document.createElement('button');
+    budgetBtn.type = 'button';
+    budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+    budgetBtn.textContent = t('finance.requestFunds');
+    container.appendChild(budgetBtn);
+    budgetBtn.addEventListener('click', () => {
+      createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
+    });
   }
 
   const announcementsCard = document.createElement('div');

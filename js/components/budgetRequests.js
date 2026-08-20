@@ -1,10 +1,12 @@
 // Finance budget/financial requests, open to any approved member of a
 // department (not admin-only — see the insert policy in sql/028), for
-// a specific budget month. renderBudgetRequestForm is mounted on every
-// other department's dashboard; Finance's own admins — plus every
-// church-wide role, via can_manage_finance() in sql/027 — review and
-// approve/reject them from within Finance's own department page
-// (renderBudgetRequestsInbox).
+// a specific budget month. Both the submit form and Finance's review
+// board are pop-up modals (same createXModal({ ... }) => { open } shape
+// as every other modal in this app) — a button on the dashboard opens
+// them, so they don't take up permanent space when not in use.
+// createBudgetRequestModal is mounted on every department's dashboard;
+// createBudgetRequestsInboxModal is Finance's own — admins only (plus
+// every church-wide role, via can_manage_finance() in sql/027).
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 
@@ -13,9 +15,70 @@ function currentMonthValue() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function renderBudgetRequestForm(container, { supabase, departmentId, currentUserId }) {
+export function createBudgetRequestModal({ supabase, departmentId, currentUserId }) {
+  const root = document.createElement('div');
+  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">${t('finance.requestFunds')}</h2>
+        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div data-el="body"></div>
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
+  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+
+  function open() {
+    root.classList.remove('hidden');
+    root.classList.add('flex');
+    renderFormBody(root.querySelector('[data-el="body"]'), { supabase, departmentId, currentUserId });
+  }
+
+  function close() {
+    root.classList.add('hidden');
+    root.classList.remove('flex');
+  }
+
+  return { open };
+}
+
+export function createBudgetRequestsInboxModal({ supabase, adminUserId }) {
+  const root = document.createElement('div');
+  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">${t('finance.inboxTitle')}</h2>
+        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div data-el="body"></div>
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
+  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+
+  function open() {
+    root.classList.remove('hidden');
+    root.classList.add('flex');
+    renderInboxBody(root.querySelector('[data-el="body"]'), { supabase, adminUserId });
+  }
+
+  function close() {
+    root.classList.add('hidden');
+    root.classList.remove('flex');
+  }
+
+  return { open };
+}
+
+function renderFormBody(container, { supabase, departmentId, currentUserId }) {
   container.innerHTML = `
-    <h2 class="text-lg font-semibold mb-4">${t('finance.requestTitle')}</h2>
     <form data-el="form" class="space-y-3 mb-6 pb-6 border-b border-slate-200">
       <div>
         <label class="block text-sm font-medium text-slate-600 mb-1">${t('finance.titleLabel')}</label>
@@ -119,7 +182,7 @@ export function renderBudgetRequestForm(container, { supabase, departmentId, cur
   }
 }
 
-export function renderBudgetRequestsInbox(container, { supabase, adminUserId }) {
+function renderInboxBody(container, { supabase, adminUserId }) {
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
   load();
 
