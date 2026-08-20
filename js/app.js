@@ -24,6 +24,9 @@ import {
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
 } from './departments.js';
+import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
+
+registerServiceWorker();
 
 const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
@@ -357,6 +360,7 @@ async function refreshInboxBadge() {
   const total = (unreadMessages || 0) + (unreadNotifications || 0);
   inboxBadgeEl.textContent = total > 9 ? '9+' : String(total);
   inboxBadgeEl.classList.toggle('hidden', total === 0);
+  setAppBadgeCount(total);
 }
 
 reportAbsenceBtn.addEventListener('click', () => {
@@ -625,6 +629,7 @@ function showAuth() {
   roleSwitcherWrapEl.classList.add('hidden');
   memberActionsWrapEl.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
+  setAppBadgeCount(0);
 }
 
 supabase.auth.getSession().then(({ data: { session }, error }) => {
