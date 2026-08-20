@@ -18,6 +18,7 @@ import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
+import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -52,6 +53,8 @@ const inboxBadgeEl = document.querySelector('#inbox-badge');
 const churchRulesBtn = document.querySelector('#church-rules-btn');
 const departmentRulesBtn = document.querySelector('#department-rules-btn');
 const departmentRulesLabelEl = document.querySelector('[data-el="department-rules-label"]');
+const monthlyReportBtn = document.querySelector('#monthly-report-btn');
+const monthlyReportLabelEl = document.querySelector('[data-el="monthly-report-label"]');
 const viewAsWrapEl = document.querySelector('#view-as-wrap');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -139,6 +142,7 @@ function applyActiveDepartment() {
 
   if (!active) {
     departmentRulesBtn.classList.add('hidden');
+    monthlyReportBtn.classList.add('hidden');
 
     if (isHomeActive()) {
       noAccessPanelEl.classList.add('hidden');
@@ -162,6 +166,8 @@ function applyActiveDepartment() {
   noAccessPanelEl.classList.add('hidden');
   departmentRulesBtn.classList.remove('hidden');
   departmentRulesLabelEl.textContent = t('sidebar.departmentRules', { department: departmentLabel(active.key) });
+  monthlyReportBtn.classList.remove('hidden');
+  monthlyReportLabelEl.textContent = t('sidebar.monthlyReport', { department: departmentLabel(active.key) });
 
   const isChoir = active.key === 'choir';
   const isLightweight = active.kind === 'lightweight';
@@ -403,6 +409,21 @@ departmentRulesBtn.addEventListener('click', () => {
     scope: { type: 'department', departmentId: active.id, departmentKey: active.key, canAdminister: active.role === 'admin' || active.role === 'super_admin' },
     currentUserId,
     title: t('rules.departmentTitle', { department: departmentLabel(active.key) }),
+  });
+  modal.open();
+  closeSidebar();
+});
+
+monthlyReportBtn.addEventListener('click', () => {
+  const active = getActiveDepartment();
+  if (!active) return;
+  const modal = createMonthlyReportModal({
+    supabase: getEffectiveSupabase(),
+    departmentId: active.id,
+    departmentKey: active.key,
+    canEdit: active.role === 'admin' || active.role === 'super_admin',
+    currentUserId,
+    title: t('monthlyReport.titleFor', { department: departmentLabel(active.key) }),
   });
   modal.open();
   closeSidebar();
