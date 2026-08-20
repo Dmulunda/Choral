@@ -467,6 +467,72 @@ function showPasswordRecovery() {
   });
 }
 
+// ---- "Still there?" prompt ----
+// A session can legitimately stay signed in indefinitely (that's the
+// point of persistSession/autoRefreshToken in supabaseClient.js) — this
+// is a periodic check-in, not a security timeout: once a week has
+// passed since this *device* first signed in, ask whether to keep
+// going here or sign out of every device. Tracked per-device via
+// localStorage (mirrors i18n.js's pattern), independent of the actual
+// Supabase token lifetime, since auto-refresh keeps renewing the token
+// itself and would otherwise make "when did this device first sign in"
+// impossible to recover from the session object alone.
+const SESSION_STARTED_KEY = 'choir-hub-session-started-at';
+const SESSION_CHECK_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function markSessionStart() {
+  localStorage.setItem(SESSION_STARTED_KEY, String(Date.now()));
+}
+
+function checkSessionAge() {
+  if (document.querySelector('#stay-connected-prompt')) return;
+
+  const stored = localStorage.getItem(SESSION_STARTED_KEY);
+  if (!stored) {
+    // No baseline (e.g. this device signed in before this feature
+    // existed) — start counting from today rather than never asking.
+    markSessionStart();
+    return;
+  }
+  if (Date.now() - Number(stored) >= SESSION_CHECK_AGE_MS) {
+    showStayConnectedPrompt();
+  }
+}
+
+function showStayConnectedPrompt() {
+  const root = document.createElement('div');
+  root.id = 'stay-connected-prompt';
+  root.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+      <h2 class="text-lg font-bold mb-2 text-[#0B1F3A]">${t('session.stayConnectedTitle')}</h2>
+      <p class="text-sm text-slate-600 mb-6">${t('session.stayConnectedMessage')}</p>
+      <div class="flex flex-col gap-2">
+        <button type="button" data-action="stay" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('session.stayConnected')}
+        </button>
+        <button type="button" data-action="signout-all" class="px-4 py-2 rounded-lg text-rose-600 hover:bg-rose-50 font-medium">
+          ${t('session.signOutEverywhere')}
+        </button>
+      </div>
+    </div>
+  `;
+  // Deliberately no backdrop-click-to-dismiss — this needs an explicit
+  // answer rather than being able to tap away from it by accident.
+  document.body.appendChild(root);
+
+  root.querySelector('[data-action="stay"]').addEventListener('click', () => {
+    markSessionStart();
+    root.remove();
+  });
+
+  root.querySelector('[data-action="signout-all"]').addEventListener('click', async () => {
+    localStorage.removeItem(SESSION_STARTED_KEY);
+    root.remove();
+    await supabase.auth.signOut({ scope: 'global' });
+  });
+}
+
 async function showApp(session, { isFreshSignIn = false } = {}) {
   if (isRecovering) return;
 
@@ -495,6 +561,8 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // "upon login" per the routing requirement, not "on every page load."
   // setActingAsStandardUser(false) also calls goHome() internally.
   if (isFreshSignIn && getGlobalRole()) setActingAsStandardUser(false);
+
+  if (isFreshSignIn) markSessionStart(); else checkSessionAge();
 
   populateDepartmentSwitcher();
   applyActiveDepartment();
@@ -531,6 +599,8 @@ function showAuth() {
   currentUserId = null;
   isRecovering = false;
   stopViewAs();
+  localStorage.removeItem(SESSION_STARTED_KEY);
+  document.querySelector('#stay-connected-prompt')?.remove();
   passwordRecoveryEl.classList.add('hidden');
   appShellEl.classList.add('hidden');
   authScreenEl.classList.remove('hidden');

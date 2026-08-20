@@ -24,6 +24,11 @@ const TRANSLATIONS = {
     'sidebar.department': 'Department',
     'sidebar.viewAs': 'View As…',
 
+    'session.stayConnectedTitle': 'Still there?',
+    'session.stayConnectedMessage': "You've been signed in on this device for over a week. Stay connected here, or sign out of every device you're signed in on?",
+    'session.stayConnected': 'Stay Connected',
+    'session.signOutEverywhere': 'Sign Out of All Devices',
+
     'viewAs.title': 'View As User',
     'viewAs.intro': 'Preview the app exactly as this member sees it. All actions are read-only while previewing.',
     'viewAs.searchPlaceholder': 'Search by name or email…',
@@ -628,6 +633,11 @@ const TRANSLATIONS = {
     'sidebar.language': 'Langue',
     'sidebar.department': 'Département',
     'sidebar.viewAs': 'Voir en tant que…',
+
+    'session.stayConnectedTitle': 'Toujours là ?',
+    'session.stayConnectedMessage': "Vous êtes connecté(e) sur cet appareil depuis plus d'une semaine. Voulez-vous rester connecté(e) ici, ou vous déconnecter de tous les appareils ?",
+    'session.stayConnected': 'Rester connecté(e)',
+    'session.signOutEverywhere': 'Se déconnecter de tous les appareils',
 
     'viewAs.title': 'Voir en tant que membre',
     'viewAs.intro': "Prévisualisez l'application exactement comme ce membre la voit. Toutes les actions sont en lecture seule pendant la prévisualisation.",
