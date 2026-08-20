@@ -17,6 +17,7 @@ import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createInboxModal } from './components/inboxModal.js';
+import { createRulesModal } from './components/rulesModal.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -48,6 +49,9 @@ const memberActionsWrapEl = document.querySelector('#member-actions-wrap');
 const reportAbsenceBtn = document.querySelector('#report-absence-btn');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
+const churchRulesBtn = document.querySelector('#church-rules-btn');
+const departmentRulesBtn = document.querySelector('#department-rules-btn');
+const departmentRulesLabelEl = document.querySelector('[data-el="department-rules-label"]');
 const viewAsWrapEl = document.querySelector('#view-as-wrap');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -134,6 +138,8 @@ function applyActiveDepartment() {
   globalNavGroupEl.classList.toggle('hidden', !hasGlobalReach());
 
   if (!active) {
+    departmentRulesBtn.classList.add('hidden');
+
     if (isHomeActive()) {
       noAccessPanelEl.classList.add('hidden');
       choirNavGroupEl.classList.add('hidden');
@@ -154,6 +160,8 @@ function applyActiveDepartment() {
   }
 
   noAccessPanelEl.classList.add('hidden');
+  departmentRulesBtn.classList.remove('hidden');
+  departmentRulesLabelEl.textContent = t('sidebar.departmentRules', { department: departmentLabel(active.key) });
 
   const isChoir = active.key === 'choir';
   const isLightweight = active.kind === 'lightweight';
@@ -372,6 +380,30 @@ reportAbsenceBtn.addEventListener('click', () => {
 inboxBtn.addEventListener('click', () => {
   const inboxUserId = getViewAsTarget()?.id || currentUserId;
   const modal = createInboxModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId, onRead: refreshInboxBadge });
+  modal.open();
+  closeSidebar();
+});
+
+churchRulesBtn.addEventListener('click', () => {
+  const modal = createRulesModal({
+    supabase: getEffectiveSupabase(),
+    scope: { type: 'church', canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin' },
+    currentUserId,
+    title: t('rules.churchTitle'),
+  });
+  modal.open();
+  closeSidebar();
+});
+
+departmentRulesBtn.addEventListener('click', () => {
+  const active = getActiveDepartment();
+  if (!active) return;
+  const modal = createRulesModal({
+    supabase: getEffectiveSupabase(),
+    scope: { type: 'department', departmentId: active.id, departmentKey: active.key, canAdminister: active.role === 'admin' || active.role === 'super_admin' },
+    currentUserId,
+    title: t('rules.departmentTitle', { department: departmentLabel(active.key) }),
+  });
   modal.open();
   closeSidebar();
 });

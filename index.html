@@ -170,6 +170,15 @@
         </div>
       </nav>
 
+      <!-- Visible to every signed-in user regardless of department
+           access — the central church-wide document. -->
+      <div class="px-6 py-3 border-t border-slate-800">
+        <button type="button" id="church-rules-btn" data-i18n="sidebar.churchRules"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium text-[#D4AF37] transition-colors hover:bg-slate-800">
+          Church Rules & Regulations
+        </button>
+      </div>
+
       <!-- Available to any signed-in member of at least one department —
            not tied to which department is active. -->
       <div id="member-actions-wrap" class="hidden px-6 py-3 border-t border-slate-800 space-y-1">
@@ -181,6 +190,9 @@
                 class="w-full flex items-center justify-between px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
           <span data-i18n="sidebar.inbox">Inbox</span>
           <span id="inbox-badge" class="hidden ml-2 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-xs font-semibold"></span>
+        </button>
+        <button type="button" id="department-rules-btn" class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          <span data-el="department-rules-label"></span>
         </button>
       </div>
 
