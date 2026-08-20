@@ -15,7 +15,7 @@
 import { createUserCreatorModal } from './userCreatorModal.js';
 import { createUserEditModal } from './userEditModal.js';
 import { confirmDialog } from './confirmDialog.js';
-import { isViewingAs } from '../departments.js';
+import { isViewingAs, getGlobalRole } from '../departments.js';
 import { t, voicePartLabel, roleLabel } from '../i18n.js';
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
@@ -26,6 +26,10 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   let searchQuery = '';
   let showEmail = true;
   let showPhone = true;
+  let departmentFilter = '';
+  let sortBy = 'name';
+  const isGlobalScope = scope.type === 'global';
+  const isSuperAdmin = getGlobalRole() === 'super_admin';
 
   const addUserBtn = isViewingAs() ? '' : `
     <button type="button" data-action="add-user"
@@ -33,12 +37,26 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       ${t('users.addUser')}
     </button>`;
 
+  const filterSortControls = isGlobalScope ? `
+    <div class="flex flex-wrap items-center gap-3 mb-3">
+      <select data-el="department-filter" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+        <option value="">${t('users.allDepartments')}</option>
+        <option value="__none__">${t('users.noDepartment')}</option>
+      </select>
+      <select data-el="sort-by" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+        <option value="name">${t('users.sortByName')}</option>
+        <option value="accessLevel">${t('users.sortByAccessLevel')}</option>
+        <option value="departmentCount">${t('users.sortByDepartmentCount')}</option>
+      </select>
+    </div>` : '';
+
   container.innerHTML = `
     <div class="flex flex-wrap items-center gap-3 mb-4">
       <input type="search" data-el="search" placeholder="${t('users.searchPlaceholder')}"
              class="flex-1 min-w-[200px] border border-slate-300 rounded-lg px-3 py-2 text-sm" />
       ${addUserBtn}
     </div>
+    ${filterSortControls}
     <div class="flex flex-wrap items-center gap-4 mb-3 text-sm text-slate-500">
       <span>${t('users.columns')}</span>
       <label class="flex items-center gap-1.5"><input type="checkbox" data-el="toggle-email" checked /> ${t('users.showEmail')}</label>
@@ -51,12 +69,16 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   const searchEl = container.querySelector('[data-el="search"]');
   const toggleEmailEl = container.querySelector('[data-el="toggle-email"]');
   const togglePhoneEl = container.querySelector('[data-el="toggle-phone"]');
+  const departmentFilterEl = container.querySelector('[data-el="department-filter"]');
+  const sortByEl = container.querySelector('[data-el="sort-by"]');
   const statusEl = container.querySelector('[data-el="status"]');
   const viewEl = container.querySelector('[data-el="view"]');
 
   searchEl.addEventListener('input', () => { searchQuery = searchEl.value.trim().toLowerCase(); renderTable(); });
   toggleEmailEl.addEventListener('change', () => { showEmail = toggleEmailEl.checked; renderTable(); });
   togglePhoneEl.addEventListener('change', () => { showPhone = togglePhoneEl.checked; renderTable(); });
+  departmentFilterEl?.addEventListener('change', () => { departmentFilter = departmentFilterEl.value; renderTable(); });
+  sortByEl?.addEventListener('change', () => { sortBy = sortByEl.value; renderTable(); });
 
   const editModal = createUserEditModal({ supabase, currentUserId, onSaved: loadUsers });
 
@@ -98,7 +120,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, global_role, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 
@@ -109,10 +131,12 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       }
 
       const byUser = new Map();
+      const departmentOptions = new Map();
       (memberships || []).forEach((m) => {
         if (!m.departments) return;
         if (!byUser.has(m.user_id)) byUser.set(m.user_id, []);
-        byUser.get(m.user_id).push({ name: m.departments.name, role: m.role });
+        byUser.get(m.user_id).push({ key: m.departments.key, name: m.departments.name, role: m.role });
+        departmentOptions.set(m.departments.key, m.departments.name);
       });
 
       rows = (profiles || []).map((p) => ({
@@ -121,8 +145,23 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         phone: p.phone,
         email: p.profile_emails?.email,
         globalRole: p.global_role,
+        removedAt: p.removed_at,
         departments: byUser.get(p.id) || [],
       }));
+
+      if (departmentFilterEl) {
+        const currentValue = departmentFilterEl.value;
+        const optionsHtml = Array.from(departmentOptions.entries())
+          .sort((a, b) => a[1].localeCompare(b[1]))
+          .map(([key, name]) => `<option value="${escapeHtml(key)}">${escapeHtml(name)}</option>`)
+          .join('');
+        departmentFilterEl.innerHTML = `
+          <option value="">${t('users.allDepartments')}</option>
+          <option value="__none__">${t('users.noDepartment')}</option>
+          ${optionsHtml}
+        `;
+        departmentFilterEl.value = currentValue;
+      }
     }
 
     statusEl.textContent = '';
@@ -130,9 +169,21 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   }
 
   function renderTable() {
-    const filtered = searchQuery
+    let filtered = searchQuery
       ? rows.filter((r) => r.full_name.toLowerCase().includes(searchQuery) || (r.email || '').toLowerCase().includes(searchQuery))
       : rows;
+
+    if (isGlobalScope && departmentFilter) {
+      filtered = departmentFilter === '__none__'
+        ? filtered.filter((r) => r.departments.length === 0)
+        : filtered.filter((r) => r.departments.some((d) => d.key === departmentFilter));
+    }
+
+    if (isGlobalScope && sortBy === 'accessLevel') {
+      filtered = [...filtered].sort((a, b) => (a.globalRole || '').localeCompare(b.globalRole || '') || a.full_name.localeCompare(b.full_name));
+    } else if (isGlobalScope && sortBy === 'departmentCount') {
+      filtered = [...filtered].sort((a, b) => b.departments.length - a.departments.length || a.full_name.localeCompare(b.full_name));
+    }
 
     if (filtered.length === 0) {
       viewEl.innerHTML = `<p class="p-4 text-slate-500">${t('users.noUsers')}</p>`;
@@ -179,6 +230,12 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       nameBtn.textContent = row.full_name;
       nameBtn.addEventListener('click', openEdit);
       nameCell.appendChild(nameBtn);
+      if (isGlobal && row.removedAt) {
+        const removedBadge = document.createElement('span');
+        removedBadge.className = 'ml-2 inline-block px-2 py-0.5 rounded-full text-xs bg-rose-100 text-rose-700 align-middle';
+        removedBadge.textContent = t('users.removedBadge');
+        nameCell.appendChild(removedBadge);
+      }
       tr.appendChild(nameCell);
 
       if (showEmail) {
@@ -252,6 +309,24 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         actionsCell.appendChild(resetBtn);
       }
 
+      if (isGlobal && isSuperAdmin && row.id !== currentUserId) {
+        if (row.removedAt) {
+          const reinstateBtn = document.createElement('button');
+          reinstateBtn.type = 'button';
+          reinstateBtn.className = 'text-sm font-medium text-emerald-600 hover:text-emerald-800 whitespace-nowrap block';
+          reinstateBtn.textContent = t('users.reinstate');
+          reinstateBtn.addEventListener('click', () => reinstateUser(row));
+          actionsCell.appendChild(reinstateBtn);
+        } else {
+          const removeChurchBtn = document.createElement('button');
+          removeChurchBtn.type = 'button';
+          removeChurchBtn.className = 'text-sm font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap block';
+          removeChurchBtn.textContent = t('users.removeFromChurch');
+          removeChurchBtn.addEventListener('click', () => removeFromChurch(row));
+          actionsCell.appendChild(removeChurchBtn);
+        }
+      }
+
       if (scope.type === 'department') {
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
@@ -303,6 +378,40 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     }
     rows = rows.filter((r) => r.id !== row.id);
     renderTable();
+  }
+
+  async function removeFromChurch(row) {
+    const confirmed = await confirmDialog({
+      title: t('users.confirmRemoveChurchTitle'),
+      message: t('users.confirmRemoveChurch', { name: row.full_name }),
+      confirmLabel: t('users.removeFromChurch'),
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    const { error } = await supabase.rpc('remove_user_from_church', { target_user_id: row.id });
+    if (error) {
+      window.alert(t('users.removeFailed', { message: error.message }));
+      return;
+    }
+    loadUsers();
+  }
+
+  async function reinstateUser(row) {
+    const confirmed = await confirmDialog({
+      title: t('users.confirmReinstateTitle'),
+      message: t('users.confirmReinstate', { name: row.full_name }),
+      confirmLabel: t('users.reinstate'),
+      danger: false,
+    });
+    if (!confirmed) return;
+
+    const { error } = await supabase.rpc('reinstate_user', { target_user_id: row.id });
+    if (error) {
+      window.alert(t('users.removeFailed', { message: error.message }));
+      return;
+    }
+    loadUsers();
   }
 
   async function sendPasswordReset(row, button) {

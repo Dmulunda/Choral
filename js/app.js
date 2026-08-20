@@ -549,9 +549,22 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, role')
+    .select('full_name, role, removed_at')
     .eq('id', session.user.id)
     .single();
+
+  // Someone a Super Admin removed from the church entirely (see
+  // remove_user_from_church in sql/030) keeps their profiles row and
+  // Supabase Auth account (avoids cascade-deleting content they authored),
+  // but must be blocked from the app itself — this is the client-side
+  // half of that gate.
+  if (profile?.removed_at) {
+    appShellEl.classList.add('hidden');
+    window.alert(t('auth.accountRemoved'));
+    await supabase.auth.signOut({ scope: 'global' });
+    return;
+  }
+
   currentUserNameEl.textContent = profile?.full_name || session.user.email;
 
   await loadMyDepartments(session.user.id);
