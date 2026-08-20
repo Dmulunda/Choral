@@ -10,7 +10,20 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const SUPABASE_URL = 'https://ezrwmplohjvttwosqvrn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6cndtcGxvaGp2dHR3b3NxdnJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MzkxMjksImV4cCI6MjEwMjQxNTEyOX0.YzGP5gfb0GhGNGRylK4g_lBH4-mERiOmClqCQ_UrO_M';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// persistSession/autoRefreshToken are already the library defaults —
+// spelled out explicitly here so "stay signed in on this device" is a
+// deliberate choice, not an accident of whatever @supabase/supabase-js
+// happens to default to. The actual "how many days without opening the
+// app before you're signed out" ceiling is a Supabase *project* setting
+// (Dashboard → Authentication → Sessions → "Time-box user sessions" /
+// refresh token expiry), not something this client config controls.
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
 
 // A throwaway client for actions that must not touch the signed-in user's
 // own session — e.g. an admin creating a new member's account via signUp(),

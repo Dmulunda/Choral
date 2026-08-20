@@ -20,7 +20,7 @@ export function renderPasswordRecovery(container, { supabase, onDone }) {
           <form data-el="form" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.newPassword')}</label>
-              <input type="password" name="password" required minlength="6"
+              <input type="password" name="password" required minlength="6" autocomplete="new-password"
                      class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
             </div>
 

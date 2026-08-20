@@ -30,7 +30,7 @@ export function renderAuthScreen(container, { supabase }) {
             <form data-el="form" class="space-y-4">
               <div data-el="full-name-field" class="hidden">
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.fullName')}</label>
-                <input type="text" name="full_name" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+                <input type="text" name="full_name" autocomplete="name" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
               </div>
 
               <div data-el="departments-field" class="hidden">
@@ -47,11 +47,11 @@ export function renderAuthScreen(container, { supabase }) {
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.email')}</label>
-                <input type="email" name="email" required class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+                <input type="email" name="email" required autocomplete="username" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.password')}</label>
-                <input type="password" name="password" required minlength="6"
+                <input type="password" name="password" required minlength="6" autocomplete="current-password"
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
               </div>
 
@@ -77,7 +77,7 @@ export function renderAuthScreen(container, { supabase }) {
             <form data-el="forgot-form" class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.email')}</label>
-                <input type="email" name="email" required class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+                <input type="email" name="email" required autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
               </div>
 
               <p data-el="forgot-status" class="text-sm"></p>
@@ -124,6 +124,14 @@ export function renderAuthScreen(container, { supabase }) {
     departmentsField.classList.toggle('hidden', mode !== 'signup');
     submitBtn.textContent = mode === 'signup' ? t('auth.createAccount') : t('auth.signIn');
     container.querySelector('[data-el="forgot-link"]').classList.toggle('hidden', mode !== 'login');
+    // The email/password fields are shared between both modes, so the
+    // autocomplete hint has to switch too — "current-password" tells a
+    // mobile browser's password manager to offer a saved credential,
+    // "new-password" tells it to offer generating/saving a fresh one.
+    // Getting this wrong is a common reason autofill/"remember me"
+    // silently doesn't work on phones even though it works on desktop.
+    form.elements.email.autocomplete = mode === 'signup' ? 'email' : 'username';
+    form.elements.password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
     statusEl.textContent = '';
   }
 
