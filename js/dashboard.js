@@ -32,14 +32,16 @@ export async function renderDashboardTab() {
     isGlobalPoster: isGlobalAnnouncer(active.role),
   });
 
-  const budgetBtn = document.createElement('button');
-  budgetBtn.type = 'button';
-  budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-  budgetBtn.textContent = t('finance.requestFunds');
-  container.appendChild(budgetBtn);
-  budgetBtn.addEventListener('click', () => {
-    createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
-  });
+  if (active.role === 'admin' || active.role === 'super_admin') {
+    const budgetBtn = document.createElement('button');
+    budgetBtn.type = 'button';
+    budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+    budgetBtn.textContent = t('finance.requestFunds');
+    container.appendChild(budgetBtn);
+    budgetBtn.addEventListener('click', () => {
+      createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
+    });
+  }
 
   const dashboardEl = document.createElement('div');
   container.appendChild(dashboardEl);

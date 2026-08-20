@@ -1,6 +1,9 @@
-// Finance budget/financial requests, open to any approved member of a
-// department (not admin-only — see the insert policy in sql/028), for
-// a specific budget month. Both the submit form and Finance's review
+// Finance budget/financial requests, for a specific budget month.
+// Submitting is department-admin-only (can_write_department(), the
+// insert policy in sql/029 — briefly opened to any approved member in
+// sql/028, reverted after feedback) and the UI mirrors that: the
+// "Request Funds" button itself is admin-gated on every department
+// page, not just the RLS. Both the submit form and Finance's review
 // board are pop-up modals (same createXModal({ ... }) => { open } shape
 // as every other modal in this app) — a button on the dashboard opens
 // them, so they don't take up permanent space when not in use.

@@ -46,10 +46,8 @@ export async function renderDeptDashboardTab() {
   }
 
   // Finance sees the incoming requests from every other department
-  // instead of a form to submit its own (admins only, matching who can
-  // resolve them per can_manage_finance() in sql/027); every other
-  // department gets the submit form — open to any approved member, not
-  // just admins/secretary (sql/028's insert policy matches).
+  // instead of a form to submit its own; both are admin-only (sql/029's
+  // insert policy is back to can_write_department()).
   if (active.key === 'finance') {
     if (canAdminister) {
       const inboxBtn = document.createElement('button');
@@ -61,7 +59,7 @@ export async function renderDeptDashboardTab() {
         createBudgetRequestsInboxModal({ supabase, adminUserId: user.id }).open();
       });
     }
-  } else {
+  } else if (canAdminister) {
     const budgetBtn = document.createElement('button');
     budgetBtn.type = 'button';
     budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
