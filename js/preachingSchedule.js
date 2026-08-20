@@ -5,6 +5,7 @@ import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderPreachingSchedule } from './components/preachingScheduleBoard.js';
 import { renderUserManager } from './components/userManager.js';
+import { renderBudgetRequestForm } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderPreachingTab() {
@@ -51,6 +52,11 @@ export async function renderPreachingTab() {
       currentUserId: user.id,
     });
   }
+
+  const budgetCard = document.createElement('div');
+  budgetCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
+  container.appendChild(budgetCard);
+  renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
 
   const scheduleEl = document.createElement('div');
   container.appendChild(scheduleEl);

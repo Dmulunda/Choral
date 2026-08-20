@@ -1,11 +1,17 @@
-// Finance budget/financial requests: a department's admin or secretary
-// submits one (renderBudgetRequestForm, mounted on every other
-// lightweight department's dashboard); Finance's own admins — plus
-// every church-wide role, via can_manage_finance() in sql/027 — review
-// and approve/reject them from within Finance's own department page
+// Finance budget/financial requests, open to any approved member of a
+// department (not admin-only — see the insert policy in sql/028), for
+// a specific budget month. renderBudgetRequestForm is mounted on every
+// other department's dashboard; Finance's own admins — plus every
+// church-wide role, via can_manage_finance() in sql/027 — review and
+// approve/reject them from within Finance's own department page
 // (renderBudgetRequestsInbox).
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
 
 export function renderBudgetRequestForm(container, { supabase, departmentId, currentUserId }) {
   container.innerHTML = `
@@ -14,6 +20,11 @@ export function renderBudgetRequestForm(container, { supabase, departmentId, cur
       <div>
         <label class="block text-sm font-medium text-slate-600 mb-1">${t('finance.titleLabel')}</label>
         <input type="text" name="title" required placeholder="${t('finance.titlePlaceholder')}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">${t('finance.monthLabel')}</label>
+        <input type="month" name="request_month" required value="${currentMonthValue()}"
                class="w-full border border-slate-300 rounded-lg px-3 py-2" />
       </div>
       <div>
@@ -44,9 +55,10 @@ export function renderBudgetRequestForm(container, { supabase, departmentId, cur
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const title = form.elements.title.value.trim();
+    const requestMonth = form.elements.request_month.value;
     const amount = form.elements.amount.value ? Number(form.elements.amount.value) : null;
     const description = form.elements.description.value.trim() || null;
-    if (!title) return;
+    if (!title || !requestMonth) return;
 
     if (!(await confirmDialog({ message: t('finance.confirmSubmit'), confirmLabel: t('finance.submit'), danger: false }))) return;
 
@@ -57,6 +69,7 @@ export function renderBudgetRequestForm(container, { supabase, departmentId, cur
       requesting_department_id: departmentId,
       requested_by: currentUserId,
       title,
+      request_month: `${requestMonth}-01`,
       amount,
       description,
     });
@@ -80,7 +93,7 @@ export function renderBudgetRequestForm(container, { supabase, departmentId, cur
 
     const { data, error } = await supabase
       .from('budget_requests')
-      .select('id, title, amount, status, created_at')
+      .select('id, title, amount, request_month, status, created_at')
       .eq('requesting_department_id', departmentId)
       .order('created_at', { ascending: false });
 
@@ -98,7 +111,7 @@ export function renderBudgetRequestForm(container, { supabase, departmentId, cur
       <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3">
         <div>
           <div class="font-medium text-slate-800">${escapeHtml(r.title)}${r.amount ? ` — ${formatAmount(r.amount)}` : ''}</div>
-          <div class="text-xs text-slate-400">${escapeHtml(r.created_at.slice(0, 10))}</div>
+          <div class="text-xs text-slate-400">${formatMonth(r.request_month)} · ${escapeHtml(r.created_at.slice(0, 10))}</div>
         </div>
         ${statusBadge(r.status)}
       </div>
@@ -113,7 +126,7 @@ export function renderBudgetRequestsInbox(container, { supabase, adminUserId }) 
   async function load() {
     const { data, error } = await supabase
       .from('budget_requests')
-      .select('id, title, amount, description, status, created_at, requester:profiles!requested_by ( full_name ), departments ( key )')
+      .select('id, title, amount, description, request_month, status, created_at, requester:profiles!requested_by ( full_name ), departments ( key )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -133,7 +146,7 @@ export function renderBudgetRequestsInbox(container, { supabase, adminUserId }) 
           ${statusBadge(r.status)}
         </div>
         <div class="text-xs text-slate-500 mt-1">
-          ${t('finance.requestedBy')}: ${escapeHtml(r.requester?.full_name || '')} · ${r.departments ? departmentLabel(r.departments.key) : ''} · ${escapeHtml(r.created_at.slice(0, 10))}
+          ${t('finance.requestedBy')}: ${escapeHtml(r.requester?.full_name || '')} · ${r.departments ? departmentLabel(r.departments.key) : ''} · ${formatMonth(r.request_month)} · ${escapeHtml(r.created_at.slice(0, 10))}
         </div>
         ${r.description ? `<p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap">${escapeHtml(r.description)}</p>` : ''}
         ${r.status === 'pending' ? `
@@ -180,6 +193,13 @@ function statusBadge(status) {
 
 function formatAmount(amount) {
   return '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatMonth(dateStr) {
+  if (!dateStr) return '';
+  const [year, month] = dateStr.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
 }
 
 function escapeHtml(str) {

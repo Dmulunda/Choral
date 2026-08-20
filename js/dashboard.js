@@ -3,6 +3,7 @@
 import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDashboard } from './components/dashboardOverview.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
+import { renderBudgetRequestForm } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -30,6 +31,11 @@ export async function renderDashboardTab() {
     canPost: canPostAnnouncements(active.role),
     isGlobalPoster: isGlobalAnnouncer(active.role),
   });
+
+  const budgetCard = document.createElement('div');
+  budgetCard.className = `${cardClass} mb-6`;
+  container.appendChild(budgetCard);
+  renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
 
   const dashboardEl = document.createElement('div');
   container.appendChild(dashboardEl);

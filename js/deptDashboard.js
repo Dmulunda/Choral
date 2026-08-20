@@ -48,8 +48,8 @@ export async function renderDeptDashboardTab() {
   // Finance sees the incoming requests from every other department
   // instead of a form to submit its own (admins only, matching who can
   // resolve them per can_manage_finance() in sql/027); every other
-  // department gets the submit form (admin/secretary only, matching
-  // the insert policy on budget_requests).
+  // department gets the submit form — open to any approved member, not
+  // just admins/secretary (sql/028's insert policy matches).
   if (active.key === 'finance') {
     if (canAdminister) {
       const financeCard = document.createElement('div');
@@ -58,7 +58,7 @@ export async function renderDeptDashboardTab() {
       container.appendChild(financeCard);
       renderBudgetRequestsInbox(financeCard.querySelector('[data-el="inbox"]'), { supabase, adminUserId: user.id });
     }
-  } else if (active.role === 'admin' || active.role === 'secretary' || active.role === 'super_admin') {
+  } else {
     const budgetCard = document.createElement('div');
     budgetCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
     container.appendChild(budgetCard);

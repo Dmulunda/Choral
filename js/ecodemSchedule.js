@@ -5,6 +5,7 @@ import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderEcodemBoard } from './components/ecodemBoard.js';
 import { renderUserManager } from './components/userManager.js';
+import { renderBudgetRequestForm } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
 export async function renderEcodemTab() {
@@ -51,6 +52,11 @@ export async function renderEcodemTab() {
       currentUserId: user.id,
     });
   }
+
+  const budgetCard = document.createElement('div');
+  budgetCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
+  container.appendChild(budgetCard);
+  renderBudgetRequestForm(budgetCard, { supabase, departmentId: active.id, currentUserId: user.id });
 
   const boardEl = document.createElement('div');
   container.appendChild(boardEl);
