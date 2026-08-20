@@ -155,9 +155,12 @@
           </button>
         </div>
 
-        <!-- Shared nav for every "lightweight" department (Social,
-             Intercession, Cleaning, Interpreting, Ushers, Security,
-             Evangelism) — same two tabs, content scoped per-department. -->
+        <!-- Shared nav for every non-Choir department — same two tabs
+             (Dashboard/Scheduling), content scoped per-department; the
+             Scheduling tab picks a generic shift board or a bespoke one
+             (Preaching, Media & Tech, Ecodem) depending on which
+             department is active. Finance hides just the Scheduling
+             button (see applyActiveDepartment() in app.js). -->
         <div id="lightweight-nav-group" class="hidden space-y-1">
           <button data-tab-target="dept-dashboard" data-i18n="nav.dashboard"
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
@@ -289,30 +292,6 @@
       <section data-tab-panel="dept-scheduling" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-el="dept-scheduling-name"></h1>
         <div id="dept-scheduling-content">
-          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
-        </div>
-      </section>
-
-      <!-- Preaching & Moderation: single bespoke view, no sub-nav -->
-      <section data-tab-panel="preaching" class="hidden">
-        <h1 class="text-2xl font-bold mb-4" data-i18n="department.preaching">Preaching & Moderation</h1>
-        <div id="preaching-content">
-          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
-        </div>
-      </section>
-
-      <!-- Media & Tech: single bespoke view, no sub-nav -->
-      <section data-tab-panel="media-tech" class="hidden">
-        <h1 class="text-2xl font-bold mb-4" data-i18n="department.media_tech">Media & Tech</h1>
-        <div id="media-tech-content">
-          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
-        </div>
-      </section>
-
-      <!-- Ecodem: single bespoke view, no sub-nav -->
-      <section data-tab-panel="ecodem" class="hidden">
-        <h1 class="text-2xl font-bold mb-4" data-i18n="department.ecodem">Ecodem</h1>
-        <div id="ecodem-content">
           <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
         </div>
       </section>

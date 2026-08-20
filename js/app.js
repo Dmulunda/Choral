@@ -9,9 +9,6 @@ import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
-import { renderPreachingTab } from './preachingSchedule.js';
-import { renderMediaTechTab } from './mediaTechSchedule.js';
-import { renderEcodemTab } from './ecodemSchedule.js';
 import { renderSuperAdminHomeTab } from './superAdminHome.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
@@ -77,21 +74,10 @@ const lazyTabs = {
   members: renderMembersTab,
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
-  preaching: renderPreachingTab,
-  'media-tech': renderMediaTechTab,
-  ecodem: renderEcodemTab,
   'super-home': renderSuperAdminHomeTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
-
-// Bespoke departments with exactly one view (no Dashboard/Scheduling
-// split) — maps department key to its tab/panel name.
-const SINGLE_VIEW_CUSTOM_TABS = {
-  preaching: 'preaching',
-  ecodem: 'ecodem',
-  media_tech: 'media-tech',
-};
 
 function activateTab(name) {
   currentTabName = name;
@@ -170,39 +156,37 @@ function applyActiveDepartment() {
   monthlyReportLabelEl.textContent = t('sidebar.monthlyReport', { department: departmentLabel(active.key) });
 
   const isChoir = active.key === 'choir';
-  const isLightweight = active.kind === 'lightweight';
+  // Every non-Choir department shares the same Dashboard/Scheduling nav
+  // shape — "lightweight" departments (generic shift board) and
+  // "custom" ones (Preaching, Media & Tech, Ecodem — each with its own
+  // bespoke board component, picked by deptScheduling.js) alike, so
+  // every department gets Scheduling except Finance, which explicitly
+  // hides just that one tab below.
+  const isDeptDashboardKind = active.kind === 'lightweight' || active.kind === 'custom';
   choirNavGroupEl.classList.toggle('hidden', !isChoir);
-  lightweightNavGroupEl.classList.toggle('hidden', !isLightweight);
+  lightweightNavGroupEl.classList.toggle('hidden', !isDeptDashboardKind);
   membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
   // Finance keeps Dashboard but explicitly loses Scheduling — every
-  // other lightweight department gets both.
-  deptSchedulingNavBtn.classList.toggle('hidden', isLightweight && active.key === 'finance');
-
-  const singleViewTab = SINGLE_VIEW_CUSTOM_TABS[active.key];
+  // other department gets both.
+  deptSchedulingNavBtn.classList.toggle('hidden', isDeptDashboardKind && active.key === 'finance');
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     activateTab('dashboard');
-  } else if (isLightweight) {
+  } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
     deptSchedulingNameEl.textContent = departmentLabel(active.key);
-    // A different lightweight department may have been active last time
-    // these tab names were used, so force a fresh render rather than
-    // trusting the lazy-load cache.
+    // A different department may have been active last time these tab
+    // names were used, so force a fresh render rather than trusting the
+    // lazy-load cache.
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
     activateTab('dept-dashboard');
-  } else if (singleViewTab) {
-    // Bespoke single-view departments (Preaching & Moderation, Media &
-    // Tech) — each has its own tab name/panel but no sub-nav, so a fresh
-    // render is forced the same way as the lightweight tabs above.
-    comingSoonPanelEl.classList.add('hidden');
-    loadedTabs.delete(singleViewTab);
-    activateTab(singleViewTab);
   } else {
-    // "custom" departments without bespoke tooling yet (Ecodem) — its
-    // own phase replaces this branch.
+    // Unreachable today — every department kind ('choir', 'lightweight',
+    // 'custom') is handled above; kept as a fallback in case a future
+    // department kind ships without dedicated tooling yet.
     currentTabName = null;
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonDeptNameEl.textContent = departmentLabel(active.key);

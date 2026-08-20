@@ -1,8 +1,10 @@
-// Dashboard tab entry point for "lightweight" departments (Social,
-// Intercession, Cleaning, Interpreting, Ushers, Security, Evangelism):
-// pending approvals (admins only) + the announcements feed. Reads which
-// department is active from departments.js rather than taking a param,
-// since it's invoked from app.js's generic lazyTabs table.
+// Dashboard tab entry point for every non-Choir department (both
+// "lightweight" ones and the bespoke-scheduling ones — Preaching,
+// Media & Tech, Ecodem — which share this same Dashboard, just with a
+// different board on their Scheduling tab): pending approvals (admins
+// only) + the announcements feed. Reads which department is active
+// from departments.js rather than taking a param, since it's invoked
+// from app.js's generic lazyTabs table.
 import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
