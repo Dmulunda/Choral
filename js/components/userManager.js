@@ -318,6 +318,47 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   }
 }
 
+// Pop-up wrapper around renderUserManager — same createXModal({...}) =>
+// { open } shape as every other modal in this app, so a "Users" /
+// "User Directory" button can open the roster on demand instead of it
+// always taking up space on the page. Wider than most modals
+// (max-w-4xl) since the roster table has several columns.
+export function createUserManagerModal({ supabase, scope, currentUserId, title }) {
+  const root = document.createElement('div');
+  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">${title}</h2>
+        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div data-el="body"></div>
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
+  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+
+  function open() {
+    root.classList.remove('hidden');
+    root.classList.add('flex');
+    renderUserManager(root.querySelector('[data-el="body"]'), { supabase, scope, currentUserId });
+  }
+
+  function close() {
+    root.classList.add('hidden');
+    root.classList.remove('flex');
+  }
+
+  // root is exposed (unlike this app's other createXModal helpers) so a
+  // caller that re-creates this modal on every render — like Super Admin
+  // Home, which re-renders on every View-As/language/department-switch
+  // event — can remove the previous instance's DOM node first instead of
+  // silently accumulating orphaned hidden modals in the body.
+  return { open, root };
+}
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;

@@ -4,7 +4,7 @@ import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlob
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { renderMediaTechBoard } from './components/mediaTechBoard.js';
-import { renderUserManager } from './components/userManager.js';
+import { createUserManagerModal } from './components/userManager.js';
 import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { t } from './i18n.js';
 
@@ -42,14 +42,18 @@ export async function renderMediaTechTab() {
       adminUserId: user.id,
     });
 
-    const userManagerCard = document.createElement('div');
-    userManagerCard.className = 'bg-white rounded-xl shadow p-4 sm:p-6 mb-6';
-    userManagerCard.innerHTML = `<h2 class="text-lg font-semibold mb-4">${t('nav.members')}</h2><div data-el="user-manager"></div>`;
-    container.appendChild(userManagerCard);
-    renderUserManager(userManagerCard.querySelector('[data-el="user-manager"]'), {
-      supabase,
-      scope: { type: 'department', departmentId: active.id, departmentKey: active.key },
-      currentUserId: user.id,
+    const usersBtn = document.createElement('button');
+    usersBtn.type = 'button';
+    usersBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+    usersBtn.textContent = t('nav.members');
+    container.appendChild(usersBtn);
+    usersBtn.addEventListener('click', () => {
+      createUserManagerModal({
+        supabase,
+        scope: { type: 'department', departmentId: active.id, departmentKey: active.key },
+        currentUserId: user.id,
+        title: t('nav.members'),
+      }).open();
     });
   }
 

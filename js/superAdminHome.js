@@ -3,13 +3,18 @@
 // first — clickable metrics, every pending membership request across
 // every department (the actual fix for "Super Admin can't approve" —
 // the RLS already allowed it, there was just no cross-department view
-// to find them in), a per-department report table, and the full
-// cross-department User Directory. Department views only load once
-// explicitly picked from the switcher/nav.
+// to find them in), and pop-up buttons for the per-department report
+// table and the full cross-department User Directory (same pattern as
+// the budget-request/board pop-ups — nothing this heavy stays inline).
+// Department views only load once explicitly picked from the
+// switcher/nav.
 import { getEffectiveSupabase } from './departments.js';
-import { renderUserManager } from './components/userManager.js';
+import { createUserManagerModal } from './components/userManager.js';
 import { renderAllDepartmentApprovals } from './components/allDepartmentApprovals.js';
 import { t, departmentLabel } from './i18n.js';
+
+let currentDirectoryModal = null;
+let currentReportsModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -30,21 +35,37 @@ export async function renderSuperAdminHomeTab() {
       <div data-el="pending"></div>
     </div>
 
-    <div id="super-home-reports" class="bg-white rounded-xl shadow p-4 sm:p-6 mt-6">
-      <h2 class="text-lg font-semibold mb-4">${t('superHome.reportsTitle')}</h2>
-      <div data-el="reports"></div>
-    </div>
-
-    <div id="super-home-directory" class="mt-6">
-      <h2 class="text-lg font-semibold mb-4">${t('directory.title')}</h2>
-      <div data-el="directory"></div>
+    <div class="flex flex-wrap gap-3 mt-6">
+      <button type="button" data-action="open-reports" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+        ${t('superHome.reportsTitle')}
+      </button>
+      <button type="button" data-action="open-directory" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+        ${t('directory.title')}
+      </button>
     </div>
   `;
 
   renderMetrics(container.querySelector('[data-el="metrics"]'), supabase);
   renderAllDepartmentApprovals(container.querySelector('[data-el="pending"]'), { supabase, adminUserId: user.id });
-  renderDepartmentReports(container.querySelector('[data-el="reports"]'), supabase);
-  renderUserManager(container.querySelector('[data-el="directory"]'), { supabase, scope: { type: 'global' }, currentUserId: user.id });
+
+  // This tab re-renders on things unrelated to a real page navigation —
+  // View-As entry/exit, language changes, department-switcher use that
+  // lands back on Home — so the previous modal instances (and their
+  // effective-client/scope, which may now be stale) are torn down
+  // before fresh ones are built, instead of accumulating hidden orphans.
+  currentReportsModal?.root.remove();
+  currentDirectoryModal?.root.remove();
+
+  currentReportsModal = createDepartmentReportsModal({ supabase });
+  currentDirectoryModal = createUserManagerModal({
+    supabase,
+    scope: { type: 'global' },
+    currentUserId: user.id,
+    title: t('directory.title'),
+  });
+
+  container.querySelector('[data-action="open-reports"]').addEventListener('click', () => currentReportsModal.open());
+  container.querySelector('[data-action="open-directory"]').addEventListener('click', () => currentDirectoryModal.open());
 }
 
 async function renderMetrics(container, supabase) {
@@ -59,33 +80,65 @@ async function renderMetrics(container, supabase) {
 
   container.innerHTML = `
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      ${metricCardHtml('super-home-directory', userCount ?? '—', t('superHome.metricUsers'))}
+      ${metricCardHtml('directory', userCount ?? '—', t('superHome.metricUsers'))}
       ${metricCardHtml(null, departmentCount ?? '—', t('superHome.metricDepartments'))}
-      ${metricCardHtml('super-home-directory', approvedCount ?? '—', t('superHome.metricMemberships'))}
-      ${metricCardHtml('super-home-pending', pendingCount ?? '—', t('superHome.metricPending'), pendingCount > 0)}
+      ${metricCardHtml('directory', approvedCount ?? '—', t('superHome.metricMemberships'))}
+      ${metricCardHtml('pending', pendingCount ?? '—', t('superHome.metricPending'), pendingCount > 0)}
     </div>
   `;
 
-  container.querySelectorAll('[data-scroll-target]').forEach((card) => {
+  container.querySelectorAll('[data-action]').forEach((card) => {
     card.addEventListener('click', () => {
-      document.querySelector(`#${card.dataset.scrollTarget}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (card.dataset.action === 'directory') currentDirectoryModal?.open();
+      else if (card.dataset.action === 'pending') document.querySelector('#super-home-pending')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 }
 
-function metricCardHtml(scrollTargetId, value, label, highlight = false) {
-  const clickable = !!scrollTargetId;
+function metricCardHtml(action, value, label, highlight = false) {
+  const clickable = !!action;
   const tag = clickable ? 'button' : 'div';
   const typeAttr = clickable ? 'type="button"' : '';
-  const targetAttr = clickable ? `data-scroll-target="${scrollTargetId}"` : '';
+  const actionAttr = clickable ? `data-action="${action}"` : '';
   const clickableClasses = clickable ? 'hover:shadow-md transition-shadow cursor-pointer' : '';
   return `
-    <${tag} ${typeAttr} ${targetAttr}
+    <${tag} ${typeAttr} ${actionAttr}
         class="bg-white rounded-xl shadow p-4 sm:p-6 text-center w-full ${highlight ? 'ring-2 ring-amber-400' : ''} ${clickableClasses}">
       <div class="text-2xl sm:text-3xl font-bold text-[#0B1F3A]">${value}</div>
       <div class="text-xs sm:text-sm text-slate-500 mt-1">${label}</div>
     </${tag}>
   `;
+}
+
+function createDepartmentReportsModal({ supabase }) {
+  const root = document.createElement('div');
+  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">${t('superHome.reportsTitle')}</h2>
+        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div data-el="body"></div>
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
+  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+
+  function open() {
+    root.classList.remove('hidden');
+    root.classList.add('flex');
+    renderDepartmentReports(root.querySelector('[data-el="body"]'), supabase);
+  }
+
+  function close() {
+    root.classList.add('hidden');
+    root.classList.remove('flex');
+  }
+
+  return { open, root };
 }
 
 async function renderDepartmentReports(container, supabase) {

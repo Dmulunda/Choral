@@ -1,6 +1,6 @@
 // Members tab entry point: admin-only roster and role management.
 import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
-import { renderUserManager } from './components/userManager.js';
+import { createUserManagerModal } from './components/userManager.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { t } from './i18n.js';
 
@@ -38,11 +38,17 @@ export async function renderMembersTab() {
     });
   }
 
-  const userManagerEl = document.createElement('div');
-  container.appendChild(userManagerEl);
-  renderUserManager(userManagerEl, {
-    supabase,
-    scope: { type: 'department', departmentId: activeDepartment.id, departmentKey: activeDepartment.key },
-    currentUserId: user.id,
+  const usersBtn = document.createElement('button');
+  usersBtn.type = 'button';
+  usersBtn.className = 'px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+  usersBtn.textContent = t('nav.members');
+  container.appendChild(usersBtn);
+  usersBtn.addEventListener('click', () => {
+    createUserManagerModal({
+      supabase,
+      scope: { type: 'department', departmentId: activeDepartment.id, departmentKey: activeDepartment.key },
+      currentUserId: user.id,
+      title: t('nav.members'),
+    }).open();
   });
 }
