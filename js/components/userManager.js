@@ -15,8 +15,12 @@
 import { createUserCreatorModal } from './userCreatorModal.js';
 import { createUserEditModal } from './userEditModal.js';
 import { confirmDialog } from './confirmDialog.js';
+import { reassignAdminDialog } from './reassignAdminDialog.js';
 import { isViewingAs, getGlobalRole } from '../departments.js';
 import { t, voicePartLabel, roleLabel } from '../i18n.js';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DELETION_GRACE_DAYS = 60;
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
@@ -120,7 +124,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 
@@ -146,6 +150,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         email: p.profile_emails?.email,
         globalRole: p.global_role,
         removedAt: p.removed_at,
+        permanentlyDeletedAt: p.permanently_deleted_at,
         departments: byUser.get(p.id) || [],
       }));
 
@@ -230,11 +235,17 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       nameBtn.textContent = row.full_name;
       nameBtn.addEventListener('click', openEdit);
       nameCell.appendChild(nameBtn);
-      if (isGlobal && row.removedAt) {
-        const removedBadge = document.createElement('span');
-        removedBadge.className = 'ml-2 inline-block px-2 py-0.5 rounded-full text-xs bg-rose-100 text-rose-700 align-middle';
-        removedBadge.textContent = t('users.removedBadge');
-        nameCell.appendChild(removedBadge);
+      if (isGlobal && row.permanentlyDeletedAt) {
+        const badge = document.createElement('span');
+        badge.className = 'ml-2 inline-block px-2 py-0.5 rounded-full text-xs bg-slate-200 text-slate-600 align-middle';
+        badge.textContent = t('users.permanentlyDeletedBadge');
+        nameCell.appendChild(badge);
+      } else if (isGlobal && row.removedAt) {
+        const daysLeft = Math.max(0, DELETION_GRACE_DAYS - Math.floor((Date.now() - new Date(row.removedAt).getTime()) / MS_PER_DAY));
+        const badge = document.createElement('span');
+        badge.className = 'ml-2 inline-block px-2 py-0.5 rounded-full text-xs bg-rose-100 text-rose-700 align-middle';
+        badge.textContent = t('users.deletedBadge', { days: daysLeft });
+        nameCell.appendChild(badge);
       }
       tr.appendChild(nameCell);
 
@@ -309,7 +320,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         actionsCell.appendChild(resetBtn);
       }
 
-      if (isGlobal && isSuperAdmin && row.id !== currentUserId) {
+      if (isGlobal && isSuperAdmin && row.id !== currentUserId && !row.permanentlyDeletedAt) {
         if (row.removedAt) {
           const reinstateBtn = document.createElement('button');
           reinstateBtn.type = 'button';
@@ -381,13 +392,28 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   }
 
   async function removeFromChurch(row) {
-    const confirmed = await confirmDialog({
-      title: t('users.confirmRemoveChurchTitle'),
-      message: t('users.confirmRemoveChurch', { name: row.full_name }),
-      confirmLabel: t('users.removeFromChurch'),
-      danger: true,
-    });
-    if (!confirmed) return;
+    const soleAdminDepartments = await getSoleAdminDepartments(row.id);
+
+    if (soleAdminDepartments.length > 0) {
+      const result = await reassignAdminDialog({ targetName: row.full_name, departments: soleAdminDepartments });
+      if (!result) return;
+
+      for (const { departmentId, newUserId } of result.reassignments) {
+        const { error } = await supabase.rpc('reassign_department_admin', { department_id: departmentId, new_admin_user_id: newUserId });
+        if (error) {
+          window.alert(t('users.removeFailed', { message: error.message }));
+          return;
+        }
+      }
+    } else {
+      const confirmed = await confirmDialog({
+        title: t('users.confirmRemoveChurchTitle'),
+        message: t('users.confirmRemoveChurch', { name: row.full_name }),
+        confirmLabel: t('users.removeFromChurch'),
+        danger: true,
+      });
+      if (!confirmed) return;
+    }
 
     const { error } = await supabase.rpc('remove_user_from_church', { target_user_id: row.id });
     if (error) {
@@ -395,6 +421,55 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       return;
     }
     loadUsers();
+  }
+
+  // Departments where `userId` is currently the only approved admin —
+  // deleting them without reassigning first would leave the department
+  // with nobody able to manage it.
+  async function getSoleAdminDepartments(userId) {
+    const { data: targetAdminRows } = await supabase
+      .from('department_memberships')
+      .select('department_id, departments ( name )')
+      .eq('user_id', userId)
+      .eq('role', 'admin')
+      .eq('status', 'approved');
+
+    if (!targetAdminRows || targetAdminRows.length === 0) return [];
+
+    const deptIds = targetAdminRows.map((r) => r.department_id);
+    const { data: allAdmins } = await supabase
+      .from('department_memberships')
+      .select('department_id, user_id')
+      .in('department_id', deptIds)
+      .eq('role', 'admin')
+      .eq('status', 'approved');
+
+    const adminCounts = new Map();
+    (allAdmins || []).forEach((r) => adminCounts.set(r.department_id, (adminCounts.get(r.department_id) || 0) + 1));
+
+    const soleDeptIds = deptIds.filter((id) => (adminCounts.get(id) || 0) <= 1);
+    if (soleDeptIds.length === 0) return [];
+
+    const { data: candidateRows } = await supabase
+      .from('department_memberships')
+      .select('department_id, user_id, member:profiles!user_id ( full_name )')
+      .in('department_id', soleDeptIds)
+      .eq('status', 'approved')
+      .neq('user_id', userId);
+
+    const candidatesByDept = new Map();
+    (candidateRows || []).forEach((r) => {
+      if (!candidatesByDept.has(r.department_id)) candidatesByDept.set(r.department_id, []);
+      candidatesByDept.get(r.department_id).push({ id: r.user_id, full_name: r.member?.full_name || '—' });
+    });
+
+    return targetAdminRows
+      .filter((r) => soleDeptIds.includes(r.department_id))
+      .map((r) => ({
+        id: r.department_id,
+        name: r.departments?.name || '',
+        candidates: candidatesByDept.get(r.department_id) || [],
+      }));
   }
 
   async function reinstateUser(row) {
