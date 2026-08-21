@@ -36,7 +36,7 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
 
     const [{ data: depts }, { data: leads, error: leadsError }, { data: profiles, error: profilesError }, { data: memberships }] = await Promise.all([
       supabase.from('departments').select('id, key, name').order('name'),
-      supabase.from('guest_follow_ups').select('id, full_name, phone, email, user_id, status, assigned_department_id, notes, source, created_at').order('created_at', { ascending: false }),
+      supabase.from('guest_follow_ups').select('id, full_name, phone, email, city, referral_source, referred_by_name, age_range, prayer_request, wants_pastor_meeting, home_church, user_id, status, assigned_department_id, notes, source, created_at').order('created_at', { ascending: false }),
       supabase.from('profiles').select('id, full_name, created_at, global_role, profile_emails ( email )').is('removed_at', null).order('created_at', { ascending: false }),
       supabase.from('department_memberships').select('user_id'),
     ]);
@@ -93,10 +93,22 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
 
     rows.forEach((row) => {
       const tr = document.createElement('tr');
+      const hasDetails = row.phone || row.email || row.city || row.referral_source
+        || row.referred_by_name || row.age_range || row.prayer_request || row.wants_pastor_meeting || row.home_church;
 
       const nameCell = document.createElement('td');
-      nameCell.className = 'px-4 py-2.5 font-medium text-slate-800 whitespace-nowrap';
-      nameCell.textContent = row.full_name;
+      nameCell.className = 'px-4 py-2.5 font-medium whitespace-nowrap';
+      if (hasDetails) {
+        const nameBtn = document.createElement('button');
+        nameBtn.type = 'button';
+        nameBtn.className = 'text-slate-800 hover:text-indigo-600 hover:underline';
+        nameBtn.textContent = row.full_name;
+        nameBtn.addEventListener('click', () => detailsRow.classList.toggle('hidden'));
+        nameCell.appendChild(nameBtn);
+      } else {
+        nameCell.className += ' text-slate-800';
+        nameCell.textContent = row.full_name;
+      }
       tr.appendChild(nameCell);
 
       const sourceCell = document.createElement('td');
@@ -127,6 +139,29 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
       tr.appendChild(deptCell);
 
       tbody.appendChild(tr);
+
+      let detailsRow;
+      if (hasDetails) {
+        detailsRow = document.createElement('tr');
+        detailsRow.className = 'hidden bg-slate-50';
+        const detailsCell = document.createElement('td');
+        detailsCell.colSpan = 4;
+        detailsCell.className = 'px-4 py-3 text-sm text-slate-600';
+        const fields = [
+          [t('guestHub.detail.phone'), row.phone],
+          [t('guestHub.detail.email'), row.email],
+          [t('guestHub.detail.city'), row.city],
+          [t('guestHub.detail.referral'), row.referral_source ? t(`attendance.referral.${row.referral_source}`) : null],
+          [t('guestHub.detail.referredBy'), row.referred_by_name],
+          [t('guestHub.detail.ageRange'), row.age_range ? t(`attendance.ageRange.${row.age_range}`) : null],
+          [t('guestHub.detail.prayerRequest'), row.prayer_request],
+          [t('guestHub.detail.wantsPastorMeeting'), row.wants_pastor_meeting ? t('common.yes') : null],
+          [t('guestHub.detail.homeChurch'), row.home_church],
+        ].filter(([, value]) => value);
+        detailsCell.innerHTML = fields.map(([label, value]) => `<div><span class="font-medium text-slate-700">${escapeHtml(label)}:</span> ${escapeHtml(value)}</div>`).join('');
+        detailsRow.appendChild(detailsCell);
+        tbody.appendChild(detailsRow);
+      }
     });
 
     bodyEl.innerHTML = '';
@@ -200,4 +235,10 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
   }
 
   return { open, root };
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }

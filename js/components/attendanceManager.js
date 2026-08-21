@@ -43,15 +43,60 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" />
       <div data-el="search-results" class="max-h-40 overflow-y-auto border border-slate-100 rounded-lg divide-y mb-3"></div>
 
-      <div class="border-t border-slate-200 pt-3">
-        <label class="block text-sm font-medium text-slate-600 mb-1">${t('attendance.guestName')}</label>
-        <div class="flex gap-2">
-          <input type="text" data-el="guest-name" placeholder="${t('attendance.guestNamePlaceholder')}"
-                 class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <button type="button" data-action="add-guest" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 whitespace-nowrap">
-            ${t('attendance.addGuest')}
-          </button>
+      <div class="border-t border-slate-200 pt-3 space-y-2">
+        <p class="text-sm font-semibold text-slate-700">${t('attendance.guestName')}</p>
+
+        <input type="text" data-el="guest-name" placeholder="${t('attendance.guestNamePlaceholder')}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+
+        <div class="grid sm:grid-cols-2 gap-2">
+          <input type="tel" data-el="guest-phone" placeholder="${t('attendance.guestPhonePlaceholder')}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="email" data-el="guest-email" placeholder="${t('attendance.guestEmailPlaceholder')}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
+
+        <input type="text" data-el="guest-city" placeholder="${t('attendance.guestCityPlaceholder')}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+
+        <select data-el="guest-referral" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">${t('attendance.guestReferralPlaceholder')}</option>
+          <option value="social_media">${t('attendance.referral.social_media')}</option>
+          <option value="vpd_elsewhere">${t('attendance.referral.vpd_elsewhere')}</option>
+          <option value="word_of_mouth">${t('attendance.referral.word_of_mouth')}</option>
+        </select>
+
+        <input type="text" data-el="guest-referred-by" placeholder="${t('attendance.guestReferredByPlaceholder')}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+
+        <select data-el="guest-age-range" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">${t('attendance.guestAgeRangePlaceholder')}</option>
+          <option value="under_18">${t('attendance.ageRange.under_18')}</option>
+          <option value="18_29">${t('attendance.ageRange.18_29')}</option>
+          <option value="30_40">${t('attendance.ageRange.30_40')}</option>
+          <option value="40_50">${t('attendance.ageRange.40_50')}</option>
+          <option value="50_plus">${t('attendance.ageRange.50_plus')}</option>
+        </select>
+
+        <label class="flex items-center gap-1.5 text-sm text-slate-600">
+          <input type="checkbox" data-el="guest-has-prayer-request" /> ${t('attendance.guestPrayerRequestCheckbox')}
+        </label>
+        <textarea data-el="guest-prayer-request" rows="2" placeholder="${t('attendance.guestPrayerRequestPlaceholder')}"
+                  class="hidden w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></textarea>
+
+        <label class="flex items-center gap-1.5 text-sm text-slate-600">
+          <input type="checkbox" data-el="guest-wants-pastor-meeting" /> ${t('attendance.guestWantsPastorMeeting')}
+        </label>
+
+        <label class="flex items-center gap-1.5 text-sm text-slate-600">
+          <input type="checkbox" data-el="guest-has-home-church" /> ${t('attendance.guestHasHomeChurchCheckbox')}
+        </label>
+        <input type="text" data-el="guest-home-church" placeholder="${t('attendance.guestHomeChurchPlaceholder')}"
+               class="hidden w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+
+        <button type="button" data-action="add-guest" class="w-full px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('attendance.addGuest')}
+        </button>
       </div>
 
       <p data-el="status" class="text-sm mt-3"></p>
@@ -67,6 +112,17 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
   const memberSearchEl = root.querySelector('[data-el="member-search"]');
   const searchResultsEl = root.querySelector('[data-el="search-results"]');
   const guestNameEl = root.querySelector('[data-el="guest-name"]');
+  const guestPhoneEl = root.querySelector('[data-el="guest-phone"]');
+  const guestEmailEl = root.querySelector('[data-el="guest-email"]');
+  const guestCityEl = root.querySelector('[data-el="guest-city"]');
+  const guestReferralEl = root.querySelector('[data-el="guest-referral"]');
+  const guestReferredByEl = root.querySelector('[data-el="guest-referred-by"]');
+  const guestAgeRangeEl = root.querySelector('[data-el="guest-age-range"]');
+  const guestHasPrayerRequestEl = root.querySelector('[data-el="guest-has-prayer-request"]');
+  const guestPrayerRequestEl = root.querySelector('[data-el="guest-prayer-request"]');
+  const guestWantsPastorMeetingEl = root.querySelector('[data-el="guest-wants-pastor-meeting"]');
+  const guestHasHomeChurchEl = root.querySelector('[data-el="guest-has-home-church"]');
+  const guestHomeChurchEl = root.querySelector('[data-el="guest-home-church"]');
   const addGuestBtn = root.querySelector('[data-action="add-guest"]');
   const statusEl = root.querySelector('[data-el="status"]');
   const checkedInListEl = root.querySelector('[data-el="checked-in-list"]');
@@ -103,6 +159,13 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
       btn.addEventListener('click', () => checkInMember(btn.dataset.memberId, btn.textContent.trim()));
     });
   }
+
+  guestHasPrayerRequestEl.addEventListener('change', () => {
+    guestPrayerRequestEl.classList.toggle('hidden', !guestHasPrayerRequestEl.checked);
+  });
+  guestHasHomeChurchEl.addEventListener('change', () => {
+    guestHomeChurchEl.classList.toggle('hidden', !guestHasHomeChurchEl.checked);
+  });
 
   addGuestBtn.addEventListener('click', () => {
     const name = guestNameEl.value.trim();
@@ -153,6 +216,15 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
       service_type: serviceTypeEl.value,
       service_label: serviceTypeEl.value === 'special_service' ? (serviceLabelEl.value.trim() || null) : null,
       guest_name: name,
+      guest_phone: guestPhoneEl.value.trim() || null,
+      guest_email: guestEmailEl.value.trim() || null,
+      guest_city: guestCityEl.value.trim() || null,
+      guest_referral_source: guestReferralEl.value || null,
+      guest_referred_by_name: guestReferredByEl.value.trim() || null,
+      guest_age_range: guestAgeRangeEl.value || null,
+      guest_prayer_request: guestHasPrayerRequestEl.checked ? (guestPrayerRequestEl.value.trim() || null) : null,
+      guest_wants_pastor_meeting: guestWantsPastorMeetingEl.checked,
+      guest_home_church: guestHasHomeChurchEl.checked ? (guestHomeChurchEl.value.trim() || null) : null,
       recorded_by: currentUserId,
     });
 
@@ -166,7 +238,24 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
     statusEl.textContent = t('attendance.guestCheckedIn', { name });
     checkedInThisSession.unshift(`${name} (${t('attendance.guestBadge')})`);
     renderCheckedInList();
+    resetGuestForm();
+  }
+
+  function resetGuestForm() {
     guestNameEl.value = '';
+    guestPhoneEl.value = '';
+    guestEmailEl.value = '';
+    guestCityEl.value = '';
+    guestReferralEl.value = '';
+    guestReferredByEl.value = '';
+    guestAgeRangeEl.value = '';
+    guestHasPrayerRequestEl.checked = false;
+    guestPrayerRequestEl.value = '';
+    guestPrayerRequestEl.classList.add('hidden');
+    guestWantsPastorMeetingEl.checked = false;
+    guestHasHomeChurchEl.checked = false;
+    guestHomeChurchEl.value = '';
+    guestHomeChurchEl.classList.add('hidden');
   }
 
   function renderCheckedInList() {
@@ -184,6 +273,7 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
     statusEl.textContent = '';
     checkedInThisSession = [];
     renderCheckedInList();
+    resetGuestForm();
     await loadMembers();
   }
 
