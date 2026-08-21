@@ -98,7 +98,15 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
     if (willShow) renderCompose();
   });
 
-  async function renderCompose() {
+  // Used by each received message's "Reply" button — opens compose
+  // already targeting that sender, skipping the search step entirely.
+  function replyTo(senderId, senderName) {
+    composeEl.classList.remove('hidden');
+    renderCompose({ presetTarget: { type: 'person', id: senderId, label: senderName } });
+    composeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async function renderCompose({ presetTarget } = {}) {
     composeEl.innerHTML = `
       <label class="block text-sm font-medium text-slate-600">${t('inbox.composeTo')}</label>
       <input type="search" data-el="recipient-search" placeholder="${t('inbox.composeSearchPlaceholder')}"
@@ -120,6 +128,11 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
     const statusEl = composeEl.querySelector('[data-el="compose-status"]');
     const sendBtn = composeEl.querySelector('[data-action="send"]');
 
+    if (presetTarget) {
+      recipientSelectedEl.textContent = `${t('inbox.composeTo')}: ${presetTarget.label}`;
+      bodyEl.focus();
+    }
+
     // Every entry is either a single person or a whole-department target
     // ("All of X" / "X Admins") — a regular member only gets these for
     // departments they belong to (mirroring who they're allowed to
@@ -129,7 +142,7 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
     // either a person's name or a department's name.
     const isGlobalSender = GLOBAL_MESSAGE_ROLES.includes(getGlobalRole());
     let candidates = [];
-    let selectedTarget = null;
+    let selectedTarget = presetTarget || null;
     let filteredResults = [];
 
     if (isGlobalSender) {
@@ -299,10 +312,22 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
         <div class="border rounded-lg p-3 ${unread ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}">
           <div class="text-xs font-semibold text-slate-500">${escapeHtml(who)}</div>
           <p class="text-sm text-slate-700 mt-1 whitespace-pre-wrap">${escapeHtml(m.body)}</p>
-          <div class="text-xs text-slate-400 mt-2">${escapeHtml(m.created_at.slice(0, 10))}</div>
+          <div class="flex items-center justify-between mt-2">
+            <div class="text-xs text-slate-400">${escapeHtml(m.created_at.slice(0, 10))}</div>
+            ${isReceived ? `
+              <button type="button" data-action="reply" data-sender-id="${m.sender_id}" data-sender-name="${escapeHtml(m.sender?.full_name || '')}"
+                      class="text-xs font-medium text-indigo-600 hover:text-indigo-800">
+                ${t('inbox.reply')}
+              </button>
+            ` : ''}
+          </div>
         </div>
       `;
     }).join('');
+
+    messagesListEl.querySelectorAll('[data-action="reply"]').forEach((btn) => {
+      btn.addEventListener('click', () => replyTo(btn.dataset.senderId, btn.dataset.senderName));
+    });
 
     const unreadIds = data.filter((m) => m.recipient_id === currentUserId && !m.read_at).map((m) => m.id);
     if (unreadIds.length > 0) {

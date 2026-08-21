@@ -21,6 +21,9 @@ const TRANSLATIONS = {
     'sidebar.guest': 'Guest',
     'sidebar.signOut': 'Sign out',
     'sidebar.language': 'Language',
+    'sidebar.theme': 'Theme',
+    'sidebar.themeLight': 'Light',
+    'sidebar.themeDark': 'Dark',
     'sidebar.department': 'Department',
     'sidebar.viewAs': 'View As…',
 
@@ -111,6 +114,7 @@ const TRANSLATIONS = {
     'inbox.emptyBody': 'Write a message first.',
     'inbox.from': 'From',
     'inbox.to': 'To',
+    'inbox.reply': 'Reply',
     'inbox.allOf': 'All of',
     'inbox.admins': 'Admins',
 
@@ -687,6 +691,9 @@ const TRANSLATIONS = {
     'sidebar.guest': 'Invité',
     'sidebar.signOut': 'Déconnexion',
     'sidebar.language': 'Langue',
+    'sidebar.theme': 'Thème',
+    'sidebar.themeLight': 'Clair',
+    'sidebar.themeDark': 'Sombre',
     'sidebar.department': 'Département',
     'sidebar.viewAs': 'Voir en tant que…',
 
@@ -777,6 +784,7 @@ const TRANSLATIONS = {
     'inbox.emptyBody': "Écrivez d'abord un message.",
     'inbox.from': 'De',
     'inbox.to': 'À',
+    'inbox.reply': 'Répondre',
     'inbox.allOf': 'Tous les membres de',
     'inbox.admins': 'Admins',
 

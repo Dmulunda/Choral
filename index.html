@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Runs before anything renders so night mode doesn't flash light
+       first — see js/theme.js for the toggle logic itself. -->
+  <script>
+    if (localStorage.getItem('choir-hub-theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
   <title>VPD Church Organisation</title>
   <link rel="icon" type="image/png" href="img/vpd-logo.png" />
   <link rel="manifest" href="manifest.json" />
@@ -37,6 +44,46 @@
       opacity: 0;
       animation: login-splash-word-drop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     }
+
+    /* ---- Night mode ----
+       Tailwind is loaded from the CDN with no build step, so there's no
+       tailwind.config to add real `dark:` variants to app-wide. Instead
+       this recolors the recurring "light surface" utility classes
+       whenever <html> has .dark — every card/table/modal in the app
+       already uses this same small palette (bg-white, text-slate-*,
+       border-slate-*, ...), so this covers the whole app without
+       touching the ~20 files that generate that markup. The sidebar
+       (bg-slate-900/800, text-slate-300) is already dark by design and
+       isn't targeted here, so it's unaffected either way. */
+    html.dark body { background-color: #0f172a; }
+    html.dark .bg-white { background-color: #1e293b; }
+    html.dark .bg-slate-50 { background-color: #1e293b; }
+    html.dark .bg-slate-100 { background-color: #334155; }
+    html.dark .text-slate-800 { color: #e2e8f0; }
+    html.dark .text-slate-700 { color: #cbd5e1; }
+    html.dark .text-slate-600 { color: #94a3b8; }
+    html.dark .text-slate-500 { color: #94a3b8; }
+    html.dark .text-slate-400 { color: #64748b; }
+    html.dark .border-slate-100,
+    html.dark .border-slate-200,
+    html.dark .border-slate-300 { border-color: #334155; }
+    html.dark .divide-slate-100 > * + * { border-color: #334155; }
+    html.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.15); }
+    html.dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.15); }
+    html.dark .bg-rose-100 { background-color: rgba(244, 63, 94, 0.2); }
+    html.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15); }
+    html.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.2); }
+    html.dark .text-indigo-600 { color: #818cf8; }
+    html.dark .text-indigo-700 { color: #a5b4fc; }
+    html.dark .text-indigo-800 { color: #c7d2fe; }
+    html.dark .text-rose-600 { color: #fb7185; }
+    html.dark .text-rose-700 { color: #fda4af; }
+    html.dark .text-rose-800 { color: #fecdd3; }
+    html.dark input,
+    html.dark select,
+    html.dark textarea { background-color: #1e293b; color: #e2e8f0; border-color: #334155; }
+    html.dark input::placeholder,
+    html.dark textarea::placeholder { color: #64748b; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800">
@@ -224,6 +271,20 @@
                 class="flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">EN</button>
         <button type="button" data-lang="fr"
                 class="flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">FR</button>
+      </div>
+
+      <div class="px-6 py-3 border-t border-slate-800">
+        <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="sidebar.theme">Theme</label>
+        <div class="flex bg-slate-800 rounded-lg p-1">
+          <button type="button" id="theme-light-btn"
+                  class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.themeLight">
+            Light
+          </button>
+          <button type="button" id="theme-dark-btn"
+                  class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.themeDark">
+            Dark
+          </button>
+        </div>
       </div>
 
       <div class="px-6 py-4 border-t border-slate-800 text-sm text-slate-500 flex items-center justify-between gap-2">

@@ -24,6 +24,7 @@ import {
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
+import { getTheme, setTheme } from './theme.js';
 
 registerServiceWorker();
 
@@ -431,6 +432,24 @@ function updateLangButtons() {
 
 langButtons.forEach((btn) => btn.addEventListener('click', () => setLang(btn.dataset.lang)));
 updateLangButtons();
+
+// ---- Night mode ----
+const themeLightBtn = document.querySelector('#theme-light-btn');
+const themeDarkBtn = document.querySelector('#theme-dark-btn');
+
+function updateThemeButtons() {
+  const isDark = getTheme() === 'dark';
+  themeLightBtn.classList.toggle('bg-indigo-600', !isDark);
+  themeLightBtn.classList.toggle('text-white', !isDark);
+  themeLightBtn.classList.toggle('text-slate-400', isDark);
+  themeDarkBtn.classList.toggle('bg-indigo-600', isDark);
+  themeDarkBtn.classList.toggle('text-white', isDark);
+  themeDarkBtn.classList.toggle('text-slate-400', !isDark);
+}
+
+themeLightBtn.addEventListener('click', () => { setTheme('light'); updateThemeButtons(); });
+themeDarkBtn.addEventListener('click', () => { setTheme('dark'); updateThemeButtons(); });
+updateThemeButtons();
 
 onLangChange(() => {
   document.documentElement.lang = getLang();
