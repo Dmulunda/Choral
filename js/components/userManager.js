@@ -124,7 +124,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, is_primary_admin, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 
@@ -151,6 +151,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         globalRole: p.global_role,
         removedAt: p.removed_at,
         isPrimaryAdmin: p.is_primary_admin,
+        isSchoolAdmin: p.is_school_admin,
         permanentlyDeletedAt: p.permanently_deleted_at,
         departments: byUser.get(p.id) || [],
       }));
@@ -335,6 +336,16 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
           setPrimaryBtn.addEventListener('click', () => setPrimaryAdmin(row));
           actionsCell.appendChild(setPrimaryBtn);
         }
+
+        // Multiple School Admins are allowed (unlike Primary Admin, which
+        // is capped at one) — course authoring benefits from more than
+        // one person able to help build/manage the catalog.
+        const schoolAdminBtn = document.createElement('button');
+        schoolAdminBtn.type = 'button';
+        schoolAdminBtn.className = 'text-sm font-medium text-sky-600 hover:text-sky-800 whitespace-nowrap block';
+        schoolAdminBtn.textContent = row.isSchoolAdmin ? t('users.removeSchoolAdmin') : t('users.setSchoolAdmin');
+        schoolAdminBtn.addEventListener('click', () => toggleSchoolAdmin(row));
+        actionsCell.appendChild(schoolAdminBtn);
       }
 
       if (isGlobal && isSuperAdmin && row.id !== currentUserId && !row.permanentlyDeletedAt) {
@@ -527,6 +538,23 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     }
 
     const { error } = await supabase.from('profiles').update({ is_primary_admin: true }).eq('id', row.id);
+    if (error) {
+      window.alert(t('users.updateFailed', { message: error.message }));
+      return;
+    }
+    loadUsers();
+  }
+
+  async function toggleSchoolAdmin(row) {
+    const next = !row.isSchoolAdmin;
+    const confirmed = await confirmDialog({
+      message: t(next ? 'users.confirmSetSchoolAdmin' : 'users.confirmRemoveSchoolAdmin', { name: row.full_name }),
+      confirmLabel: t(next ? 'users.setSchoolAdmin' : 'users.removeSchoolAdmin'),
+      danger: !next,
+    });
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('profiles').update({ is_school_admin: next }).eq('id', row.id);
     if (error) {
       window.alert(t('users.updateFailed', { message: error.message }));
       return;

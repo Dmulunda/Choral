@@ -10,6 +10,8 @@ import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab } from './superAdminHome.js';
+import { renderTrainingTab } from './training.js';
+import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
@@ -74,6 +76,7 @@ const lazyTabs = {
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
   'super-home': renderSuperAdminHomeTab,
+  training: renderTrainingTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -687,6 +690,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   currentUserNameEl.textContent = profile?.full_name || session.user.email;
 
   await loadMyDepartments(session.user.id);
+  await loadSchoolAdminStatus(session.user.id);
 
   // A fresh sign-in (not a page-refresh session restore) always resets
   // a global-role holder to Super Admin Mode and their Home console —
