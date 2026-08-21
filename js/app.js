@@ -371,8 +371,8 @@ function updateSidebarToolsSelect() {
     options.push({ value: 'my-checkin-code', label: t('sidebar.myCheckInCode') });
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
-      options.push({ value: 'department-rules', label: t('sidebar.departmentRules', { department: departmentLabel(active.key) }) });
-      options.push({ value: 'monthly-report', label: t('sidebar.monthlyReport', { department: departmentLabel(active.key) }) });
+      options.push({ value: 'department-rules', label: t('sidebar.departmentRules') });
+      options.push({ value: 'monthly-report', label: t('sidebar.monthlyReport') });
     }
   }
 

@@ -24,7 +24,7 @@ const TRANSLATIONS = {
     'sidebar.theme': 'Theme',
     'sidebar.themeLight': 'Light',
     'sidebar.themeDark': 'Dark',
-    'sidebar.more': 'More…',
+    'sidebar.more': 'Other',
     'sidebar.department': 'Department',
     'sidebar.viewAs': 'View As…',
 
@@ -61,8 +61,8 @@ const TRANSLATIONS = {
     'notifications.none': 'No notifications yet.',
 
     'sidebar.inbox': 'Inbox',
-    'sidebar.churchRules': 'Church Rules & Regulations',
-    'sidebar.departmentRules': '{department} Rules & Regulations',
+    'sidebar.churchRules': 'Church Rules',
+    'sidebar.departmentRules': 'Department Rules',
     'rules.churchTitle': 'Internal Regulations',
     'rules.departmentTitle': '{department} — Rules & Regulations',
     'rules.failedToLoad': 'Failed to load: {message}',
@@ -81,7 +81,7 @@ const TRANSLATIONS = {
     'rules.confirmDelete': 'Delete this document? Members will no longer be able to open it.',
     'rules.deleteFailed': 'Failed to delete: {message}',
 
-    'sidebar.monthlyReport': '{department} Monthly Report',
+    'sidebar.monthlyReport': 'Monthly Report',
     'monthlyReport.titleFor': '{department} — Monthly Report',
     'monthlyReport.failedToLoad': 'Failed to load: {message}',
     'monthlyReport.approvedMembers': 'Approved members',
@@ -756,7 +756,7 @@ const TRANSLATIONS = {
     'sidebar.theme': 'Thème',
     'sidebar.themeLight': 'Clair',
     'sidebar.themeDark': 'Sombre',
-    'sidebar.more': 'Plus…',
+    'sidebar.more': 'Autre',
     'sidebar.department': 'Département',
     'sidebar.viewAs': 'Voir en tant que…',
 
@@ -793,8 +793,8 @@ const TRANSLATIONS = {
     'notifications.none': 'Aucune notification pour le moment.',
 
     'sidebar.inbox': 'Messagerie',
-    'sidebar.churchRules': "Règlement de l'église",
-    'sidebar.departmentRules': 'Règlement — {department}',
+    'sidebar.churchRules': "Règlements de l'église",
+    'sidebar.departmentRules': 'Règlements du département',
     'rules.churchTitle': "Règlement d'ordre intérieur",
     'rules.departmentTitle': 'Règlement — {department}',
     'rules.failedToLoad': 'Échec du chargement : {message}',
@@ -813,7 +813,7 @@ const TRANSLATIONS = {
     'rules.confirmDelete': 'Supprimer ce document ? Les membres ne pourront plus l’ouvrir.',
     'rules.deleteFailed': 'Échec de la suppression : {message}',
 
-    'sidebar.monthlyReport': 'Rapport mensuel — {department}',
+    'sidebar.monthlyReport': 'Rapport mensuel',
     'monthlyReport.titleFor': 'Rapport mensuel — {department}',
     'monthlyReport.failedToLoad': 'Échec du chargement : {message}',
     'monthlyReport.approvedMembers': 'Membres approuvés',
