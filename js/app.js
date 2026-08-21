@@ -18,6 +18,7 @@ import { createRulesModal } from './components/rulesModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
+import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -371,6 +372,12 @@ function updateSidebarToolsSelect() {
     if (active) {
       options.push({ value: 'department-rules', label: t('sidebar.departmentRules') });
       options.push({ value: 'monthly-report', label: t('sidebar.monthlyReport') });
+      // Whoever currently holds a guest's case can see it — see
+      // sql/042's RLS on guest_follow_ups — so any department admin
+      // gets this, not just the pastoral team's Guest Onboarding Hub.
+      if (active.role === 'admin' || active.role === 'super_admin') {
+        options.push({ value: 'guest-cases', label: t('sidebar.guestCases') });
+      }
     }
   }
 
@@ -422,6 +429,12 @@ function runSidebarTool(value) {
       canEdit: active.role === 'admin' || active.role === 'super_admin',
       currentUserId,
       title: t('monthlyReport.titleFor', { department: departmentLabel(active.key) }),
+    }).open();
+  } else if (value === 'guest-cases' && active) {
+    createGuestOnboardingModal({
+      supabase: effectiveSupabase,
+      currentUserId,
+      scope: { type: 'department', departmentId: active.id },
     }).open();
   }
 

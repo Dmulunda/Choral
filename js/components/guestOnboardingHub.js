@@ -1,17 +1,30 @@
-// Guest / Visitor Connection System — a follow-up queue for the
-// pastoral team (Super Admin / Pastor Admin / Church Secretary; see
-// is_pastoral_team() in sql/038) covering two kinds of "unassigned"
-// people: anonymous guest visitors logged during attendance check-in
-// (attendanceManager.js), and signed-up members with zero approved
-// department memberships (computed live here, not stored until acted
-// on). Both share the same NEW_GUEST -> CONTACTED ->
-// ASSIGNED_TO_DEPARTMENT status.
+// Guest / Visitor Connection System — a follow-up queue covering two
+// kinds of "unassigned" people: anonymous guest visitors logged during
+// attendance check-in (attendanceManager.js), and signed-up members
+// with zero approved department memberships. Both share the same
+// NEW_GUEST -> CONTACTED -> ASSIGNED_TO_DEPARTMENT status.
+//
+// scope: { type: 'pastoral' } (default) — Super Admin/Pastor Admin/
+//   Church Secretary, sees every case plus the unassigned-member
+//   section, can send a guest case to any department.
+// scope: { type: 'department', departmentId } — that department's own
+//   admin, sees only guest cases currently assigned to them (see
+//   is_pastoral_team()/can_write_department() in sql/042's RLS), can
+//   send a case onward to a different department. No unassigned-member
+//   section here — that's a pastoral-team concern (it creates a real
+//   department_membership, distinct from case routing).
+//
+// A guest visitor has no account, so "sending" their case between
+// departments is pure ownership/routing on the one guest_follow_ups
+// row — never a membership, and never a duplicated file. Every hop is
+// logged in guest_follow_up_transfers so whoever holds the case next
+// (or the pastoral team, always) can see where it's been.
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 
 const STATUSES = ['new_guest', 'contacted', 'assigned_to_department'];
 
-export function createGuestOnboardingModal({ supabase, currentUserId }) {
+export function createGuestOnboardingModal({ supabase, currentUserId, scope = { type: 'pastoral' } }) {
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
   root.innerHTML = `
@@ -34,42 +47,73 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const [{ data: depts }, { data: leads, error: leadsError }, { data: profiles, error: profilesError }, { data: memberships }] = await Promise.all([
+    let leadsQuery = supabase
+      .from('guest_follow_ups')
+      .select('id, full_name, phone, email, city, referral_source, referred_by_name, age_range, prayer_request, wants_pastor_meeting, home_church, user_id, status, assigned_department_id, notes, source, created_at')
+      .order('created_at', { ascending: false });
+    if (scope.type === 'department') leadsQuery = leadsQuery.eq('assigned_department_id', scope.departmentId);
+
+    const [{ data: depts }, { data: leads, error: leadsError }, unassignedResult] = await Promise.all([
       supabase.from('departments').select('id, key, name').order('name'),
-      supabase.from('guest_follow_ups').select('id, full_name, phone, email, city, referral_source, referred_by_name, age_range, prayer_request, wants_pastor_meeting, home_church, user_id, status, assigned_department_id, notes, source, created_at').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name, created_at, global_role, profile_emails ( email )').is('removed_at', null).order('created_at', { ascending: false }),
-      supabase.from('department_memberships').select('user_id'),
+      leadsQuery,
+      scope.type === 'pastoral'
+        ? Promise.all([
+            supabase.from('profiles').select('id, full_name, created_at, global_role, profile_emails ( email )').is('removed_at', null).order('created_at', { ascending: false }),
+            supabase.from('department_memberships').select('user_id'),
+          ])
+        : Promise.resolve(null),
     ]);
 
-    if (leadsError || profilesError) {
-      bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('guestHub.loadFailed', { message: (leadsError || profilesError).message })}</p>`;
+    if (leadsError) {
+      bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('guestHub.loadFailed', { message: leadsError.message })}</p>`;
       return;
     }
 
     departments = depts || [];
-    const assignedUserIds = new Set((memberships || []).map((m) => m.user_id));
-    const leadUserIds = new Set((leads || []).filter((l) => l.user_id).map((l) => l.user_id));
 
-    // Unassigned real accounts that don't have a lead row yet — shown
-    // as a virtual "new_guest" row; a lead row is only actually created
-    // once the pastoral team changes its status (see updateStatus()).
-    // Global-role holders are excluded — they often have zero literal
-    // department_memberships by design (their access is church-wide),
-    // so they'd otherwise show up here as false "unassigned" leads.
-    const unassignedProfiles = (profiles || [])
-      .filter((p) => !p.global_role && !assignedUserIds.has(p.id) && !leadUserIds.has(p.id))
-      .map((p) => ({
-        id: null,
-        full_name: p.full_name,
-        email: p.profile_emails?.email || null,
-        phone: null,
-        user_id: p.id,
-        status: 'new_guest',
-        assigned_department_id: null,
-        source: 'signup',
-      }));
+    let rows = leads || [];
+    const leadIds = rows.map((r) => r.id);
+    const { data: transfers } = leadIds.length > 0
+      ? await supabase.from('guest_follow_up_transfers').select('guest_follow_up_id, from_department_id, to_department_id, note, created_at').in('guest_follow_up_id', leadIds).order('created_at')
+      : { data: [] };
+    const transfersByLead = new Map();
+    (transfers || []).forEach((tr) => {
+      if (!transfersByLead.has(tr.guest_follow_up_id)) transfersByLead.set(tr.guest_follow_up_id, []);
+      transfersByLead.get(tr.guest_follow_up_id).push(tr);
+    });
 
-    const rows = [...(leads || []), ...unassignedProfiles];
+    if (unassignedResult) {
+      const [{ data: profiles, error: profilesError }, { data: memberships }] = unassignedResult;
+      if (profilesError) {
+        bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('guestHub.loadFailed', { message: profilesError.message })}</p>`;
+        return;
+      }
+
+      const assignedUserIds = new Set((memberships || []).map((m) => m.user_id));
+      const leadUserIds = new Set(rows.filter((l) => l.user_id).map((l) => l.user_id));
+
+      // Unassigned real accounts that don't have a lead row yet — shown
+      // as a virtual "new_guest" row; a lead row is only actually
+      // created once the pastoral team changes its status (see
+      // updateMemberAssignment()). Global-role holders are excluded —
+      // they often have zero literal department_memberships by design
+      // (their access is church-wide), so they'd otherwise show up here
+      // as false "unassigned" leads.
+      const unassignedProfiles = (profiles || [])
+        .filter((p) => !p.global_role && !assignedUserIds.has(p.id) && !leadUserIds.has(p.id))
+        .map((p) => ({
+          id: null,
+          full_name: p.full_name,
+          email: p.profile_emails?.email || null,
+          phone: null,
+          user_id: p.id,
+          status: 'new_guest',
+          assigned_department_id: null,
+          source: 'signup',
+        }));
+
+      rows = [...rows, ...unassignedProfiles];
+    }
 
     if (rows.length === 0) {
       bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('guestHub.none')}</p>`;
@@ -84,7 +128,7 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
           <th class="text-left px-4 py-2">${t('guestHub.name')}</th>
           <th class="text-left px-4 py-2">${t('guestHub.source')}</th>
           <th class="text-left px-4 py-2">${t('guestHub.status')}</th>
-          <th class="text-left px-4 py-2">${t('guestHub.assignDepartment')}</th>
+          <th class="text-left px-4 py-2">${t('guestHub.department')}</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100"></tbody>
@@ -92,13 +136,15 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
     const tbody = table.querySelector('tbody');
 
     rows.forEach((row) => {
+      const isGuestLead = row.id !== null;
       const tr = document.createElement('tr');
       const hasDetails = row.phone || row.email || row.city || row.referral_source
         || row.referred_by_name || row.age_range || row.prayer_request || row.wants_pastor_meeting || row.home_church;
+      const expandable = isGuestLead || hasDetails;
 
       const nameCell = document.createElement('td');
       nameCell.className = 'px-4 py-2.5 font-medium whitespace-nowrap';
-      if (hasDetails) {
+      if (expandable) {
         const nameBtn = document.createElement('button');
         nameBtn.type = 'button';
         nameBtn.className = 'text-slate-800 hover:text-indigo-600 hover:underline';
@@ -121,32 +167,37 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
       const statusSelect = document.createElement('select');
       statusSelect.className = 'border border-slate-300 rounded-lg px-2 py-1 text-sm';
       statusSelect.innerHTML = STATUSES.map((s) => `<option value="${s}" ${s === row.status ? 'selected' : ''}>${t(`guestHub.status.${s}`)}</option>`).join('');
-      statusSelect.addEventListener('change', () => updateStatus(row, { status: statusSelect.value }));
+      statusSelect.addEventListener('change', () => updateLeadFields(row, { status: statusSelect.value }));
       statusCell.appendChild(statusSelect);
       tr.appendChild(statusCell);
 
       const deptCell = document.createElement('td');
       deptCell.className = 'px-4 py-2.5';
-      const deptSelect = document.createElement('select');
-      deptSelect.className = 'border border-slate-300 rounded-lg px-2 py-1 text-sm';
-      deptSelect.innerHTML = `<option value="">${t('guestHub.noDepartment')}</option>` +
-        departments.map((d) => `<option value="${d.id}" ${d.id === row.assigned_department_id ? 'selected' : ''}>${departmentLabel(d.key)}</option>`).join('');
-      deptSelect.addEventListener('change', () => updateStatus(row, {
-        assigned_department_id: deptSelect.value || null,
-        status: deptSelect.value ? 'assigned_to_department' : row.status,
-      }));
-      deptCell.appendChild(deptSelect);
+      if (isGuestLead) {
+        // A guest has no account — "department" here is who currently
+        // owns their case, changed only via Send to Department below,
+        // never a plain dropdown (that would skip logging the hop).
+        deptCell.textContent = row.assigned_department_id ? departmentLabel(departments.find((d) => d.id === row.assigned_department_id)?.key) : t('guestHub.noDepartment');
+      } else {
+        const deptSelect = document.createElement('select');
+        deptSelect.className = 'border border-slate-300 rounded-lg px-2 py-1 text-sm';
+        deptSelect.innerHTML = `<option value="">${t('guestHub.noDepartment')}</option>` +
+          departments.map((d) => `<option value="${d.id}" ${d.id === row.assigned_department_id ? 'selected' : ''}>${departmentLabel(d.key)}</option>`).join('');
+        deptSelect.addEventListener('change', () => updateMemberAssignment(row, deptSelect.value));
+        deptCell.appendChild(deptSelect);
+      }
       tr.appendChild(deptCell);
 
       tbody.appendChild(tr);
 
       let detailsRow;
-      if (hasDetails) {
+      if (expandable) {
         detailsRow = document.createElement('tr');
         detailsRow.className = 'hidden bg-slate-50';
         const detailsCell = document.createElement('td');
         detailsCell.colSpan = 4;
-        detailsCell.className = 'px-4 py-3 text-sm text-slate-600';
+        detailsCell.className = 'px-4 py-3 text-sm text-slate-600 space-y-3';
+
         const fields = [
           [t('guestHub.detail.phone'), row.phone],
           [t('guestHub.detail.email'), row.email],
@@ -158,7 +209,52 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
           [t('guestHub.detail.wantsPastorMeeting'), row.wants_pastor_meeting ? t('common.yes') : null],
           [t('guestHub.detail.homeChurch'), row.home_church],
         ].filter(([, value]) => value);
-        detailsCell.innerHTML = fields.map(([label, value]) => `<div><span class="font-medium text-slate-700">${escapeHtml(label)}:</span> ${escapeHtml(value)}</div>`).join('');
+        if (fields.length > 0) {
+          const fieldsEl = document.createElement('div');
+          fieldsEl.innerHTML = fields.map(([label, value]) => `<div><span class="font-medium text-slate-700">${escapeHtml(label)}:</span> ${escapeHtml(value)}</div>`).join('');
+          detailsCell.appendChild(fieldsEl);
+        }
+
+        if (isGuestLead) {
+          const history = transfersByLead.get(row.id) || [];
+          if (history.length > 0) {
+            const historyEl = document.createElement('div');
+            historyEl.innerHTML = `<div class="font-medium text-slate-700 mb-1">${t('guestHub.detail.history')}</div>` +
+              history.map((h) => {
+                const from = h.from_department_id ? departmentLabel(departments.find((d) => d.id === h.from_department_id)?.key) : t('guestHub.historyIntake');
+                const to = departmentLabel(departments.find((d) => d.id === h.to_department_id)?.key);
+                return `<div class="text-xs text-slate-500">${escapeHtml(h.created_at.slice(0, 10))} — ${escapeHtml(from)} → ${escapeHtml(to)}${h.note ? ` (${escapeHtml(h.note)})` : ''}</div>`;
+              }).join('');
+            detailsCell.appendChild(historyEl);
+          }
+
+          const transferForm = document.createElement('div');
+          transferForm.className = 'border-t border-slate-200 pt-2 flex flex-wrap items-end gap-2';
+          transferForm.innerHTML = `
+            <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">${t('guestHub.sendToDepartment')}</label>
+              <select data-el="transfer-dept" class="border border-slate-300 rounded-lg px-2 py-1 text-sm">
+                <option value="">${t('guestHub.selectDepartment')}</option>
+                ${departments.filter((d) => d.id !== row.assigned_department_id).map((d) => `<option value="${d.id}">${departmentLabel(d.key)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="flex-1 min-w-[140px]">
+              <label class="block text-xs font-medium text-slate-500 mb-1">${t('guestHub.transferNote')}</label>
+              <input type="text" data-el="transfer-note" placeholder="${t('guestHub.transferNotePlaceholder')}" class="w-full border border-slate-300 rounded-lg px-2 py-1 text-sm" />
+            </div>
+            <button type="button" data-action="transfer" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+              ${t('guestHub.send')}
+            </button>
+          `;
+          const transferDeptSelect = transferForm.querySelector('[data-el="transfer-dept"]');
+          const transferNoteInput = transferForm.querySelector('[data-el="transfer-note"]');
+          transferForm.querySelector('[data-action="transfer"]').addEventListener('click', () => {
+            if (!transferDeptSelect.value) return;
+            sendToDepartment(row, transferDeptSelect.value, transferNoteInput.value.trim());
+          });
+          detailsCell.appendChild(transferForm);
+        }
+
         detailsRow.appendChild(detailsCell);
         tbody.appendChild(detailsRow);
       }
@@ -168,57 +264,83 @@ export function createGuestOnboardingModal({ supabase, currentUserId }) {
     bodyEl.appendChild(table);
   }
 
-  // A row for an unassigned real account (row.id === null) doesn't have
-  // a guest_follow_ups row yet — create it now, on first status change,
-  // rather than eagerly for every unassigned account nobody's looked at.
-  async function updateStatus(row, changes) {
-    let leadId = row.id;
+  async function sendToDepartment(row, departmentId, note) {
+    const confirmed = await confirmDialog({
+      message: t('guestHub.confirmSend', { name: row.full_name, department: departmentLabel(departments.find((d) => d.id === departmentId)?.key) }),
+      confirmLabel: t('guestHub.send'),
+      danger: false,
+    });
+    if (!confirmed) return;
 
-    if (!leadId) {
-      const { data, error } = await supabase.from('guest_follow_ups').insert({
+    const { error } = await supabase.rpc('transfer_guest_to_department', {
+      p_guest_follow_up_id: row.id,
+      p_department_id: departmentId,
+      p_note: note || null,
+    });
+
+    if (error) {
+      window.alert(t('guestHub.updateFailed', { message: error.message }));
+      return;
+    }
+    load();
+  }
+
+  async function updateLeadFields(row, changes) {
+    if (!row.id) return; // status on a virtual unassigned-member row needs a lead row first — see updateMemberAssignment()
+    const { error } = await supabase.from('guest_follow_ups')
+      .update({ ...changes, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+
+    if (error) {
+      window.alert(t('guestHub.updateFailed', { message: error.message }));
+      return;
+    }
+    load();
+  }
+
+  // A signed-up-but-unassigned member being put into a department here
+  // creates an actual (pending) membership — distinct from a guest
+  // visitor's case, which has no account to attach a membership to.
+  async function updateMemberAssignment(row, departmentId) {
+    if (!departmentId) return;
+
+    const confirmed = await confirmDialog({
+      message: t('guestHub.confirmAssign', { name: row.full_name, department: departmentLabel(departments.find((d) => d.id === departmentId)?.key) }),
+      confirmLabel: t('guestHub.assign'),
+      danger: false,
+    });
+    if (!confirmed) return;
+
+    if (!row.id) {
+      const { error } = await supabase.from('guest_follow_ups').insert({
         full_name: row.full_name,
         email: row.email,
         user_id: row.user_id,
         source: row.source,
         created_by: currentUserId,
-        status: changes.status || row.status,
-        assigned_department_id: changes.assigned_department_id ?? null,
-      }).select('id').single();
-
+        status: 'assigned_to_department',
+        assigned_department_id: departmentId,
+      });
       if (error) {
         window.alert(t('guestHub.updateFailed', { message: error.message }));
         return;
       }
-      leadId = data.id;
     } else {
       const { error } = await supabase.from('guest_follow_ups')
-        .update({ ...changes, updated_at: new Date().toISOString() })
-        .eq('id', leadId);
-
+        .update({ assigned_department_id: departmentId, status: 'assigned_to_department', updated_at: new Date().toISOString() })
+        .eq('id', row.id);
       if (error) {
         window.alert(t('guestHub.updateFailed', { message: error.message }));
         return;
       }
     }
 
-    // A real account being assigned to a department also gets an actual
-    // (pending) membership row here — a guest with no account has
-    // nothing to assign beyond the note on the lead itself.
-    if (row.user_id && changes.assigned_department_id) {
-      const confirmed = await confirmDialog({
-        message: t('guestHub.confirmAssign', { name: row.full_name, department: departmentLabel(departments.find((d) => d.id === changes.assigned_department_id)?.key) }),
-        confirmLabel: t('guestHub.assign'),
-        danger: false,
-      });
-      if (confirmed) {
-        await supabase.from('department_memberships').insert({
-          user_id: row.user_id,
-          department_id: changes.assigned_department_id,
-          role: 'member',
-          status: 'pending',
-        });
-      }
-    }
+    await supabase.from('department_memberships').insert({
+      user_id: row.user_id,
+      department_id: departmentId,
+      role: 'member',
+      status: 'pending',
+    });
 
     load();
   }

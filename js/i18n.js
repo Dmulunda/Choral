@@ -100,6 +100,7 @@ const TRANSLATIONS = {
     'monthlyReport.saveFailed': 'Failed to save: {message}',
 
     'sidebar.attendance': 'Attendance',
+    'sidebar.guestCases': 'Guest Cases',
     'sidebar.appSuggestion': 'App Suggestion',
 
     'attendance.title': 'Attendance Check-In',
@@ -145,7 +146,7 @@ const TRANSLATIONS = {
     'guestHub.name': 'Name',
     'guestHub.source': 'Source',
     'guestHub.status': 'Status',
-    'guestHub.assignDepartment': 'Assign to department',
+    'guestHub.department': 'Department',
     'guestHub.noDepartment': '—',
     'guestHub.source.manual': 'Manual',
     'guestHub.source.attendance_checkin': 'Attendance check-in',
@@ -165,6 +166,14 @@ const TRANSLATIONS = {
     'guestHub.detail.prayerRequest': 'Prayer request',
     'guestHub.detail.wantsPastorMeeting': 'Wants to meet the pastor(s)',
     'guestHub.detail.homeChurch': 'Home church',
+    'guestHub.detail.history': 'Case history',
+    'guestHub.historyIntake': 'Intake',
+    'guestHub.sendToDepartment': 'Send to department',
+    'guestHub.selectDepartment': 'Select a department…',
+    'guestHub.transferNote': 'Note (optional)',
+    'guestHub.transferNotePlaceholder': 'e.g. Needs prayer',
+    'guestHub.send': 'Send',
+    'guestHub.confirmSend': 'Send {name}’s case to {department}? They’ll see the full file, including everything captured so far.',
 
     'appSuggestion.title': 'App Suggestion',
     'appSuggestion.intro': 'Send a suggestion directly to the primary administrator.',
@@ -852,6 +861,7 @@ const TRANSLATIONS = {
     'monthlyReport.saveFailed': "Échec de l'enregistrement : {message}",
 
     'sidebar.attendance': 'Présence',
+    'sidebar.guestCases': 'Dossiers des invités',
     'sidebar.appSuggestion': "Suggestion pour l'appli",
 
     'attendance.title': 'Enregistrement de présence',
@@ -897,7 +907,7 @@ const TRANSLATIONS = {
     'guestHub.name': 'Nom',
     'guestHub.source': 'Source',
     'guestHub.status': 'Statut',
-    'guestHub.assignDepartment': 'Affecter à un département',
+    'guestHub.department': 'Département',
     'guestHub.noDepartment': '—',
     'guestHub.source.manual': 'Manuel',
     'guestHub.source.attendance_checkin': 'Enregistrement de présence',
@@ -917,6 +927,14 @@ const TRANSLATIONS = {
     'guestHub.detail.prayerRequest': 'Requête de prière',
     'guestHub.detail.wantsPastorMeeting': 'Souhaite rencontrer le(s) pasteur(s)',
     'guestHub.detail.homeChurch': "Église d'attache",
+    'guestHub.detail.history': 'Historique du dossier',
+    'guestHub.historyIntake': 'Accueil initial',
+    'guestHub.sendToDepartment': 'Envoyer au département',
+    'guestHub.selectDepartment': 'Sélectionner un département…',
+    'guestHub.transferNote': 'Note (optionnel)',
+    'guestHub.transferNotePlaceholder': 'ex. A besoin de prière',
+    'guestHub.send': 'Envoyer',
+    'guestHub.confirmSend': 'Envoyer le dossier de {name} à {department} ? Ce département verra le dossier complet, avec toutes les informations déjà recueillies.',
 
     'appSuggestion.title': "Suggestion pour l'application",
     'appSuggestion.intro': "Envoyez une suggestion directement à l'administrateur principal.",
