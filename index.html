@@ -114,18 +114,49 @@
   <!-- Password recovery: shown when arriving via a "reset password" email link -->
   <div id="password-recovery-screen" class="relative z-10 hidden min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0a1628] to-[#0B1F3A]"></div>
 
-  <div id="app-shell" class="relative z-10 hidden flex flex-col md:flex-row min-h-screen">
+  <div id="app-shell" class="relative z-10 hidden flex flex-col min-h-screen">
 
-    <!-- Mobile top bar -->
-    <header class="md:hidden flex items-center justify-between bg-slate-900 text-white px-4 py-3 sticky top-0 z-20">
-      <span class="text-lg font-semibold" data-i18n="app.brand">VPD Church Organisation</span>
-      <button type="button" id="menu-open-btn" data-i18n-aria-label="menu.open" aria-label="Open menu"
-              class="p-2 -mr-2 rounded-lg hover:bg-slate-800">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+    <!-- Top bar: visible at every screen size. Mobile-only brand/menu on
+         the left, always-visible Language/Theme/Inbox controls on the
+         right (moved here from the sidebar to free up sidebar space). -->
+    <header class="flex items-center justify-between bg-slate-900 text-white px-4 py-3 sticky top-0 z-20">
+      <div class="flex items-center gap-1 md:hidden">
+        <button type="button" id="menu-open-btn" data-i18n-aria-label="menu.open" aria-label="Open menu"
+                class="p-2 -ml-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span class="text-lg font-semibold" data-i18n="app.brand">VPD Church Organisation</span>
+      </div>
+
+      <div class="flex items-center gap-2 ml-auto">
+        <select id="topbar-lang-select" data-i18n-aria-label="sidebar.language" aria-label="Language"
+                class="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2 py-1.5">
+          <option value="en">EN</option>
+          <option value="fr">FR</option>
+        </select>
+
+        <button type="button" id="topbar-theme-toggle" data-i18n-aria-label="sidebar.theme" aria-label="Theme"
+                class="p-2 rounded-lg hover:bg-slate-800">
+          <svg id="topbar-theme-icon-sun" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1.5m0 15V21m9-9h-1.5m-15 0H3m15.364-6.364l-1.06 1.06M6.696 17.304l-1.06 1.06m12.728 0l-1.06-1.06M6.696 6.696l-1.06-1.06M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+          </svg>
+          <svg id="topbar-theme-icon-moon" xmlns="http://www.w3.org/2000/svg" class="hidden w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+          </svg>
+        </button>
+
+        <button type="button" id="inbox-btn" class="hidden relative p-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span id="inbox-badge" class="hidden absolute top-0.5 right-0.5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold leading-none"></span>
+        </button>
+      </div>
     </header>
+
+    <div class="flex flex-1 flex-col md:flex-row min-h-0">
 
     <!-- Backdrop (mobile only, shown while the drawer is open) -->
     <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/50 z-30 md:hidden"></div>
@@ -229,17 +260,36 @@
         </button>
       </div>
 
+      <!-- Ushers/Super Admin/Pastor Admin/Church Secretary only — see
+           can_record_attendance() in sql/037, mirrored client-side in
+           updateMemberActionsUI(). -->
+      <div class="px-6 py-3 border-t border-slate-800">
+        <button type="button" id="attendance-btn" data-i18n="sidebar.attendance"
+                class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          Attendance
+        </button>
+      </div>
+
+      <!-- Elevated roles only (global role, or a department admin/
+           secretary) — hidden for ordinary members and guests, per the
+           App Suggestion Portal spec; sql/040's RLS is the real gate. -->
+      <div class="px-6 py-3 border-t border-slate-800">
+        <button type="button" id="app-suggestion-btn" data-i18n="sidebar.appSuggestion"
+                class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          App Suggestion
+        </button>
+      </div>
+
       <!-- Available to any signed-in member of at least one department —
            not tied to which department is active. -->
       <div id="member-actions-wrap" class="hidden px-6 py-3 border-t border-slate-800 space-y-1">
+        <button type="button" id="my-checkin-code-btn" data-i18n="sidebar.myCheckInCode"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          My Check-In Code
+        </button>
         <button type="button" id="report-absence-btn" data-i18n="sidebar.reportAbsence"
                 class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
           Report Absence
-        </button>
-        <button type="button" id="inbox-btn"
-                class="w-full flex items-center justify-between px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          <span data-i18n="sidebar.inbox">Inbox</span>
-          <span id="inbox-badge" class="hidden ml-2 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-xs font-semibold"></span>
         </button>
         <button type="button" id="department-rules-btn" class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
           <span data-el="department-rules-label"></span>
@@ -264,27 +314,6 @@
                 class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">
           Preview as Member
         </button>
-      </div>
-
-      <div class="px-6 py-3 border-t border-slate-800 flex items-center gap-2" role="group" data-i18n-aria-label="sidebar.language" aria-label="Language">
-        <button type="button" data-lang="en"
-                class="flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">EN</button>
-        <button type="button" data-lang="fr"
-                class="flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">FR</button>
-      </div>
-
-      <div class="px-6 py-3 border-t border-slate-800">
-        <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="sidebar.theme">Theme</label>
-        <div class="flex bg-slate-800 rounded-lg p-1">
-          <button type="button" id="theme-light-btn"
-                  class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.themeLight">
-            Light
-          </button>
-          <button type="button" id="theme-dark-btn"
-                  class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.themeDark">
-            Dark
-          </button>
-        </div>
       </div>
 
       <div class="px-6 py-4 border-t border-slate-800 text-sm text-slate-500 flex items-center justify-between gap-2">
@@ -386,6 +415,7 @@
       </section>
 
     </main>
+    </div>
   </div>
 
   <script type="module" src="js/app.js"></script>

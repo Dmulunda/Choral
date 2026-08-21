@@ -124,7 +124,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, is_primary_admin, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 
@@ -150,6 +150,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         email: p.profile_emails?.email,
         globalRole: p.global_role,
         removedAt: p.removed_at,
+        isPrimaryAdmin: p.is_primary_admin,
         permanentlyDeletedAt: p.permanently_deleted_at,
         departments: byUser.get(p.id) || [],
       }));
@@ -320,6 +321,22 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         actionsCell.appendChild(resetBtn);
       }
 
+      if (isGlobal && isSuperAdmin && !row.permanentlyDeletedAt) {
+        if (row.isPrimaryAdmin) {
+          const badge = document.createElement('span');
+          badge.className = 'text-xs font-medium text-amber-600 block';
+          badge.textContent = t('users.primaryAdminBadge');
+          actionsCell.appendChild(badge);
+        } else {
+          const setPrimaryBtn = document.createElement('button');
+          setPrimaryBtn.type = 'button';
+          setPrimaryBtn.className = 'text-sm font-medium text-amber-600 hover:text-amber-800 whitespace-nowrap block';
+          setPrimaryBtn.textContent = t('users.setPrimaryAdmin');
+          setPrimaryBtn.addEventListener('click', () => setPrimaryAdmin(row));
+          actionsCell.appendChild(setPrimaryBtn);
+        }
+      }
+
       if (isGlobal && isSuperAdmin && row.id !== currentUserId && !row.permanentlyDeletedAt) {
         if (row.removedAt) {
           const reinstateBtn = document.createElement('button');
@@ -484,6 +501,34 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     const { error } = await supabase.rpc('reinstate_user', { target_user_id: row.id });
     if (error) {
       window.alert(t('users.removeFailed', { message: error.message }));
+      return;
+    }
+    loadUsers();
+  }
+
+  // The App Suggestion Portal's "routed exclusively to the primary
+  // admin" requirement needs exactly one profile flagged — the unique
+  // partial index in sql/040 enforces that, so the previous holder has
+  // to be cleared first (a single .update({is_primary_admin:false})
+  // with no id filter — the RLS UPDATE policy still limits it to rows
+  // this Super Admin can already write, which is every profile).
+  async function setPrimaryAdmin(row) {
+    const confirmed = await confirmDialog({
+      message: t('users.confirmSetPrimaryAdmin', { name: row.full_name }),
+      confirmLabel: t('users.setPrimaryAdmin'),
+      danger: false,
+    });
+    if (!confirmed) return;
+
+    const { error: clearError } = await supabase.from('profiles').update({ is_primary_admin: false }).eq('is_primary_admin', true);
+    if (clearError) {
+      window.alert(t('users.updateFailed', { message: clearError.message }));
+      return;
+    }
+
+    const { error } = await supabase.from('profiles').update({ is_primary_admin: true }).eq('id', row.id);
+    if (error) {
+      window.alert(t('users.updateFailed', { message: error.message }));
       return;
     }
     loadUsers();

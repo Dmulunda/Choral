@@ -8,13 +8,17 @@
 // the budget-request/board pop-ups — nothing this heavy stays inline).
 // Department views only load once explicitly picked from the
 // switcher/nav.
-import { getEffectiveSupabase } from './departments.js';
+import { getEffectiveSupabase, getGlobalRole } from './departments.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { renderAllDepartmentApprovals } from './components/allDepartmentApprovals.js';
+import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { t, departmentLabel } from './i18n.js';
+
+const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 
 let currentDirectoryModal = null;
 let currentReportsModal = null;
+let currentGuestHubModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -42,6 +46,11 @@ export async function renderSuperAdminHomeTab() {
       <button type="button" data-action="open-directory" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
         ${t('directory.title')}
       </button>
+      ${PASTORAL_TEAM_ROLES.includes(getGlobalRole()) ? `
+        <button type="button" data-action="open-guest-hub" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('guestHub.title')}
+        </button>
+      ` : ''}
     </div>
   `;
 
@@ -55,6 +64,7 @@ export async function renderSuperAdminHomeTab() {
   // before fresh ones are built, instead of accumulating hidden orphans.
   currentReportsModal?.root.remove();
   currentDirectoryModal?.root.remove();
+  currentGuestHubModal?.root.remove();
 
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
@@ -66,6 +76,12 @@ export async function renderSuperAdminHomeTab() {
 
   container.querySelector('[data-action="open-reports"]').addEventListener('click', () => currentReportsModal.open());
   container.querySelector('[data-action="open-directory"]').addEventListener('click', () => currentDirectoryModal.open());
+
+  const guestHubBtn = container.querySelector('[data-action="open-guest-hub"]');
+  if (guestHubBtn) {
+    currentGuestHubModal = createGuestOnboardingModal({ supabase, currentUserId: user.id });
+    guestHubBtn.addEventListener('click', () => currentGuestHubModal.open());
+  }
 }
 
 async function renderMetrics(container, supabase) {

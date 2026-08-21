@@ -16,6 +16,9 @@ import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
+import { createAttendanceManagerModal } from './components/attendanceManager.js';
+import { createMyCheckInCodeModal } from './components/myCheckInCode.js';
+import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -49,6 +52,9 @@ const reportAbsenceBtn = document.querySelector('#report-absence-btn');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
 const churchRulesBtn = document.querySelector('#church-rules-btn');
+const attendanceBtn = document.querySelector('#attendance-btn');
+const appSuggestionBtn = document.querySelector('#app-suggestion-btn');
+const myCheckInCodeBtn = document.querySelector('#my-checkin-code-btn');
 const departmentRulesBtn = document.querySelector('#department-rules-btn');
 const departmentRulesLabelEl = document.querySelector('[data-el="department-rules-label"]');
 const monthlyReportBtn = document.querySelector('#monthly-report-btn');
@@ -333,14 +339,35 @@ previewAsMemberBtn.addEventListener('click', () => {
 // which one is currently active. Report Absence is hidden during
 // View-As (its RPC call would just be blocked by the read-only
 // wrapper — hiding it is clearer than showing a control that can't
-// succeed); the Inbox stays visible so a Super Admin previewing another
-// user's view sees what that user would see — resolved via
-// getViewAsTarget() rather than the real currentUserId in both places
-// below, same as every other identity-sensitive spot in this file.
+// succeed); the Inbox (now in the top bar, not this sidebar group)
+// stays visible so a Super Admin previewing another user's view sees
+// what that user would see — resolved via getViewAsTarget() rather
+// than the real currentUserId in both places below, same as every
+// other identity-sensitive spot in this file.
+const USHER_ATTENDANCE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+const SUGGESTION_GLOBAL_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+
 function updateMemberActionsUI() {
   const hasAccess = getMyDepartments().length > 0;
   memberActionsWrapEl.classList.toggle('hidden', !hasAccess);
   reportAbsenceBtn.classList.toggle('hidden', !hasAccess || isViewingAs());
+  inboxBtn.classList.toggle('hidden', !hasAccess);
+
+  // Mirrors can_record_attendance() in sql/037 — a global role from the
+  // pastoral team, or an approved admin/secretary in the Ushers
+  // department specifically.
+  const canRecordAttendance = USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
+    || getMyDepartments().some((d) => d.key === 'ushers' && (d.role === 'admin' || d.role === 'secretary'));
+  attendanceBtn.classList.toggle('hidden', !canRecordAttendance);
+
+  // Mirrors can_submit_suggestions() in sql/040 — deliberately excludes
+  // Super Viewer, since a global-role holder's synthesized department
+  // rows carry the literal global_role string as `role`, which never
+  // equals 'admin'/'secretary', so the department-admin half of this
+  // check naturally only matches a real (non-global) department admin.
+  const canSubmitSuggestion = SUGGESTION_GLOBAL_ROLES.includes(getGlobalRole())
+    || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
+  appSuggestionBtn.classList.toggle('hidden', !canSubmitSuggestion);
 }
 
 async function refreshInboxBadge() {
@@ -414,47 +441,55 @@ monthlyReportBtn.addEventListener('click', () => {
   closeSidebar();
 });
 
-// ---- Language switcher ----
+attendanceBtn.addEventListener('click', () => {
+  createAttendanceManagerModal({ supabase: getEffectiveSupabase(), currentUserId }).open();
+  closeSidebar();
+});
+
+myCheckInCodeBtn.addEventListener('click', () => {
+  createMyCheckInCodeModal({ currentUserId }).open();
+  closeSidebar();
+});
+
+appSuggestionBtn.addEventListener('click', () => {
+  createAppSuggestionModal({ supabase: getEffectiveSupabase(), currentUserId }).open();
+  closeSidebar();
+});
+
+// ---- Language switcher (top bar) ----
 document.documentElement.lang = getLang();
 applyStaticTranslations();
 
-const langButtons = document.querySelectorAll('[data-lang]');
+const topbarLangSelect = document.querySelector('#topbar-lang-select');
 
-function updateLangButtons() {
-  const current = getLang();
-  langButtons.forEach((btn) => {
-    const active = btn.dataset.lang === current;
-    btn.classList.toggle('bg-indigo-600', active);
-    btn.classList.toggle('text-white', active);
-    btn.classList.toggle('text-slate-400', !active);
-  });
+function updateLangSelect() {
+  topbarLangSelect.value = getLang();
 }
 
-langButtons.forEach((btn) => btn.addEventListener('click', () => setLang(btn.dataset.lang)));
-updateLangButtons();
+topbarLangSelect.addEventListener('change', () => setLang(topbarLangSelect.value));
+updateLangSelect();
 
-// ---- Night mode ----
-const themeLightBtn = document.querySelector('#theme-light-btn');
-const themeDarkBtn = document.querySelector('#theme-dark-btn');
+// ---- Night mode (top bar) ----
+const topbarThemeToggle = document.querySelector('#topbar-theme-toggle');
+const topbarThemeIconSun = document.querySelector('#topbar-theme-icon-sun');
+const topbarThemeIconMoon = document.querySelector('#topbar-theme-icon-moon');
 
-function updateThemeButtons() {
+function updateThemeIcon() {
   const isDark = getTheme() === 'dark';
-  themeLightBtn.classList.toggle('bg-indigo-600', !isDark);
-  themeLightBtn.classList.toggle('text-white', !isDark);
-  themeLightBtn.classList.toggle('text-slate-400', isDark);
-  themeDarkBtn.classList.toggle('bg-indigo-600', isDark);
-  themeDarkBtn.classList.toggle('text-white', isDark);
-  themeDarkBtn.classList.toggle('text-slate-400', !isDark);
+  topbarThemeIconSun.classList.toggle('hidden', isDark);
+  topbarThemeIconMoon.classList.toggle('hidden', !isDark);
 }
 
-themeLightBtn.addEventListener('click', () => { setTheme('light'); updateThemeButtons(); });
-themeDarkBtn.addEventListener('click', () => { setTheme('dark'); updateThemeButtons(); });
-updateThemeButtons();
+topbarThemeToggle.addEventListener('click', () => {
+  setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+  updateThemeIcon();
+});
+updateThemeIcon();
 
 onLangChange(() => {
   document.documentElement.lang = getLang();
   applyStaticTranslations();
-  updateLangButtons();
+  updateLangSelect();
   renderAuthScreen(authScreenEl, { supabase });
   if (!passwordRecoveryEl.classList.contains('hidden')) {
     renderPasswordRecovery(passwordRecoveryEl, { supabase, onDone: () => supabase.auth.signOut() });
@@ -684,7 +719,10 @@ function showAuth() {
   previewAsMemberWrapEl.classList.add('hidden');
   roleSwitcherWrapEl.classList.add('hidden');
   memberActionsWrapEl.classList.add('hidden');
+  inboxBtn.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
+  attendanceBtn.classList.add('hidden');
+  appSuggestionBtn.classList.add('hidden');
   setAppBadgeCount(0);
 }
 

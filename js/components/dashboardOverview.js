@@ -9,10 +9,10 @@ const VOICE_PART_ORDER = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bass
 export function renderDashboard(container, { supabase }) {
   container.innerHTML = `
     <div class="grid lg:grid-cols-2 gap-6">
-      <div class="bg-white rounded-xl shadow p-4 sm:p-6">
-        <h2 class="text-lg font-semibold mb-4">${t('dashboard.roster')}</h2>
-        <div data-el="roster" class="text-sm text-slate-500">${t('common.loading')}</div>
-      </div>
+      <details class="bg-white rounded-xl shadow p-4 sm:p-6">
+        <summary class="text-lg font-semibold cursor-pointer select-none">${t('dashboard.roster')}</summary>
+        <div data-el="roster" class="text-sm text-slate-500 mt-4">${t('common.loading')}</div>
+      </details>
       <div class="bg-white rounded-xl shadow p-4 sm:p-6">
         <h2 class="text-lg font-semibold mb-4">${t('dashboard.thisWeek')}</h2>
         <div data-el="week-services" class="text-sm text-slate-500 space-y-4">${t('common.loading')}</div>
