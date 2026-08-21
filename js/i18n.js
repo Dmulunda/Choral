@@ -101,7 +101,6 @@ const TRANSLATIONS = {
 
     'sidebar.attendance': 'Attendance',
     'sidebar.appSuggestion': 'App Suggestion',
-    'sidebar.myCheckInCode': 'My Check-In Code',
 
     'attendance.title': 'Attendance Check-In',
     'attendance.serviceDate': 'Service date',
@@ -111,8 +110,6 @@ const TRANSLATIONS = {
     'attendance.type.special_service': 'Special Service',
     'attendance.serviceLabel': 'Special service name',
     'attendance.serviceLabelPlaceholder': 'e.g. Christmas Service',
-    'attendance.tabSearch': 'Search',
-    'attendance.tabScan': 'Scan QR',
     'attendance.searchPlaceholder': 'Search by name…',
     'attendance.guestName': 'Guest visitor',
     'attendance.guestNamePlaceholder': "Guest's name",
@@ -122,12 +119,6 @@ const TRANSLATIONS = {
     'attendance.checkedIn': '{name} checked in.',
     'attendance.guestCheckedIn': '{name} (guest) checked in.',
     'attendance.guestBadge': 'guest',
-    'attendance.scanRequestingCamera': 'Requesting camera access…',
-    'attendance.scanCameraFailed': 'Could not access the camera: {message}',
-    'attendance.scanReady': 'Point the camera at a member’s check-in code.',
-    'attendance.scanUnknownCode': 'That code doesn’t match an approved member.',
-    'attendance.myCodeTitle': 'My Check-In Code',
-    'attendance.myCodeIntro': 'Show this to an usher to check in quickly.',
 
     'guestHub.title': 'Guest Onboarding Hub',
     'guestHub.loadFailed': 'Failed to load: {message}',
@@ -833,7 +824,6 @@ const TRANSLATIONS = {
 
     'sidebar.attendance': 'Présence',
     'sidebar.appSuggestion': "Suggestion pour l'appli",
-    'sidebar.myCheckInCode': 'Mon code de présence',
 
     'attendance.title': 'Enregistrement de présence',
     'attendance.serviceDate': 'Date du service',
@@ -843,8 +833,6 @@ const TRANSLATIONS = {
     'attendance.type.special_service': 'Service spécial',
     'attendance.serviceLabel': 'Nom du service spécial',
     'attendance.serviceLabelPlaceholder': 'ex. Service de Noël',
-    'attendance.tabSearch': 'Rechercher',
-    'attendance.tabScan': 'Scanner le QR',
     'attendance.searchPlaceholder': 'Rechercher par nom…',
     'attendance.guestName': 'Visiteur invité',
     'attendance.guestNamePlaceholder': "Nom de l'invité",
@@ -854,12 +842,6 @@ const TRANSLATIONS = {
     'attendance.checkedIn': '{name} enregistré(e).',
     'attendance.guestCheckedIn': '{name} (invité) enregistré(e).',
     'attendance.guestBadge': 'invité',
-    'attendance.scanRequestingCamera': "Demande d'accès à la caméra…",
-    'attendance.scanCameraFailed': "Impossible d'accéder à la caméra : {message}",
-    'attendance.scanReady': 'Présentez le code de présence du membre devant la caméra.',
-    'attendance.scanUnknownCode': "Ce code ne correspond à aucun membre approuvé.",
-    'attendance.myCodeTitle': 'Mon code de présence',
-    'attendance.myCodeIntro': 'Présentez ceci à un huissier pour vous enregistrer rapidement.',
 
     'guestHub.title': "Centre d'accueil des invités",
     'guestHub.loadFailed': 'Échec du chargement : {message}',

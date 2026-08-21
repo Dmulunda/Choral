@@ -17,7 +17,6 @@ import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
-import { createMyCheckInCodeModal } from './components/myCheckInCode.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
@@ -368,7 +367,6 @@ function updateSidebarToolsSelect() {
   if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
   if (canSubmitSuggestion) options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   if (hasAccess) {
-    options.push({ value: 'my-checkin-code', label: t('sidebar.myCheckInCode') });
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
       options.push({ value: 'department-rules', label: t('sidebar.departmentRules') });
@@ -407,8 +405,6 @@ function runSidebarTool(value) {
     createAttendanceManagerModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'app-suggestion') {
     createAppSuggestionModal({ supabase: effectiveSupabase, currentUserId }).open();
-  } else if (value === 'my-checkin-code') {
-    createMyCheckInCodeModal({ currentUserId }).open();
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'department-rules' && active) {
