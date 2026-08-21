@@ -1,9 +1,10 @@
-// Training tab entry point. Phase 1: School Admins get the course
-// builder; everyone else sees a placeholder until Phase 2 adds the
-// student-facing catalog/player/progress dashboard.
+// Training tab entry point — a "My Courses" catalog everyone gets, and
+// a "Manage Courses" builder for School Admins (who can also take
+// courses themselves, hence the sub-tab rather than an either/or).
 import { getEffectiveSupabase } from './departments.js';
 import { getIsSchoolAdmin } from './schoolAdmin.js';
 import { renderCourseBuilder } from './components/courseBuilder.js';
+import { renderCourseCatalog } from './components/courseCatalog.js';
 import { t } from './i18n.js';
 
 export async function renderTrainingTab() {
@@ -17,11 +18,41 @@ export async function renderTrainingTab() {
     return;
   }
 
-  container.innerHTML = '';
+  const isSchoolAdmin = getIsSchoolAdmin();
 
-  if (getIsSchoolAdmin()) {
-    renderCourseBuilder(container, { supabase, currentUserId: user.id });
-  } else {
-    container.innerHTML = `<p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6">${t('courses.studentComingSoon')}</p>`;
+  container.innerHTML = isSchoolAdmin ? `
+    <div class="flex gap-2 mb-4">
+      <button type="button" data-el="tab-catalog" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('courses.myCourses')}</button>
+      <button type="button" data-el="tab-manage" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('courses.manageTitle')}</button>
+    </div>
+    <div data-el="body"></div>
+  ` : `<div data-el="body"></div>`;
+
+  const bodyEl = container.querySelector('[data-el="body"]');
+
+  if (!isSchoolAdmin) {
+    renderCourseCatalog(bodyEl, { supabase, currentUserId: user.id });
+    return;
   }
+
+  const tabCatalogBtn = container.querySelector('[data-el="tab-catalog"]');
+  const tabManageBtn = container.querySelector('[data-el="tab-manage"]');
+
+  function setTabStyle(btn, active) {
+    btn.classList.toggle('bg-indigo-600', active);
+    btn.classList.toggle('text-white', active);
+    btn.classList.toggle('text-slate-600', !active);
+    btn.classList.toggle('hover:bg-slate-100', !active);
+  }
+
+  function activate(tab) {
+    setTabStyle(tabCatalogBtn, tab === 'catalog');
+    setTabStyle(tabManageBtn, tab === 'manage');
+    if (tab === 'catalog') renderCourseCatalog(bodyEl, { supabase, currentUserId: user.id });
+    else renderCourseBuilder(bodyEl, { supabase, currentUserId: user.id });
+  }
+
+  tabCatalogBtn.addEventListener('click', () => activate('catalog'));
+  tabManageBtn.addEventListener('click', () => activate('manage'));
+  activate('catalog');
 }
