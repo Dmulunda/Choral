@@ -19,6 +19,7 @@ import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
+import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -372,11 +373,12 @@ function updateSidebarToolsSelect() {
     if (active) {
       options.push({ value: 'department-rules', label: t('sidebar.departmentRules') });
       options.push({ value: 'monthly-report', label: t('sidebar.monthlyReport') });
-      // Whoever currently holds a guest's case can see it — see
-      // sql/042's RLS on guest_follow_ups — so any department admin
-      // gets this, not just the pastoral team's Guest Onboarding Hub.
+      // Whoever currently holds a guest's/member's case can see it —
+      // see sql/042 and sql/043's RLS — so any department admin gets
+      // these, not just the pastoral team's oversight hubs.
       if (active.role === 'admin' || active.role === 'super_admin') {
         options.push({ value: 'guest-cases', label: t('sidebar.guestCases') });
+        options.push({ value: 'member-cases', label: t('sidebar.memberCases') });
       }
     }
   }
@@ -432,6 +434,12 @@ function runSidebarTool(value) {
     }).open();
   } else if (value === 'guest-cases' && active) {
     createGuestOnboardingModal({
+      supabase: effectiveSupabase,
+      currentUserId,
+      scope: { type: 'department', departmentId: active.id },
+    }).open();
+  } else if (value === 'member-cases' && active) {
+    createMemberCaseModal({
       supabase: effectiveSupabase,
       currentUserId,
       scope: { type: 'department', departmentId: active.id },

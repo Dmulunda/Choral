@@ -12,6 +12,7 @@ import { getEffectiveSupabase, getGlobalRole } from './departments.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { renderAllDepartmentApprovals } from './components/allDepartmentApprovals.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
+import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { t, departmentLabel } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -19,6 +20,7 @@ const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 let currentDirectoryModal = null;
 let currentReportsModal = null;
 let currentGuestHubModal = null;
+let currentMemberCaseModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -50,6 +52,9 @@ export async function renderSuperAdminHomeTab() {
         <button type="button" data-action="open-guest-hub" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('guestHub.title')}
         </button>
+        <button type="button" data-action="open-member-cases" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('memberCase.title')}
+        </button>
       ` : ''}
     </div>
   `;
@@ -65,6 +70,7 @@ export async function renderSuperAdminHomeTab() {
   currentReportsModal?.root.remove();
   currentDirectoryModal?.root.remove();
   currentGuestHubModal?.root.remove();
+  currentMemberCaseModal?.root.remove();
 
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
@@ -81,6 +87,12 @@ export async function renderSuperAdminHomeTab() {
   if (guestHubBtn) {
     currentGuestHubModal = createGuestOnboardingModal({ supabase, currentUserId: user.id });
     guestHubBtn.addEventListener('click', () => currentGuestHubModal.open());
+  }
+
+  const memberCasesBtn = container.querySelector('[data-action="open-member-cases"]');
+  if (memberCasesBtn) {
+    currentMemberCaseModal = createMemberCaseModal({ supabase, currentUserId: user.id, scope: { type: 'pastoral' } });
+    memberCasesBtn.addEventListener('click', () => currentMemberCaseModal.open());
   }
 }
 
