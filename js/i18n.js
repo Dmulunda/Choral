@@ -24,6 +24,7 @@ const TRANSLATIONS = {
     'sidebar.theme': 'Theme',
     'sidebar.themeLight': 'Light',
     'sidebar.themeDark': 'Dark',
+    'sidebar.more': 'More…',
     'sidebar.department': 'Department',
     'sidebar.viewAs': 'View As…',
 
@@ -755,6 +756,7 @@ const TRANSLATIONS = {
     'sidebar.theme': 'Thème',
     'sidebar.themeLight': 'Clair',
     'sidebar.themeDark': 'Sombre',
+    'sidebar.more': 'Plus…',
     'sidebar.department': 'Département',
     'sidebar.viewAs': 'Voir en tant que…',
 

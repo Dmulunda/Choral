@@ -47,18 +47,9 @@ const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-ap
 const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
 const globalNavGroupEl = document.querySelector('#global-nav-group');
-const memberActionsWrapEl = document.querySelector('#member-actions-wrap');
-const reportAbsenceBtn = document.querySelector('#report-absence-btn');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
-const churchRulesBtn = document.querySelector('#church-rules-btn');
-const attendanceBtn = document.querySelector('#attendance-btn');
-const appSuggestionBtn = document.querySelector('#app-suggestion-btn');
-const myCheckInCodeBtn = document.querySelector('#my-checkin-code-btn');
-const departmentRulesBtn = document.querySelector('#department-rules-btn');
-const departmentRulesLabelEl = document.querySelector('[data-el="department-rules-label"]');
-const monthlyReportBtn = document.querySelector('#monthly-report-btn');
-const monthlyReportLabelEl = document.querySelector('[data-el="monthly-report-label"]');
+const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
 const viewAsWrapEl = document.querySelector('#view-as-wrap');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -132,11 +123,9 @@ function applyActiveDepartment() {
   // since active is intentionally null while on the Home console —
   // Home itself lives inside this same nav group.
   globalNavGroupEl.classList.toggle('hidden', !hasGlobalReach());
+  updateSidebarToolsSelect();
 
   if (!active) {
-    departmentRulesBtn.classList.add('hidden');
-    monthlyReportBtn.classList.add('hidden');
-
     if (isHomeActive()) {
       noAccessPanelEl.classList.add('hidden');
       choirNavGroupEl.classList.add('hidden');
@@ -157,10 +146,6 @@ function applyActiveDepartment() {
   }
 
   noAccessPanelEl.classList.add('hidden');
-  departmentRulesBtn.classList.remove('hidden');
-  departmentRulesLabelEl.textContent = t('sidebar.departmentRules', { department: departmentLabel(active.key) });
-  monthlyReportBtn.classList.remove('hidden');
-  monthlyReportLabelEl.textContent = t('sidebar.monthlyReport', { department: departmentLabel(active.key) });
 
   const isChoir = active.key === 'choir';
   // Every non-Choir department shares the same Dashboard/Scheduling nav
@@ -349,16 +334,27 @@ const SUGGESTION_GLOBAL_ROLES = ['super_admin', 'pastor_admin', 'church_secretar
 
 function updateMemberActionsUI() {
   const hasAccess = getMyDepartments().length > 0;
-  memberActionsWrapEl.classList.toggle('hidden', !hasAccess);
-  reportAbsenceBtn.classList.toggle('hidden', !hasAccess || isViewingAs());
   inboxBtn.classList.toggle('hidden', !hasAccess);
+}
+
+// ---- Sidebar tools dropdown ----
+// Everything from Church Rules through Monthly Report lives in one
+// select instead of a stack of separate buttons — rebuilt from scratch
+// on every call since each option has its own visibility rule (some
+// need department access, some an elevated role, some an active
+// department), and there's no cheap way to diff that into individual
+// per-option toggles worth the complexity. Picking an option runs its
+// action immediately (see runSidebarTool()) and the select snaps back
+// to the placeholder — a one-shot action menu, not a persisted choice.
+function updateSidebarToolsSelect() {
+  const hasAccess = getMyDepartments().length > 0;
+  const active = getActiveDepartment();
 
   // Mirrors can_record_attendance() in sql/037 — a global role from the
   // pastoral team, or an approved admin/secretary in the Ushers
   // department specifically.
   const canRecordAttendance = USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
     || getMyDepartments().some((d) => d.key === 'ushers' && (d.role === 'admin' || d.role === 'secretary'));
-  attendanceBtn.classList.toggle('hidden', !canRecordAttendance);
 
   // Mirrors can_submit_suggestions() in sql/040 — deliberately excludes
   // Super Viewer, since a global-role holder's synthesized department
@@ -367,7 +363,73 @@ function updateMemberActionsUI() {
   // check naturally only matches a real (non-global) department admin.
   const canSubmitSuggestion = SUGGESTION_GLOBAL_ROLES.includes(getGlobalRole())
     || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
-  appSuggestionBtn.classList.toggle('hidden', !canSubmitSuggestion);
+
+  const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
+  if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
+  if (canSubmitSuggestion) options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
+  if (hasAccess) {
+    options.push({ value: 'my-checkin-code', label: t('sidebar.myCheckInCode') });
+    if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
+    if (active) {
+      options.push({ value: 'department-rules', label: t('sidebar.departmentRules', { department: departmentLabel(active.key) }) });
+      options.push({ value: 'monthly-report', label: t('sidebar.monthlyReport', { department: departmentLabel(active.key) }) });
+    }
+  }
+
+  sidebarToolsSelect.innerHTML = `<option value="">${t('sidebar.more')}</option>`
+    + options.map((o) => `<option value="${o.value}">${escapeHtmlText(o.label)}</option>`).join('');
+}
+
+function escapeHtmlText(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+sidebarToolsSelect.addEventListener('change', () => {
+  const value = sidebarToolsSelect.value;
+  sidebarToolsSelect.value = '';
+  if (value) runSidebarTool(value);
+});
+
+function runSidebarTool(value) {
+  const active = getActiveDepartment();
+  const effectiveSupabase = getEffectiveSupabase();
+
+  if (value === 'church-rules') {
+    createRulesModal({
+      supabase: effectiveSupabase,
+      scope: { type: 'church', canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin' },
+      currentUserId,
+      title: t('rules.churchTitle'),
+    }).open();
+  } else if (value === 'attendance') {
+    createAttendanceManagerModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'app-suggestion') {
+    createAppSuggestionModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'my-checkin-code') {
+    createMyCheckInCodeModal({ currentUserId }).open();
+  } else if (value === 'report-absence') {
+    createReportAbsenceModal({ supabase: effectiveSupabase }).open();
+  } else if (value === 'department-rules' && active) {
+    createRulesModal({
+      supabase: effectiveSupabase,
+      scope: { type: 'department', departmentId: active.id, departmentKey: active.key, canAdminister: active.role === 'admin' || active.role === 'super_admin' },
+      currentUserId,
+      title: t('rules.departmentTitle', { department: departmentLabel(active.key) }),
+    }).open();
+  } else if (value === 'monthly-report' && active) {
+    createMonthlyReportModal({
+      supabase: effectiveSupabase,
+      departmentId: active.id,
+      departmentKey: active.key,
+      canEdit: active.role === 'admin' || active.role === 'super_admin',
+      currentUserId,
+      title: t('monthlyReport.titleFor', { department: departmentLabel(active.key) }),
+    }).open();
+  }
+
+  closeSidebar();
 }
 
 async function refreshInboxBadge() {
@@ -389,70 +451,10 @@ async function refreshInboxBadge() {
   setAppBadgeCount(total);
 }
 
-reportAbsenceBtn.addEventListener('click', () => {
-  const modal = createReportAbsenceModal({ supabase: getEffectiveSupabase() });
-  modal.open();
-  closeSidebar();
-});
-
 inboxBtn.addEventListener('click', () => {
   const inboxUserId = getViewAsTarget()?.id || currentUserId;
   const modal = createInboxModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId, onRead: refreshInboxBadge });
   modal.open();
-  closeSidebar();
-});
-
-churchRulesBtn.addEventListener('click', () => {
-  const modal = createRulesModal({
-    supabase: getEffectiveSupabase(),
-    scope: { type: 'church', canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin' },
-    currentUserId,
-    title: t('rules.churchTitle'),
-  });
-  modal.open();
-  closeSidebar();
-});
-
-departmentRulesBtn.addEventListener('click', () => {
-  const active = getActiveDepartment();
-  if (!active) return;
-  const modal = createRulesModal({
-    supabase: getEffectiveSupabase(),
-    scope: { type: 'department', departmentId: active.id, departmentKey: active.key, canAdminister: active.role === 'admin' || active.role === 'super_admin' },
-    currentUserId,
-    title: t('rules.departmentTitle', { department: departmentLabel(active.key) }),
-  });
-  modal.open();
-  closeSidebar();
-});
-
-monthlyReportBtn.addEventListener('click', () => {
-  const active = getActiveDepartment();
-  if (!active) return;
-  const modal = createMonthlyReportModal({
-    supabase: getEffectiveSupabase(),
-    departmentId: active.id,
-    departmentKey: active.key,
-    canEdit: active.role === 'admin' || active.role === 'super_admin',
-    currentUserId,
-    title: t('monthlyReport.titleFor', { department: departmentLabel(active.key) }),
-  });
-  modal.open();
-  closeSidebar();
-});
-
-attendanceBtn.addEventListener('click', () => {
-  createAttendanceManagerModal({ supabase: getEffectiveSupabase(), currentUserId }).open();
-  closeSidebar();
-});
-
-myCheckInCodeBtn.addEventListener('click', () => {
-  createMyCheckInCodeModal({ currentUserId }).open();
-  closeSidebar();
-});
-
-appSuggestionBtn.addEventListener('click', () => {
-  createAppSuggestionModal({ supabase: getEffectiveSupabase(), currentUserId }).open();
   closeSidebar();
 });
 
@@ -499,6 +501,11 @@ onLangChange(() => {
   if (getMyDepartments().length > 0) {
     populateDepartmentSwitcher();
     applyActiveDepartment();
+  } else {
+    // applyActiveDepartment() (called above when there's at least one
+    // department) already refreshes this — this covers the zero-
+    // department case, where Church Rules is still on offer.
+    updateSidebarToolsSelect();
   }
   updateRoleSwitcherUI();
   updateViewAsUI();
@@ -718,11 +725,9 @@ function showAuth() {
   viewAsBannerEl.classList.add('hidden');
   previewAsMemberWrapEl.classList.add('hidden');
   roleSwitcherWrapEl.classList.add('hidden');
-  memberActionsWrapEl.classList.add('hidden');
   inboxBtn.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
-  attendanceBtn.classList.add('hidden');
-  appSuggestionBtn.classList.add('hidden');
+  sidebarToolsSelect.innerHTML = '<option value=""></option>';
   setAppBadgeCount(0);
 }
 

@@ -251,52 +251,20 @@
         </div>
       </nav>
 
-      <!-- Visible to every signed-in user regardless of department
-           access — the central church-wide document. -->
+      <!-- Everything from Church Rules through Monthly Report lives in
+           one dropdown instead of a stack of separate buttons — options
+           are rebuilt on the fly (see updateSidebarToolsSelect() in
+           app.js) since each one has its own visibility rule (some
+           need department access, some need an elevated role, some
+           need an active department). Picking an option runs its
+           action immediately, then the select resets to the
+           placeholder — it's a one-shot action menu, not a persistent
+           choice. -->
       <div class="px-6 py-3 border-t border-slate-800">
-        <button type="button" id="church-rules-btn" data-i18n="sidebar.churchRules"
-                class="w-full text-left px-3 py-2 rounded-lg font-medium text-[#D4AF37] transition-colors hover:bg-slate-800">
-          Church Rules & Regulations
-        </button>
-      </div>
-
-      <!-- Ushers/Super Admin/Pastor Admin/Church Secretary only — see
-           can_record_attendance() in sql/037, mirrored client-side in
-           updateMemberActionsUI(). -->
-      <div class="px-6 py-3 border-t border-slate-800">
-        <button type="button" id="attendance-btn" data-i18n="sidebar.attendance"
-                class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          Attendance
-        </button>
-      </div>
-
-      <!-- Elevated roles only (global role, or a department admin/
-           secretary) — hidden for ordinary members and guests, per the
-           App Suggestion Portal spec; sql/040's RLS is the real gate. -->
-      <div class="px-6 py-3 border-t border-slate-800">
-        <button type="button" id="app-suggestion-btn" data-i18n="sidebar.appSuggestion"
-                class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          App Suggestion
-        </button>
-      </div>
-
-      <!-- Available to any signed-in member of at least one department —
-           not tied to which department is active. -->
-      <div id="member-actions-wrap" class="hidden px-6 py-3 border-t border-slate-800 space-y-1">
-        <button type="button" id="my-checkin-code-btn" data-i18n="sidebar.myCheckInCode"
-                class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          My Check-In Code
-        </button>
-        <button type="button" id="report-absence-btn" data-i18n="sidebar.reportAbsence"
-                class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          Report Absence
-        </button>
-        <button type="button" id="department-rules-btn" class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          <span data-el="department-rules-label"></span>
-        </button>
-        <button type="button" id="monthly-report-btn" class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-          <span data-el="monthly-report-label"></span>
-        </button>
+        <select id="sidebar-tools-select" data-i18n-aria-label="sidebar.more" aria-label="More"
+                class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2 py-1.5">
+          <option value=""></option>
+        </select>
       </div>
 
       <div id="view-as-wrap" class="hidden px-6 py-3 border-t border-slate-800">
