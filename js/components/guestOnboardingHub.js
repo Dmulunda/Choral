@@ -129,6 +129,7 @@ export function createGuestOnboardingModal({ supabase, currentUserId, scope = { 
           <th class="text-left px-4 py-2">${t('guestHub.source')}</th>
           <th class="text-left px-4 py-2">${t('guestHub.status')}</th>
           <th class="text-left px-4 py-2">${t('guestHub.department')}</th>
+          ${scope.type === 'pastoral' ? `<th class="text-left px-4 py-2"></th>` : ''}
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100"></tbody>
@@ -188,6 +189,20 @@ export function createGuestOnboardingModal({ supabase, currentUserId, scope = { 
       }
       tr.appendChild(deptCell);
 
+      if (scope.type === 'pastoral') {
+        const actionsCell = document.createElement('td');
+        actionsCell.className = 'px-4 py-2.5';
+        if (isGuestLead) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'text-xs font-medium text-rose-600 hover:text-rose-800';
+          deleteBtn.textContent = t('moderation.delete');
+          deleteBtn.addEventListener('click', () => deleteLead(row));
+          actionsCell.appendChild(deleteBtn);
+        }
+        tr.appendChild(actionsCell);
+      }
+
       tbody.appendChild(tr);
 
       let detailsRow;
@@ -195,7 +210,7 @@ export function createGuestOnboardingModal({ supabase, currentUserId, scope = { 
         detailsRow = document.createElement('tr');
         detailsRow.className = 'hidden bg-slate-50';
         const detailsCell = document.createElement('td');
-        detailsCell.colSpan = 4;
+        detailsCell.colSpan = scope.type === 'pastoral' ? 5 : 4;
         detailsCell.className = 'px-4 py-3 text-sm text-slate-600 space-y-3';
 
         const fields = [
@@ -342,6 +357,18 @@ export function createGuestOnboardingModal({ supabase, currentUserId, scope = { 
       status: 'pending',
     });
 
+    load();
+  }
+
+  async function deleteLead(row) {
+    const confirmed = await confirmDialog({ message: t('moderation.confirmDeleteCase') });
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('guest_follow_ups').delete().eq('id', row.id);
+    if (error) {
+      window.alert(t('moderation.deleteFailed', { message: error.message }));
+      return;
+    }
     load();
   }
 

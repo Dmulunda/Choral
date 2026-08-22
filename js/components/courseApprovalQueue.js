@@ -87,25 +87,42 @@ export function renderCourseApprovalQueue(container, { supabase }) {
       : { data: [] };
     const progressByLesson = new Map((progress || []).map((p) => [p.lesson_id, p]));
 
-    const rowsHtml = (lessons || []).map((l) => {
-      const p = progressByLesson.get(l.id);
-      const scoreText = p?.quiz_score != null ? t('courses.scoreOutOf10', { score: p.quiz_score }) : t('courses.noQuiz');
-      return `
-        <div class="flex items-center justify-between text-sm py-1">
-          <span class="text-slate-600">${escapeHtml(l.title)}</span>
-          <span class="${p?.completed ? 'text-emerald-600' : 'text-slate-400'}">${p?.completed ? '✓ ' : ''}${escapeHtml(scoreText)}</span>
-        </div>
-      `;
-    }).join('');
-
     el.innerHTML = `
-      <div class="mb-3">${rowsHtml}</div>
+      <div data-el="lesson-scores" class="mb-3"></div>
       <div class="flex items-center gap-3">
         <button type="button" data-action="approve" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">${t('courses.approve')}</button>
         <button type="button" data-action="reject" class="px-4 py-2 rounded-lg text-rose-600 text-sm font-medium hover:bg-rose-50">${t('courses.reject')}</button>
         <span data-el="status" class="text-sm text-slate-500"></span>
       </div>
     `;
+
+    const scoresEl = el.querySelector('[data-el="lesson-scores"]');
+    (lessons || []).forEach((l) => {
+      const p = progressByLesson.get(l.id);
+      const scoreText = p?.quiz_score != null ? t('courses.scoreOutOf10', { score: p.quiz_score }) : t('courses.noQuiz');
+      const lessonRow = document.createElement('div');
+      lessonRow.className = 'flex items-center justify-between text-sm py-1';
+      lessonRow.innerHTML = `
+        <span class="text-slate-600">${escapeHtml(l.title)}</span>
+        <span class="flex items-center gap-2">
+          <span class="${p?.completed ? 'text-emerald-600' : 'text-slate-400'}">${p?.completed ? '✓ ' : ''}${escapeHtml(scoreText)}</span>
+          ${p ? `<button type="button" class="text-xs font-medium text-rose-600 hover:text-rose-800">${t('moderation.resetProgress')}</button>` : ''}
+        </span>
+      `;
+      if (p) {
+        lessonRow.querySelector('button').addEventListener('click', async () => {
+          const confirmed = await confirmDialog({ message: t('moderation.confirmResetProgress', { name: row.student?.full_name || '', title: l.title }) });
+          if (!confirmed) return;
+          const { error } = await supabase.from('lesson_progress').delete().eq('user_id', row.user_id).eq('lesson_id', l.id);
+          if (error) {
+            window.alert(t('moderation.deleteFailed', { message: error.message }));
+            return;
+          }
+          renderScores(el, row);
+        });
+      }
+      scoresEl.appendChild(lessonRow);
+    });
 
     el.querySelector('[data-action="approve"]').addEventListener('click', () => decide(row, 'approved', el));
     el.querySelector('[data-action="reject"]').addEventListener('click', () => decide(row, 'rejected', el));

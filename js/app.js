@@ -22,7 +22,7 @@ import { createAttendanceManagerModal } from './components/attendanceManager.js'
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
-import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t } from './i18n.js';
+import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t, loadLabelOverrides } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
@@ -689,6 +689,10 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 
   currentUserNameEl.textContent = profile?.full_name || session.user.email;
 
+  // Loaded before anything that renders a nav/department label, so
+  // renames from menuCustomizer.js are in effect on first paint, not
+  // just after a re-render.
+  await loadLabelOverrides();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
 

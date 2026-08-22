@@ -84,5 +84,7 @@ export async function renderDeptDashboardTab() {
     departmentId: active.id,
     canPost: canPostAnnouncements(active.role),
     isGlobalPoster: isGlobalAnnouncer(active.role),
+    canManage: active.role === 'admin' || active.role === 'super_admin',
+    currentUserId: user.id,
   });
 }

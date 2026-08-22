@@ -9,7 +9,7 @@
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 
-export function renderAnnouncements(container, { supabase, departmentId, canPost, isGlobalPoster }) {
+export function renderAnnouncements(container, { supabase, departmentId, canPost, isGlobalPoster, canManage, currentUserId }) {
   container.innerHTML = `
     <h2 class="text-lg font-semibold mb-4">${t('announcements.title')}</h2>
     ${canPost ? `
@@ -120,7 +120,7 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
 
     const { data, error } = await supabase
       .from('department_announcements')
-      .select('id, title, body, created_at, author:profiles!created_by ( full_name )')
+      .select('id, title, body, created_at, created_by, author:profiles!created_by ( full_name )')
       .eq('department_id', departmentId)
       .order('created_at', { ascending: false });
 
@@ -134,13 +134,33 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
       return;
     }
 
-    listEl.innerHTML = data.map((a) => `
-      <div class="border border-slate-200 rounded-lg p-3">
-        <div class="font-medium text-slate-800">${escapeHtml(a.title)}</div>
+    listEl.innerHTML = '';
+    data.forEach((a) => {
+      const canDelete = canManage || a.created_by === currentUserId;
+      const row = document.createElement('div');
+      row.className = 'border border-slate-200 rounded-lg p-3';
+      row.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="font-medium text-slate-800">${escapeHtml(a.title)}</div>
+          ${canDelete ? `<button type="button" data-action="delete" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('moderation.delete')}</button>` : ''}
+        </div>
         ${a.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(a.body)}</p>` : ''}
         <div class="text-xs text-slate-400 mt-2">${escapeHtml(a.author?.full_name || '')} · ${escapeHtml(a.created_at.slice(0, 10))}</div>
-      </div>
-    `).join('');
+      `;
+      if (canDelete) {
+        row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+          const confirmed = await confirmDialog({ message: t('moderation.confirmDeleteAnnouncement') });
+          if (!confirmed) return;
+          const { error: deleteError } = await supabase.from('department_announcements').delete().eq('id', a.id);
+          if (deleteError) {
+            window.alert(t('moderation.deleteFailed', { message: deleteError.message }));
+            return;
+          }
+          load();
+        });
+      }
+      listEl.appendChild(row);
+    });
   }
 }
 

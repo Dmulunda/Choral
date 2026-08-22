@@ -13,6 +13,8 @@ import { createUserManagerModal } from './components/userManager.js';
 import { renderAllDepartmentApprovals } from './components/allDepartmentApprovals.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
+import { createMenuCustomizerModal } from './components/menuCustomizer.js';
+import { createMessageModerationModal } from './components/messageModeration.js';
 import { t, departmentLabel } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -21,6 +23,8 @@ let currentDirectoryModal = null;
 let currentReportsModal = null;
 let currentGuestHubModal = null;
 let currentMemberCaseModal = null;
+let currentMenuCustomizerModal = null;
+let currentMessageModerationModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -56,6 +60,14 @@ export async function renderSuperAdminHomeTab() {
           ${t('memberCase.title')}
         </button>
       ` : ''}
+      ${getGlobalRole() === 'super_admin' ? `
+        <button type="button" data-action="open-menu-customizer" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('menuCustomizer.title')}
+        </button>
+        <button type="button" data-action="open-message-moderation" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('messageModeration.title')}
+        </button>
+      ` : ''}
     </div>
   `;
 
@@ -71,6 +83,8 @@ export async function renderSuperAdminHomeTab() {
   currentDirectoryModal?.root.remove();
   currentGuestHubModal?.root.remove();
   currentMemberCaseModal?.root.remove();
+  currentMenuCustomizerModal?.root.remove();
+  currentMessageModerationModal?.root.remove();
 
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
@@ -93,6 +107,18 @@ export async function renderSuperAdminHomeTab() {
   if (memberCasesBtn) {
     currentMemberCaseModal = createMemberCaseModal({ supabase, currentUserId: user.id, scope: { type: 'pastoral' } });
     memberCasesBtn.addEventListener('click', () => currentMemberCaseModal.open());
+  }
+
+  const menuCustomizerBtn = container.querySelector('[data-action="open-menu-customizer"]');
+  if (menuCustomizerBtn) {
+    currentMenuCustomizerModal = createMenuCustomizerModal({ supabase, currentUserId: user.id });
+    menuCustomizerBtn.addEventListener('click', () => currentMenuCustomizerModal.open());
+  }
+
+  const messageModerationBtn = container.querySelector('[data-action="open-message-moderation"]');
+  if (messageModerationBtn) {
+    currentMessageModerationModal = createMessageModerationModal({ supabase });
+    messageModerationBtn.addEventListener('click', () => currentMessageModerationModal.open());
   }
 }
 

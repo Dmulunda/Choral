@@ -2,6 +2,7 @@
 // Secretary (see can_record_attendance() in sql/037) — search for a
 // member by name and check them in, or log a guest visitor by name.
 // sql/038's trigger picks guests up for pastoral follow-up automatically.
+import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
 
 const SERVICE_TYPES = ['sunday_service', 'midweek_service', 'special_service'];
@@ -128,14 +129,15 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
   const checkedInListEl = root.querySelector('[data-el="checked-in-list"]');
 
   let members = [];
-  let checkedInThisSession = [];
 
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
 
   serviceTypeEl.addEventListener('change', () => {
     serviceLabelWrapEl.classList.toggle('hidden', serviceTypeEl.value !== 'special_service');
+    loadHistory();
   });
+  serviceDateEl.addEventListener('change', loadHistory);
 
   async function loadMembers() {
     const { data } = await supabase
@@ -201,8 +203,7 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
 
     statusEl.className = 'text-sm text-emerald-600';
     statusEl.textContent = t('attendance.checkedIn', { name: memberName });
-    checkedInThisSession.unshift(memberName);
-    renderCheckedInList();
+    loadHistory();
     memberSearchEl.value = '';
     searchResultsEl.innerHTML = '';
   }
@@ -236,8 +237,7 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
 
     statusEl.className = 'text-sm text-emerald-600';
     statusEl.textContent = t('attendance.guestCheckedIn', { name });
-    checkedInThisSession.unshift(`${name} (${t('attendance.guestBadge')})`);
-    renderCheckedInList();
+    loadHistory();
     resetGuestForm();
   }
 
@@ -258,10 +258,52 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
     guestHomeChurchEl.classList.add('hidden');
   }
 
-  function renderCheckedInList() {
-    checkedInListEl.innerHTML = checkedInThisSession.map((name) => `
-      <div class="text-sm text-slate-600 px-2 py-1 bg-slate-50 rounded">${escapeHtml(name)}</div>
-    `).join('');
+  // Shows everyone already checked in for the currently-selected
+  // service date/type — real records, not just this browser session —
+  // each with a delete button (can_record_attendance() already allows
+  // this same audience to delete, per sql/037; this is the first UI
+  // exposing it).
+  async function loadHistory() {
+    checkedInListEl.innerHTML = `<p class="text-xs text-slate-400">${t('common.loading')}</p>`;
+
+    const { data, error } = await supabase
+      .from('attendance_records')
+      .select('id, member_id, guest_name, member:profiles!member_id ( full_name )')
+      .eq('service_date', serviceDateEl.value)
+      .eq('service_type', serviceTypeEl.value)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      checkedInListEl.innerHTML = `<p class="text-xs text-rose-600">${t('courses.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+
+    if ((data || []).length === 0) {
+      checkedInListEl.innerHTML = '';
+      return;
+    }
+
+    checkedInListEl.innerHTML = '';
+    data.forEach((rec) => {
+      const name = rec.member ? rec.member.full_name : `${rec.guest_name} (${t('attendance.guestBadge')})`;
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between text-sm text-slate-600 px-2 py-1 bg-slate-50 rounded';
+      row.innerHTML = `
+        <span>${escapeHtml(name)}</span>
+        <button type="button" class="text-xs font-medium text-rose-600 hover:text-rose-800">${t('moderation.delete')}</button>
+      `;
+      row.querySelector('button').addEventListener('click', async () => {
+        const confirmed = await confirmDialog({ message: t('moderation.confirmDeleteAttendance', { name }) });
+        if (!confirmed) return;
+        const { error: deleteError } = await supabase.from('attendance_records').delete().eq('id', rec.id);
+        if (deleteError) {
+          window.alert(t('moderation.deleteFailed', { message: deleteError.message }));
+          return;
+        }
+        loadHistory();
+      });
+      checkedInListEl.appendChild(row);
+    });
   }
 
   async function open() {
@@ -271,10 +313,9 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
     serviceTypeEl.value = 'sunday_service';
     serviceLabelWrapEl.classList.add('hidden');
     statusEl.textContent = '';
-    checkedInThisSession = [];
-    renderCheckedInList();
     resetGuestForm();
     await loadMembers();
+    await loadHistory();
   }
 
   function close() {

@@ -2,8 +2,34 @@
 // `choir-hub:langchange` window event so open tabs re-render in place.
 // No build step in this project, so translations live in this one file
 // rather than per-locale JSON.
+import { supabase } from './supabaseClient.js';
+
 const STORAGE_KEY = 'choir-hub-lang';
 const SUPPORTED = ['en', 'fr'];
+
+// Super-Admin-set renames (menu_labels in sql/045) — checked before the
+// built-in dictionary below, so any key (in practice: nav.*, sidebar.*,
+// department.*, the ones exposed in menuCustomizer.js) can be
+// overridden without touching a single call site, since they all
+// already go through t().
+let labelOverrides = { en: {}, fr: {} };
+
+export async function loadLabelOverrides() {
+  const { data } = await supabase.from('menu_labels').select('key, label_en, label_fr');
+  const next = { en: {}, fr: {} };
+  (data || []).forEach((row) => {
+    next.en[row.key] = row.label_en;
+    next.fr[row.key] = row.label_fr;
+  });
+  labelOverrides = next;
+}
+
+// Optimistic local update right after a save, so the customizer's own
+// "Save All" doesn't need a full page reload to see its own effect.
+export function setLabelOverride(key, labelEn, labelFr) {
+  labelOverrides.en[key] = labelEn;
+  labelOverrides.fr[key] = labelFr;
+}
 
 const TRANSLATIONS = {
   en: {
@@ -297,6 +323,34 @@ const TRANSLATIONS = {
     'courses.certificateFor': 'for successfully completing',
     'courses.print': 'Print',
     'courses.certificatePopupBlocked': 'Your browser blocked the certificate window — please allow pop-ups for this site and try again.',
+
+    'menuCustomizer.title': 'Customize Menu',
+    'menuCustomizer.intro': 'Rename any navigation label, quick-action item, or department name — in both languages.',
+    'menuCustomizer.saveAll': 'Save All Changes',
+    'menuCustomizer.loadFailed': 'Failed to load: {message}',
+    'menuCustomizer.sectionNav': 'Navigation Menu',
+    'menuCustomizer.sectionSidebar': 'Quick Actions Menu',
+    'menuCustomizer.sectionDepartments': 'Department Names',
+    'menuCustomizer.english': 'English',
+    'menuCustomizer.french': 'French',
+    'menuCustomizer.resetRow': 'Reset to default',
+    'menuCustomizer.saveFailed': 'Failed to save: {message}',
+    'menuCustomizer.savedReload': 'Saved — close this window to see it everywhere.',
+
+    'moderation.delete': 'Delete',
+    'moderation.deleteFailed': 'Failed to delete: {message}',
+    'moderation.confirmDeleteMessage': 'Permanently delete this message? This is a private message between two members — only delete it for a real moderation reason.',
+    'moderation.confirmDeleteAnnouncement': 'Delete this announcement?',
+    'moderation.confirmDeleteAttendance': 'Delete this attendance record for {name}?',
+    'moderation.confirmDeleteCase': 'Permanently delete this case file, including its full history?',
+    'moderation.confirmResetProgress': 'Reset {name}’s progress on "{title}"? This clears their watch progress, quiz score, and completion for this lesson.',
+    'moderation.resetProgress': 'Reset Progress',
+
+    'messageModeration.title': 'Message Moderation',
+    'messageModeration.intro': 'Browse and, if truly needed, delete direct messages between members. This is private conversation data — use sparingly.',
+    'messageModeration.searchPlaceholder': 'Search by name or message text…',
+    'messageModeration.loadFailed': 'Failed to load: {message}',
+    'messageModeration.none': 'No messages found.',
 
     'appSuggestion.title': 'App Suggestion',
     'appSuggestion.intro': 'Send a suggestion directly to the primary administrator.',
@@ -1182,6 +1236,34 @@ const TRANSLATIONS = {
     'courses.print': 'Imprimer',
     'courses.certificatePopupBlocked': "Votre navigateur a bloqué la fenêtre du certificat — veuillez autoriser les pop-ups pour ce site et réessayer.",
 
+    'menuCustomizer.title': 'Personnaliser le menu',
+    'menuCustomizer.intro': "Renommez n'importe quel libellé de navigation, élément du menu d'actions rapides, ou nom de département — dans les deux langues.",
+    'menuCustomizer.saveAll': 'Enregistrer tout',
+    'menuCustomizer.loadFailed': 'Échec du chargement : {message}',
+    'menuCustomizer.sectionNav': 'Menu de navigation',
+    'menuCustomizer.sectionSidebar': "Menu d'actions rapides",
+    'menuCustomizer.sectionDepartments': 'Noms des départements',
+    'menuCustomizer.english': 'Anglais',
+    'menuCustomizer.french': 'Français',
+    'menuCustomizer.resetRow': 'Réinitialiser',
+    'menuCustomizer.saveFailed': "Échec de l'enregistrement : {message}",
+    'menuCustomizer.savedReload': 'Enregistré — fermez cette fenêtre pour voir le changement partout.',
+
+    'moderation.delete': 'Supprimer',
+    'moderation.deleteFailed': 'Échec de la suppression : {message}',
+    'moderation.confirmDeleteMessage': "Supprimer définitivement ce message ? C'est un message privé entre deux membres — ne le supprimez que pour une vraie raison de modération.",
+    'moderation.confirmDeleteAnnouncement': 'Supprimer cette annonce ?',
+    'moderation.confirmDeleteAttendance': "Supprimer cet enregistrement de présence pour {name} ?",
+    'moderation.confirmDeleteCase': "Supprimer définitivement ce dossier, y compris tout son historique ?",
+    'moderation.confirmResetProgress': 'Réinitialiser la progression de {name} pour « {title} » ? Cela efface sa progression de visionnage, son score de quiz et sa réussite pour cette leçon.',
+    'moderation.resetProgress': 'Réinitialiser la progression',
+
+    'messageModeration.title': 'Modération des messages',
+    'messageModeration.intro': "Parcourez et, si vraiment nécessaire, supprimez des messages privés entre membres. Ce sont des données de conversation privées — à utiliser avec parcimonie.",
+    'messageModeration.searchPlaceholder': 'Rechercher par nom ou texte du message…',
+    'messageModeration.loadFailed': 'Échec du chargement : {message}',
+    'messageModeration.none': 'Aucun message trouvé.',
+
     'appSuggestion.title': "Suggestion pour l'application",
     'appSuggestion.intro': "Envoyez une suggestion directement à l'administrateur principal.",
     'appSuggestion.placeholder': 'Comment pourrait-on améliorer l’application ?',
@@ -1794,8 +1876,9 @@ export function onLangChange(fn) {
 }
 
 export function t(key, vars) {
-  const dict = TRANSLATIONS[getLang()] || TRANSLATIONS.en;
-  let str = dict[key] ?? TRANSLATIONS.en[key] ?? key;
+  const lang = getLang();
+  const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  let str = labelOverrides[lang]?.[key] ?? dict[key] ?? TRANSLATIONS.en[key] ?? key;
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
       str = str.replaceAll(`{${k}}`, v);
@@ -1828,6 +1911,14 @@ export function roleLabel(role) {
 
 export function departmentLabel(key) {
   return key ? t(`department.${key}`) : key;
+}
+
+// The built-in (pre-override) text for a key in each language — used
+// by menuCustomizer.js to pre-fill its form and to power "Reset to
+// default", neither of which should reflect any override already in
+// effect.
+export function getBuiltInLabel(key) {
+  return { en: TRANSLATIONS.en[key] ?? key, fr: TRANSLATIONS.fr[key] ?? key };
 }
 
 export function mediaTechRoleLabel(role) {

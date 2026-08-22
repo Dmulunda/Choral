@@ -204,6 +204,7 @@ export function createMemberCaseModal({ supabase, currentUserId, scope }) {
           <th class="text-left px-4 py-2">${t('memberCase.openedBy')}</th>
           <th class="text-left px-4 py-2">${t('memberCase.status')}</th>
           <th class="text-left px-4 py-2">${t('guestHub.department')}</th>
+          ${scope.type === 'pastoral' ? `<th class="text-left px-4 py-2"></th>` : ''}
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100"></tbody>
@@ -242,12 +243,24 @@ export function createMemberCaseModal({ supabase, currentUserId, scope }) {
       deptCell.textContent = c.assigned_department_id ? departmentLabel(departments.find((d) => d.id === c.assigned_department_id)?.key) : '—';
       tr.appendChild(deptCell);
 
+      if (scope.type === 'pastoral') {
+        const actionsCell = document.createElement('td');
+        actionsCell.className = 'px-4 py-2.5';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'text-xs font-medium text-rose-600 hover:text-rose-800';
+        deleteBtn.textContent = t('moderation.delete');
+        deleteBtn.addEventListener('click', () => deleteCase(c));
+        actionsCell.appendChild(deleteBtn);
+        tr.appendChild(actionsCell);
+      }
+
       tbody.appendChild(tr);
 
       const detailsRow = document.createElement('tr');
       detailsRow.className = 'hidden bg-slate-50';
       const detailsCell = document.createElement('td');
-      detailsCell.colSpan = 4;
+      detailsCell.colSpan = scope.type === 'pastoral' ? 5 : 4;
       detailsCell.className = 'px-4 py-3 text-sm text-slate-600 space-y-3';
 
       const noteEl = document.createElement('div');
@@ -325,6 +338,18 @@ export function createMemberCaseModal({ supabase, currentUserId, scope }) {
 
     if (error) {
       window.alert(t('memberCase.updateFailed', { message: error.message }));
+      return;
+    }
+    load();
+  }
+
+  async function deleteCase(caseRow) {
+    const confirmed = await confirmDialog({ message: t('moderation.confirmDeleteCase') });
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('member_cases').delete().eq('id', caseRow.id);
+    if (error) {
+      window.alert(t('moderation.deleteFailed', { message: error.message }));
       return;
     }
     load();

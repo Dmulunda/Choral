@@ -30,6 +30,8 @@ export async function renderDashboardTab() {
     departmentId: active.id,
     canPost: canPostAnnouncements(active.role),
     isGlobalPoster: isGlobalAnnouncer(active.role),
+    canManage: active.role === 'admin' || active.role === 'super_admin',
+    currentUserId: user.id,
   });
 
   if (active.role === 'admin' || active.role === 'super_admin') {
