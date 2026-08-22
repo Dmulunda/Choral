@@ -124,7 +124,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, can_view_all_departments, can_manage_pastoral_cases, can_post_global_announcements, can_message_any_member, can_approve_any_membership, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 
@@ -152,6 +152,11 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         removedAt: p.removed_at,
         isPrimaryAdmin: p.is_primary_admin,
         isSchoolAdmin: p.is_school_admin,
+        can_view_all_departments: p.can_view_all_departments,
+        can_manage_pastoral_cases: p.can_manage_pastoral_cases,
+        can_post_global_announcements: p.can_post_global_announcements,
+        can_message_any_member: p.can_message_any_member,
+        can_approve_any_membership: p.can_approve_any_membership,
         permanentlyDeletedAt: p.permanently_deleted_at,
         departments: byUser.get(p.id) || [],
       }));
@@ -227,6 +232,11 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         phone: row.phone,
         profile_emails: { email: row.email },
         global_role: row.globalRole,
+        can_view_all_departments: row.can_view_all_departments,
+        can_manage_pastoral_cases: row.can_manage_pastoral_cases,
+        can_post_global_announcements: row.can_post_global_announcements,
+        can_message_any_member: row.can_message_any_member,
+        can_approve_any_membership: row.can_approve_any_membership,
       });
 
       const nameCell = document.createElement('td');

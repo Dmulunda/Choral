@@ -11,6 +11,13 @@ import { t, roleLabel } from '../i18n.js';
 
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
 const ACCESS_LEVELS = ['super_admin', 'super_viewer', 'pastor_admin', 'church_secretary'];
+const CUSTOM_POWERS = [
+  'can_view_all_departments',
+  'can_manage_pastoral_cases',
+  'can_post_global_announcements',
+  'can_message_any_member',
+  'can_approve_any_membership',
+];
 
 export function createUserEditModal({ supabase, currentUserId, onSaved }) {
   const root = document.createElement('div');
@@ -46,6 +53,19 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
           </select>
         </div>
 
+        <div data-el="custom-powers-wrap" class="hidden border-t border-slate-200 pt-4">
+          <p class="text-sm font-medium text-slate-600 mb-1">${t('userEdit.customAccessTitle')}</p>
+          <p class="text-xs text-slate-400 mb-2">${t('userEdit.customAccessHint')}</p>
+          <div class="space-y-1.5">
+            ${CUSTOM_POWERS.map((key) => `
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" name="${key}" class="rounded border-slate-300" />
+                ${t(`userEdit.${toCamel(key)}`)}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+
         <p data-el="form-status" class="text-sm"></p>
 
         <div class="flex justify-end gap-2 pt-2 border-b border-slate-200 pb-4">
@@ -74,6 +94,7 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
   const form = root.querySelector('[data-el="form"]');
   const emailEl = root.querySelector('[data-el="email"]');
   const accessLevelWrapEl = root.querySelector('[data-el="access-level-wrap"]');
+  const customPowersWrapEl = root.querySelector('[data-el="custom-powers-wrap"]');
   const formStatusEl = root.querySelector('[data-el="form-status"]');
   const saveBtn = root.querySelector('[data-el="save-btn"]');
   const membershipsEl = root.querySelector('[data-el="memberships"]');
@@ -218,6 +239,9 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
 
     const update = { full_name: fullName, phone };
     if (globalRole !== undefined) update.global_role = globalRole;
+    if (form.elements[CUSTOM_POWERS[0]]) {
+      CUSTOM_POWERS.forEach((key) => { update[key] = form.elements[key].checked; });
+    }
 
     const { error } = await supabase.from('profiles').update(update).eq('id', targetUser.id);
 
@@ -240,7 +264,10 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     form.elements.phone.value = user.phone || '';
     emailEl.value = user.profile_emails?.email || t('users.emailUnknown');
     if (form.elements.global_role) form.elements.global_role.value = user.global_role || '';
-    accessLevelWrapEl.classList.toggle('hidden', getGlobalRole() !== 'super_admin');
+    const isSuperAdmin = getGlobalRole() === 'super_admin';
+    accessLevelWrapEl.classList.toggle('hidden', !isSuperAdmin);
+    customPowersWrapEl.classList.toggle('hidden', !isSuperAdmin);
+    CUSTOM_POWERS.forEach((key) => { if (form.elements[key]) form.elements[key].checked = !!user[key]; });
     formStatusEl.textContent = '';
     root.classList.remove('hidden');
     root.classList.add('flex');
@@ -259,4 +286,8 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function toCamel(snake) {
+  return snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
