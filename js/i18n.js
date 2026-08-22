@@ -198,7 +198,7 @@ const TRANSLATIONS = {
     'memberCase.updateFailed': 'Update failed: {message}',
     'memberCase.confirmSend': 'Send {name}’s case to {department}? They’ll see the full file, including the note and history so far.',
 
-    'nav.training': 'Training',
+    'nav.training': 'VPD Academy',
     'users.setSchoolAdmin': 'Make School Admin',
     'users.removeSchoolAdmin': 'Remove School Admin',
     'users.confirmSetSchoolAdmin': 'Make {name} a School Admin? They’ll be able to create and manage courses, and review completion approvals.',
@@ -1082,7 +1082,7 @@ const TRANSLATIONS = {
     'memberCase.updateFailed': 'Échec de la mise à jour : {message}',
     'memberCase.confirmSend': 'Envoyer le dossier de {name} à {department} ? Ce département verra le dossier complet, avec la note et l’historique jusqu’ici.',
 
-    'nav.training': 'Formation',
+    'nav.training': 'VPD Academy',
     'users.setSchoolAdmin': 'Nommer administrateur de formation',
     'users.removeSchoolAdmin': 'Retirer administrateur de formation',
     'users.confirmSetSchoolAdmin': 'Faire de {name} un administrateur de formation ? Il/elle pourra créer et gérer des cours, et examiner les demandes d’approbation.',
