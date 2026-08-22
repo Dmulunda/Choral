@@ -3,6 +3,7 @@
 // approval / approved), computed from lesson_progress +
 // course_approvals. Selecting a course swaps in coursePlayer.js.
 import { renderCoursePlayer } from './coursePlayer.js';
+import { openCertificate } from './certificate.js';
 import { t } from '../i18n.js';
 
 export function renderCourseCatalog(container, { supabase, currentUserId }) {
@@ -22,8 +23,11 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
       return;
     }
 
-    const { data: approvals } = await supabase.from('course_approvals').select('course_id, status').eq('user_id', currentUserId);
-    const approvalByCourseId = new Map((approvals || []).map((a) => [a.course_id, a.status]));
+    const [{ data: approvals }, { data: profile }] = await Promise.all([
+      supabase.from('course_approvals').select('course_id, status, approved_at').eq('user_id', currentUserId),
+      supabase.from('profiles').select('full_name').eq('id', currentUserId).single(),
+    ]);
+    const approvalByCourseId = new Map((approvals || []).map((a) => [a.course_id, a]));
 
     // Enough to label "Not Started" vs "In Progress" — three flat
     // queries joined client-side rather than a deep nested PostgREST
@@ -43,7 +47,8 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
     const gridEl = container.querySelector('[data-el="grid"]');
 
     courses.forEach((course) => {
-      const approvalStatus = approvalByCourseId.get(course.id);
+      const approval = approvalByCourseId.get(course.id);
+      const approvalStatus = approval?.status;
       const statusLabel = approvalStatus === 'approved' ? t('courses.statusApproved')
         : approvalStatus === 'pending' ? t('courses.statusPendingApproval')
         : approvalStatus === 'rejected' ? t('courses.statusRejected')
@@ -54,17 +59,26 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
         : approvalStatus === 'rejected' ? 'bg-rose-100 text-rose-700'
         : 'bg-slate-100 text-slate-500';
 
-      const card = document.createElement('button');
-      card.type = 'button';
+      const card = document.createElement('div');
       card.className = 'text-left bg-white rounded-xl shadow p-4 sm:p-6 hover:shadow-md transition-shadow';
       card.innerHTML = `
-        <div class="flex items-start justify-between gap-2 mb-2">
-          <span class="font-semibold text-slate-800">${escapeHtml(course.title)}</span>
-          <span class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${statusClass}">${statusLabel}</span>
-        </div>
-        ${course.description ? `<p class="text-sm text-slate-500">${escapeHtml(course.description)}</p>` : ''}
+        <button type="button" data-action="open" class="w-full text-left">
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <span class="font-semibold text-slate-800">${escapeHtml(course.title)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${statusClass}">${statusLabel}</span>
+          </div>
+          ${course.description ? `<p class="text-sm text-slate-500">${escapeHtml(course.description)}</p>` : ''}
+        </button>
+        ${approvalStatus === 'approved' ? `
+          <button type="button" data-action="certificate" class="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            ${t('courses.viewCertificate')}
+          </button>
+        ` : ''}
       `;
-      card.addEventListener('click', () => openCourse(course));
+      card.querySelector('[data-action="open"]').addEventListener('click', () => openCourse(course));
+      card.querySelector('[data-action="certificate"]')?.addEventListener('click', () => {
+        openCertificate({ studentName: profile?.full_name || '', courseTitle: course.title, approvedAt: approval.approved_at });
+      });
       gridEl.appendChild(card);
     });
   }
