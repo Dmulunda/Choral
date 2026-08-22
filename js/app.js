@@ -30,7 +30,7 @@ import {
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
-import { getTheme, setTheme } from './theme.js';
+import { getTheme, setTheme, loadAppTheme } from './theme.js';
 
 registerServiceWorker();
 
@@ -693,6 +693,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // renames from menuCustomizer.js are in effect on first paint, not
   // just after a re-render.
   await loadLabelOverrides();
+  await loadAppTheme();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
 

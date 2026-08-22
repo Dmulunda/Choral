@@ -45,6 +45,31 @@
       animation: login-splash-word-drop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     }
 
+    /* ---- App theme (Super Admin's "Customize Menu & Appearance") ----
+       Same override technique as night mode below — Tailwind has no
+       config to hook a real theme into, so these variables (applied by
+       theme.js's applyAppTheme(), defaults matching the app's current
+       indigo/slate look) recolor the small set of utility classes used
+       for primary actions and page-level text/background. Not scoped
+       under html.dark, so the accent color stays consistent across
+       both modes — only text/background defer to night mode's own
+       fixed dark palette when that's active, since those two settings
+       are only meaningful in light mode to begin with. */
+    :root {
+      --theme-primary: #4f46e5;
+      --theme-primary-hover: #4338ca;
+      --theme-text: #1e293b;
+      --theme-bg: #f1f5f9;
+      --theme-font: inherit;
+    }
+    .bg-indigo-600 { background-color: var(--theme-primary) !important; }
+    .hover\:bg-indigo-700:hover { background-color: var(--theme-primary-hover) !important; }
+    .text-indigo-600, .text-indigo-700, .text-indigo-800 { color: var(--theme-primary) !important; }
+    .border-indigo-300 { border-color: var(--theme-primary) !important; }
+    body { font-family: var(--theme-font); }
+    html:not(.dark) body { background-color: var(--theme-bg) !important; }
+    html:not(.dark) body, html:not(.dark) .text-slate-800 { color: var(--theme-text) !important; }
+
     /* ---- Night mode ----
        Tailwind is loaded from the CDN with no build step, so there's no
        tailwind.config to add real `dark:` variants to app-wide. Instead

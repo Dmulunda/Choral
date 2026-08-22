@@ -12,10 +12,13 @@
 // and department names.
 import { t, getBuiltInLabel, setLabelOverride } from '../i18n.js';
 import { DEPARTMENT_KEYS } from '../departments.js';
+import { getFontChoices, applyAppTheme } from '../theme.js';
 
 const NAV_KEYS = ['nav.dashboard', 'nav.scheduling', 'nav.songbook', 'nav.voiceExercises', 'nav.members', 'nav.home', 'nav.training'];
 const SIDEBAR_KEYS = ['sidebar.churchRules', 'sidebar.attendance', 'sidebar.appSuggestion', 'sidebar.reportAbsence', 'sidebar.departmentRules', 'sidebar.monthlyReport', 'sidebar.guestCases', 'sidebar.memberCases'];
 const DEPARTMENT_LABEL_KEYS = DEPARTMENT_KEYS.map((key) => `department.${key}`);
+
+const THEME_DEFAULTS = { primary_color: '#4f46e5', text_color: '#1e293b', background_color: '#f1f5f9', font_family: 'default' };
 
 export function createMenuCustomizerModal({ supabase, currentUserId }) {
   const root = document.createElement('div');
@@ -45,6 +48,7 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
   root.querySelector('[data-action="save-all"]').addEventListener('click', saveAll);
 
   let overridesByKey = new Map();
+  let currentTheme = { ...THEME_DEFAULTS };
   let savedAnything = false;
 
   async function open() {
@@ -54,14 +58,19 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     statusEl.textContent = '';
 
-    const { data, error } = await supabase.from('menu_labels').select('key, label_en, label_fr');
+    const [{ data, error }, { data: themeRow, error: themeError }] = await Promise.all([
+      supabase.from('menu_labels').select('key, label_en, label_fr'),
+      supabase.from('app_theme').select('primary_color, text_color, background_color, font_family').maybeSingle(),
+    ]);
     if (error) {
       bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('menuCustomizer.loadFailed', { message: error.message })}</p>`;
       return;
     }
     overridesByKey = new Map((data || []).map((r) => [r.key, r]));
+    currentTheme = themeError || !themeRow ? { ...THEME_DEFAULTS } : themeRow;
 
     bodyEl.innerHTML = `
+      ${renderAppearanceSection()}
       ${renderSection(t('menuCustomizer.sectionNav'), NAV_KEYS)}
       ${renderSection(t('menuCustomizer.sectionSidebar'), SIDEBAR_KEYS)}
       ${renderSection(t('menuCustomizer.sectionDepartments'), DEPARTMENT_LABEL_KEYS)}
@@ -75,6 +84,59 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
         bodyEl.querySelector(`[data-el="fr-${cssEscape(key)}"]`).value = builtIn.fr;
       });
     });
+
+    ['theme-primary', 'theme-text', 'theme-bg'].forEach((el) => {
+      bodyEl.querySelector(`[data-el="${el}"]`).addEventListener('input', previewTheme);
+    });
+    bodyEl.querySelector('[data-el="theme-font"]').addEventListener('change', previewTheme);
+    bodyEl.querySelector('[data-action="reset-appearance"]').addEventListener('click', () => {
+      bodyEl.querySelector('[data-el="theme-primary"]').value = THEME_DEFAULTS.primary_color;
+      bodyEl.querySelector('[data-el="theme-text"]').value = THEME_DEFAULTS.text_color;
+      bodyEl.querySelector('[data-el="theme-bg"]').value = THEME_DEFAULTS.background_color;
+      bodyEl.querySelector('[data-el="theme-font"]').value = THEME_DEFAULTS.font_family;
+      previewTheme();
+    });
+  }
+
+  function previewTheme() {
+    applyAppTheme({
+      primary_color: bodyEl.querySelector('[data-el="theme-primary"]').value,
+      text_color: bodyEl.querySelector('[data-el="theme-text"]').value,
+      background_color: bodyEl.querySelector('[data-el="theme-bg"]').value,
+      font_family: bodyEl.querySelector('[data-el="theme-font"]').value,
+    });
+  }
+
+  function renderAppearanceSection() {
+    const fontOptions = getFontChoices()
+      .map((f) => `<option value="${escapeAttr(f.value)}" ${f.value === currentTheme.font_family ? 'selected' : ''}>${escapeHtml(f.label)}</option>`)
+      .join('');
+    return `
+      <div class="mb-5">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-semibold text-slate-700">${t('menuCustomizer.sectionAppearance')}</h3>
+          <button type="button" data-action="reset-appearance" class="text-xs text-slate-400 hover:text-slate-600">${t('menuCustomizer.resetAppearance')}</button>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-3 border border-slate-200 rounded-lg p-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('menuCustomizer.primaryColor')}</label>
+            <input type="color" data-el="theme-primary" value="${escapeAttr(currentTheme.primary_color)}" class="w-full h-9 border border-slate-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('menuCustomizer.textColor')}</label>
+            <input type="color" data-el="theme-text" value="${escapeAttr(currentTheme.text_color)}" class="w-full h-9 border border-slate-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('menuCustomizer.backgroundColor')}</label>
+            <input type="color" data-el="theme-bg" value="${escapeAttr(currentTheme.background_color)}" class="w-full h-9 border border-slate-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('menuCustomizer.fontFamily')}</label>
+            <select data-el="theme-font" class="w-full h-9 border border-slate-300 rounded-lg px-2 text-sm">${fontOptions}</select>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   function renderSection(title, keys) {
@@ -122,15 +184,28 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
       updated_by: currentUserId,
       updated_at: new Date().toISOString(),
     }));
+    const theme = {
+      id: true,
+      primary_color: bodyEl.querySelector('[data-el="theme-primary"]').value,
+      text_color: bodyEl.querySelector('[data-el="theme-text"]').value,
+      background_color: bodyEl.querySelector('[data-el="theme-bg"]').value,
+      font_family: bodyEl.querySelector('[data-el="theme-font"]').value,
+      updated_by: currentUserId,
+      updated_at: new Date().toISOString(),
+    };
 
-    const { error } = await supabase.from('menu_labels').upsert(rows, { onConflict: 'key' });
-    if (error) {
+    const [{ error }, { error: themeError }] = await Promise.all([
+      supabase.from('menu_labels').upsert(rows, { onConflict: 'key' }),
+      supabase.from('app_theme').upsert(theme, { onConflict: 'id' }),
+    ]);
+    if (error || themeError) {
       statusEl.className = 'text-sm text-rose-600';
-      statusEl.textContent = t('menuCustomizer.saveFailed', { message: error.message });
+      statusEl.textContent = t('menuCustomizer.saveFailed', { message: (error || themeError).message });
       return;
     }
 
     rows.forEach((r) => setLabelOverride(r.key, r.label_en, r.label_fr));
+    applyAppTheme(theme);
     savedAnything = true;
     statusEl.className = 'text-sm text-emerald-600';
     statusEl.textContent = t('menuCustomizer.savedReload');
@@ -142,8 +217,10 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     // Every already-open nav/sidebar element was built with the
     // pre-rename text — simplest reliable way to refresh everything at
     // once rather than threading a refresh callback through every
-    // module that renders a label.
+    // module that renders a label. Also covers reverting any live
+    // color/font preview that was never actually saved.
     if (savedAnything) window.location.reload();
+    else applyAppTheme(currentTheme);
   }
 
   return { open, root };
