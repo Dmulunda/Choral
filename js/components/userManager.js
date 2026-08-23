@@ -17,12 +17,13 @@ import { createUserEditModal } from './userEditModal.js';
 import { confirmDialog } from './confirmDialog.js';
 import { reassignAdminDialog } from './reassignAdminDialog.js';
 import { isViewingAs, getGlobalRole } from '../departments.js';
-import { t, voicePartLabel, roleLabel } from '../i18n.js';
+import { t, voicePartLabel, roleLabel, mediaTechRoleLabel } from '../i18n.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DELETION_GRACE_DAYS = 60;
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
+const MEDIA_TECH_ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator'];
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
 
 export function renderUserManager(container, { supabase, scope, currentUserId }) {
@@ -100,7 +101,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     if (scope.type === 'department') {
       const { data, error } = await supabase
         .from('department_memberships')
-        .select('id, role, status, user_id, member:profiles!user_id ( id, full_name, phone, voice_parts, profile_emails ( email ) )')
+        .select('id, role, status, user_id, member:profiles!user_id ( id, full_name, phone, voice_parts, media_tech_skills, profile_emails ( email ) )')
         .eq('department_id', scope.departmentId)
         .eq('status', 'approved');
 
@@ -118,6 +119,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
           phone: r.member.phone,
           email: r.member.profile_emails?.email,
           voice_parts: r.member.voice_parts,
+          media_tech_skills: r.member.media_tech_skills,
           membershipId: r.id,
           deptRole: r.role,
         }))
@@ -203,6 +205,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     }
 
     const isChoir = scope.type === 'department' && scope.departmentKey === 'choir';
+    const isMediaTech = scope.type === 'department' && scope.departmentKey === 'media_tech';
     const isGlobal = scope.type === 'global';
 
     const table = document.createElement('table');
@@ -214,6 +217,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
           ${showEmail ? `<th class="text-left px-4 py-2">${t('users.email')}</th>` : ''}
           ${showPhone ? `<th class="text-left px-4 py-2">${t('users.phone')}</th>` : ''}
           ${isChoir ? `<th class="text-left px-4 py-2">${t('users.voicePart')}</th>` : ''}
+          ${isMediaTech ? `<th class="text-left px-4 py-2">${t('users.mediaTechSkills')}</th>` : ''}
           ${isGlobal ? `<th class="text-left px-4 py-2">${t('users.departments')}</th><th class="text-left px-4 py-2">${t('users.accessLevel')}</th>` : `<th class="text-left px-4 py-2">${t('users.role')}</th>`}
           <th class="text-left px-4 py-2">${t('users.actions')}</th>
         </tr>
@@ -288,6 +292,21 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         select.addEventListener('change', () => updateVoiceParts(row, select));
         voicePartCell.appendChild(select);
         tr.appendChild(voicePartCell);
+      }
+
+      if (isMediaTech) {
+        const skillsCell = document.createElement('td');
+        skillsCell.className = 'px-4 py-2.5';
+        const select = document.createElement('select');
+        select.multiple = true;
+        select.size = Math.min(MEDIA_TECH_ROLES.length, 5);
+        select.className = 'border border-slate-300 rounded-lg px-2 py-1 text-sm';
+        select.innerHTML = MEDIA_TECH_ROLES.map((role) => `<option value="${role}">${mediaTechRoleLabel(role)}</option>`).join('');
+        const selected = new Set(row.media_tech_skills || []);
+        Array.from(select.options).forEach((opt) => { opt.selected = selected.has(opt.value); });
+        select.addEventListener('change', () => updateMediaTechSkills(row, select));
+        skillsCell.appendChild(select);
+        tr.appendChild(skillsCell);
       }
 
       if (isGlobal) {
@@ -402,6 +421,17 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       return;
     }
     row.voice_parts = newVoiceParts;
+  }
+
+  async function updateMediaTechSkills(row, selectEl) {
+    const newSkills = Array.from(selectEl.selectedOptions).map((opt) => opt.value);
+    const { error } = await supabase.from('profiles').update({ media_tech_skills: newSkills }).eq('id', row.id);
+    if (error) {
+      window.alert(t('users.roleUpdateFailed', { message: error.message }));
+      loadUsers();
+      return;
+    }
+    row.media_tech_skills = newSkills;
   }
 
   async function updateDeptRole(row, selectEl) {

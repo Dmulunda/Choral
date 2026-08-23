@@ -93,16 +93,21 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   async function loadMemberOptions() {
     const { data } = await supabase
       .from('department_memberships')
-      .select('user_id, member:profiles!user_id ( full_name )')
+      .select('user_id, member:profiles!user_id ( full_name, media_tech_skills )')
       .eq('department_id', departmentId)
       .eq('status', 'approved');
 
-    const options = (data || [])
-      .filter((m) => m.member)
-      .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
-      .join('');
+    const members = (data || []).filter((m) => m.member);
 
+    // Not every Media & Tech member can run every role — each role's
+    // select only offers people whose skills (set in the Users tab,
+    // sql/050) actually include it, mirroring how Choir only assigns
+    // singers to their own voice part.
     ROLES.forEach((role) => {
+      const options = members
+        .filter((m) => (m.member.media_tech_skills || []).includes(role))
+        .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+        .join('');
       container.querySelector(`[data-role-select="${role}"]`).innerHTML = options;
     });
   }
@@ -116,12 +121,23 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
 
     const { data } = await supabase
       .from('media_tech_assignments')
-      .select('role, user_id')
+      .select('role, user_id, assignee:profiles!user_id ( full_name )')
       .eq('date', dateStr);
 
     (data || []).forEach((row) => {
       const select = container.querySelector(`[data-role-select="${row.role}"]`);
-      const option = select?.querySelector(`option[value="${row.user_id}"]`);
+      if (!select) return;
+      let option = select.querySelector(`option[value="${row.user_id}"]`);
+      if (!option && row.assignee?.full_name) {
+        // Already assigned here but no longer listed as skilled for
+        // this role (their skills changed since) — keep them visible
+        // and selected so resaving this form doesn't silently drop
+        // them; an admin has to deliberately deselect them instead.
+        option = document.createElement('option');
+        option.value = row.user_id;
+        option.textContent = row.assignee.full_name;
+        select.appendChild(option);
+      }
       if (option) option.selected = true;
     });
   }
