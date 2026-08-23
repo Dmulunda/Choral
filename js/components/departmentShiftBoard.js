@@ -1,11 +1,17 @@
 // Duty roster / shift scheduling board — part of the shared Scheduling
 // module reused by every "lightweight" department. Admins create a
-// dated shift and assign approved members to it; everyone with
-// department access can see the upcoming list.
+// dated shift and assign approved members to it; each assigned member
+// then approves or declines it themselves (via myAssignmentsPanel.js),
+// same accept/decline flow Choir's Service Requests has always had —
+// including "I'll be working in another department instead" as a
+// decline reason.
 import { t } from '../i18n.js';
+import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
+import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 
-export function renderShiftBoard(container, { supabase, departmentId, canAdminister }) {
+export function renderShiftBoard(container, { supabase, departmentId, canAdminister, userId }) {
   container.innerHTML = `
+    <div data-el="my-assignments"></div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('deptScheduling.createShift')}</h2>
@@ -47,6 +53,39 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
   const membersSelect = container.querySelector('[data-el="members-select"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
   const listEl = container.querySelector('[data-el="list"]');
+
+  if (userId) {
+    renderMyAssignmentsPanel(container.querySelector('[data-el="my-assignments"]'), {
+      departmentId,
+      fetchMyAssignments: async () => {
+        const { data, error } = await supabase
+          .from('department_shift_assignments')
+          .select('id, status, reason, working_department_id, shift:department_shifts ( date, title )')
+          .eq('user_id', userId)
+          .order('date', { foreignTable: 'department_shifts', ascending: true });
+        if (error) return { error };
+        return {
+          data: (data || []).filter((r) => r.shift).map((r) => ({
+            id: r.id,
+            label: r.shift.title,
+            date: r.shift.date,
+            status: r.status,
+            reason: r.reason,
+            workingDepartmentId: r.working_department_id,
+          })),
+        };
+      },
+      updateAssignment: async (id, patch) => {
+        const update = {};
+        if ('status' in patch) { update.status = patch.status; update.responded_at = new Date().toISOString(); }
+        if ('reason' in patch) update.reason = patch.reason;
+        if ('workingDepartmentId' in patch) update.working_department_id = patch.workingDepartmentId;
+        const { error } = await supabase.from('department_shift_assignments').update(update).eq('id', id);
+        if (!error) load();
+        return { error };
+      },
+    });
+  }
 
   if (form) {
     loadMemberOptions();
@@ -114,7 +153,7 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
 
     const { data, error } = await supabase
       .from('department_shifts')
-      .select('id, date, title, notes, department_shift_assignments ( assignee:profiles!user_id ( full_name ) )')
+      .select('id, date, title, notes, department_shift_assignments ( status, reason, assignee:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )')
       .eq('department_id', departmentId)
       .order('date', { ascending: true });
 
@@ -129,7 +168,7 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
     }
 
     listEl.innerHTML = data.map((shift) => {
-      const names = (shift.department_shift_assignments || []).map((a) => a.assignee?.full_name).filter(Boolean);
+      const assignments = (shift.department_shift_assignments || []).filter((a) => a.assignee?.full_name);
       return `
         <div class="border border-slate-200 rounded-lg p-3">
           <div class="flex items-baseline justify-between gap-3">
@@ -138,8 +177,13 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
           </div>
           ${shift.notes ? `<p class="text-sm text-slate-600 mt-1">${escapeHtml(shift.notes)}</p>` : ''}
           <div class="flex flex-wrap gap-1.5 mt-2">
-            ${names.length > 0
-              ? names.map((n) => `<span class="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-sm">${escapeHtml(n)}</span>`).join('')
+            ${assignments.length > 0
+              ? assignments.map((a) => renderAssigneeBadge({
+                  name: a.assignee.full_name,
+                  status: a.status,
+                  reason: a.reason,
+                  workingDepartmentKey: a.working_department?.key,
+                })).join('')
               : `<span class="text-sm text-slate-400">${t('deptScheduling.unassigned')}</span>`
             }
           </div>

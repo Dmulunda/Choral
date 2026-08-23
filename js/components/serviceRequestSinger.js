@@ -1,7 +1,12 @@
 // Singer "Service Requests" panel — titled, dated events an admin has
 // asked this member to approve or decline. Distinct from the free-form
-// availability calendar rendered below it.
+// availability calendar rendered below it. Declining offers a free-text
+// reason or, alternatively, "I'll be working in another department
+// instead" (sql/049) — same option every other department's scheduling
+// board now has too.
 import { t } from '../i18n.js';
+import { getMyDepartments } from '../departments.js';
+import { departmentLabel } from '../i18n.js';
 
 export function renderServiceRequestSinger(container, { supabase, userId }) {
   container.innerHTML = `
@@ -20,7 +25,7 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
 
     const { data, error } = await supabase
       .from('service_rsvps')
-      .select('id, status, reason, service_plans ( id, date, title )')
+      .select('id, status, reason, working_department_id, service_plans ( id, date, title )')
       .eq('singer_id', userId)
       .order('date', { ascending: true, foreignTable: 'service_plans' });
 
@@ -65,6 +70,13 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
     }
   }
 
+  function departmentOptions(selectedId) {
+    const choirId = getMyDepartments().find((d) => d.key === 'choir')?.id;
+    const options = getMyDepartments().filter((d) => d.id !== choirId);
+    return `<option value="">${t('requests.selectDepartment')}</option>`
+      + options.map((d) => `<option value="${d.id}" ${d.id === selectedId ? 'selected' : ''}>${escapeHtml(departmentLabel(d.key))}</option>`).join('');
+  }
+
   function renderCard(rsvp) {
     const plan = rsvp.service_plans;
     const card = document.createElement('div');
@@ -87,18 +99,32 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
         </div>
       </div>
       ${rsvp.status === 'declined' ? `
-        <div class="mt-3 pt-3 border-t border-slate-100">
-          <label class="block text-xs font-medium text-slate-500 mb-1">${t('requests.reason')}</label>
-          <div class="flex gap-2">
-            <input type="text" data-el="reason-input" value="${escapeAttr(rsvp.reason || '')}"
-                   placeholder="${t('requests.reasonPlaceholder')}"
-                   class="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
-            <button type="button" data-action="save-reason"
-                    class="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800 whitespace-nowrap">
-              ${t('requests.saveReason')}
-            </button>
+        <div class="mt-3 pt-3 border-t border-slate-100 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('requests.reason')}</label>
+            <div class="flex gap-2">
+              <input type="text" data-el="reason-input" value="${escapeAttr(rsvp.reason || '')}"
+                     placeholder="${t('requests.reasonPlaceholder')}"
+                     class="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+              <button type="button" data-action="save-reason"
+                      class="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800 whitespace-nowrap">
+                ${t('requests.saveReason')}
+              </button>
+            </div>
           </div>
-          <p data-el="reason-status" class="text-xs mt-1"></p>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('requests.workingElsewhere')}</label>
+            <div class="flex gap-2">
+              <select data-el="dept-select" class="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+                ${departmentOptions(rsvp.working_department_id)}
+              </select>
+              <button type="button" data-action="save-department"
+                      class="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800 whitespace-nowrap">
+                ${t('requests.saveReason')}
+              </button>
+            </div>
+          </div>
+          <p data-el="reason-status" class="text-xs"></p>
         </div>
       ` : ''}
     `;
@@ -108,6 +134,7 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
 
     if (rsvp.status === 'declined') {
       card.querySelector('[data-action="save-reason"]').addEventListener('click', () => saveReason(rsvp, card));
+      card.querySelector('[data-action="save-department"]').addEventListener('click', () => saveWorkingDepartment(rsvp, card));
     }
 
     return card;
@@ -133,7 +160,7 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
     const statusEl = card.querySelector('[data-el="reason-status"]');
     const reason = input.value.trim() || null;
 
-    const { error } = await supabase.from('service_rsvps').update({ reason }).eq('id', rsvp.id);
+    const { error } = await supabase.from('service_rsvps').update({ reason, working_department_id: null }).eq('id', rsvp.id);
 
     if (error) {
       statusEl.className = 'text-xs mt-1 text-rose-600';
@@ -142,6 +169,26 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
     }
 
     rsvp.reason = reason;
+    rsvp.working_department_id = null;
+    statusEl.className = 'text-xs mt-1 text-emerald-600';
+    statusEl.textContent = t('requests.reasonSaved');
+  }
+
+  async function saveWorkingDepartment(rsvp, card) {
+    const select = card.querySelector('[data-el="dept-select"]');
+    const statusEl = card.querySelector('[data-el="reason-status"]');
+    const workingDepartmentId = select.value || null;
+
+    const { error } = await supabase.from('service_rsvps').update({ reason: null, working_department_id: workingDepartmentId }).eq('id', rsvp.id);
+
+    if (error) {
+      statusEl.className = 'text-xs mt-1 text-rose-600';
+      statusEl.textContent = t('requests.reasonSaveFailed', { message: error.message });
+      return;
+    }
+
+    rsvp.reason = null;
+    rsvp.working_department_id = workingDepartmentId;
     statusEl.className = 'text-xs mt-1 text-emerald-600';
     statusEl.textContent = t('requests.reasonSaved');
   }

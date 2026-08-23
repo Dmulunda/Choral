@@ -2,13 +2,18 @@
 // needing exactly two assigned workers plus a lesson topic per
 // scheduled date. "Exactly two" is enforced here — two dedicated
 // single-selects per group rather than a multi-select, so it's obvious
-// what's required and easy to validate before saving.
+// what's required and easy to validate before saving. Each assigned
+// worker then approves or declines their own slot (sql/049), same as
+// every other department now.
 import { t, ecodemAgeGroupLabel } from '../i18n.js';
+import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
+import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 
 const AGE_GROUPS = ['group_1', 'group_2', 'group_3'];
 
-export function renderEcodemBoard(container, { supabase, departmentId, canAdminister }) {
+export function renderEcodemBoard(container, { supabase, departmentId, canAdminister, userId }) {
   container.innerHTML = `
+    <div data-el="my-assignments"></div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('ecodem.scheduleSession')}</h2>
@@ -53,6 +58,39 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
   const form = container.querySelector('[data-el="form"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
   const listEl = container.querySelector('[data-el="list"]');
+
+  if (userId) {
+    renderMyAssignmentsPanel(container.querySelector('[data-el="my-assignments"]'), {
+      departmentId,
+      fetchMyAssignments: async () => {
+        const { data, error } = await supabase
+          .from('ecodem_session_workers')
+          .select('id, status, reason, working_department_id, session:ecodem_sessions ( date, age_group )')
+          .eq('user_id', userId)
+          .order('date', { foreignTable: 'ecodem_sessions', ascending: true });
+        if (error) return { error };
+        return {
+          data: (data || []).filter((r) => r.session).map((r) => ({
+            id: r.id,
+            label: ecodemAgeGroupLabel(r.session.age_group),
+            date: r.session.date,
+            status: r.status,
+            reason: r.reason,
+            workingDepartmentId: r.working_department_id,
+          })),
+        };
+      },
+      updateAssignment: async (id, patch) => {
+        const update = {};
+        if ('status' in patch) { update.status = patch.status; update.responded_at = new Date().toISOString(); }
+        if ('reason' in patch) update.reason = patch.reason;
+        if ('workingDepartmentId' in patch) update.working_department_id = patch.workingDepartmentId;
+        const { error } = await supabase.from('ecodem_session_workers').update(update).eq('id', id);
+        if (!error) load();
+        return { error };
+      },
+    });
+  }
 
   if (form) {
     loadMemberOptions();
@@ -147,16 +185,36 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
         return;
       }
 
-      const { error: deleteError } = await supabase.from('ecodem_session_workers').delete().eq('session_id', session.id);
-      if (deleteError) {
+      // Diff against the two workers already on this session rather
+      // than delete-both-then-reinsert — a worker who already
+      // approved or declined must keep that status if they're still
+      // one of the two; only an actual swap needs to move.
+      const { data: existingWorkers, error: existingError } = await supabase
+        .from('ecodem_session_workers')
+        .select('id, user_id')
+        .eq('session_id', session.id);
+      if (existingError) {
         formStatusEl.className = 'text-sm text-rose-600';
-        formStatusEl.textContent = t('ecodem.saveFailed', { message: deleteError.message });
+        formStatusEl.textContent = t('ecodem.saveFailed', { message: existingError.message });
         return;
       }
 
-      const { error: insertError } = await supabase
-        .from('ecodem_session_workers')
-        .insert(workers.map((user_id) => ({ session_id: session.id, user_id })));
+      const existingUserIds = new Set((existingWorkers || []).map((w) => w.user_id));
+      const toDeleteIds = (existingWorkers || []).filter((w) => !workers.includes(w.user_id)).map((w) => w.id);
+      const toInsert = workers.filter((user_id) => !existingUserIds.has(user_id)).map((user_id) => ({ session_id: session.id, user_id }));
+
+      if (toDeleteIds.length > 0) {
+        const { error: deleteError } = await supabase.from('ecodem_session_workers').delete().in('id', toDeleteIds);
+        if (deleteError) {
+          formStatusEl.className = 'text-sm text-rose-600';
+          formStatusEl.textContent = t('ecodem.saveFailed', { message: deleteError.message });
+          return;
+        }
+      }
+
+      const { error: insertError } = toInsert.length > 0
+        ? await supabase.from('ecodem_session_workers').insert(toInsert)
+        : { error: null };
 
       if (insertError) {
         formStatusEl.className = 'text-sm text-rose-600';
@@ -175,7 +233,7 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
 
     const { data, error } = await supabase
       .from('ecodem_sessions')
-      .select('date, age_group, topic, ecodem_session_workers ( worker:profiles!user_id ( full_name ) )')
+      .select('date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )')
       .order('date', { ascending: true });
 
     if (error) {
@@ -199,12 +257,19 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
         <div class="text-sm font-semibold text-slate-800 mb-2">${escapeHtml(date)}</div>
         <div class="grid sm:grid-cols-3 gap-3">
           ${sessions.map((session) => {
-            const names = (session.ecodem_session_workers || []).map((w) => w.worker?.full_name).filter(Boolean);
+            const workers = (session.ecodem_session_workers || []).filter((w) => w.worker?.full_name);
             return `
               <div class="text-sm">
                 <div class="font-medium text-slate-700">${ecodemAgeGroupLabel(session.age_group)}</div>
                 <div class="text-slate-600">${session.topic ? escapeHtml(session.topic) : `<span class="text-slate-400">${t('ecodem.noTopic')}</span>`}</div>
-                <div class="text-slate-500 mt-1">${names.length > 0 ? names.map(escapeHtml).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
+                <div class="text-slate-500 mt-1 flex flex-wrap gap-1">${workers.length > 0
+                  ? workers.map((w) => renderAssigneeBadge({
+                      name: w.worker.full_name,
+                      status: w.status,
+                      reason: w.reason,
+                      workingDepartmentKey: w.working_department?.key,
+                    })).join('')
+                  : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
               </div>
             `;
           }).join('')}

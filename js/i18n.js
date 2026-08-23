@@ -588,6 +588,10 @@ const TRANSLATIONS = {
     'requests.reasonSaveFailed': 'Failed to save reason: {message}',
     'requests.statusUpdateFailed': 'Failed to update status: {message}',
     'requests.onBehalfHint': "You can set a member's status yourself if they already told you directly instead of responding in the app.",
+    'requests.workingElsewhere': "Or: I'll be working in another department",
+    'requests.selectDepartment': 'Select a department…',
+    'requests.workingIn': 'Working in {department} instead',
+    'requests.yourAssignments': 'Your Assignments',
 
     'common.loading': 'Loading…',
     'common.yes': 'Yes',
@@ -1513,6 +1517,10 @@ const TRANSLATIONS = {
     'requests.reasonSaveFailed': "Échec de l'enregistrement du motif : {message}",
     'requests.statusUpdateFailed': 'Échec de la mise à jour du statut : {message}',
     'requests.onBehalfHint': "Vous pouvez définir vous-même le statut d'un membre s'il vous a déjà informé directement plutôt que de répondre dans l'application.",
+    'requests.workingElsewhere': 'Ou : je vais travailler dans un autre département',
+    'requests.selectDepartment': 'Sélectionner un département…',
+    'requests.workingIn': 'Travaille plutôt dans {department}',
+    'requests.yourAssignments': 'Vos affectations',
 
     'common.loading': 'Chargement…',
     'common.yes': 'Oui',

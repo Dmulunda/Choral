@@ -4,7 +4,7 @@
 // availability calendar: each request needs an explicit approve/decline
 // response per member.
 import { confirmDialog } from './confirmDialog.js';
-import { t, tn } from '../i18n.js';
+import { t, tn, departmentLabel } from '../i18n.js';
 
 export function renderServiceRequestAdmin(container, { supabase, adminUserId }) {
   container.innerHTML = `
@@ -263,7 +263,7 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
 
     const planIds = plans.map((p) => p.id);
     const [{ data: rsvps, error: rsvpsError }, { data: planSongs, error: planSongsError }] = await Promise.all([
-      supabase.from('service_rsvps').select('id, service_plan_id, status, reason, profiles ( full_name )').in('service_plan_id', planIds),
+      supabase.from('service_rsvps').select('id, service_plan_id, status, reason, profiles ( full_name ), working_department:departments!working_department_id ( key )').in('service_plan_id', planIds),
       supabase.from('service_plan_songs').select('service_plan_id, category, note, songs ( title )').in('service_plan_id', planIds).order('position'),
     ]);
 
@@ -345,6 +345,9 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
           <option value="declined" ${rsvp.status === 'declined' ? 'selected' : ''}>${t('requests.statusDeclined')}</option>
         </select>
       </div>
+      ${rsvp.status === 'declined' && rsvp.working_department?.key ? `
+        <p class="mt-1.5 text-xs text-slate-500">${t('requests.workingIn', { department: departmentLabel(rsvp.working_department.key) })}</p>
+      ` : ''}
       <div data-el="reason-row" class="mt-1.5 flex gap-2 ${rsvp.status === 'declined' ? '' : 'hidden'}">
         <input type="text" data-el="reason-input" value="${escapeAttr(rsvp.reason || '')}"
                placeholder="${t('requests.reasonPlaceholder')}"

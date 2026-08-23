@@ -3,11 +3,17 @@
 // Sermon Theme, one row per service date. Each row can expand to show
 // that Sunday's Choir song program — visible here specifically because
 // sql/017_preaching_schedule.sql grants the scheduled moderator read
-// access to it, even without Choir department membership.
+// access to it, even without Choir department membership. The
+// moderator can approve or decline being scheduled (sql/049), same as
+// every other department now — a moderator slot is the only assignment
+// here that maps to an actual app user.
 import { t } from '../i18n.js';
+import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
+import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 
-export function renderPreachingSchedule(container, { supabase, departmentId, canAdminister }) {
+export function renderPreachingSchedule(container, { supabase, departmentId, canAdminister, userId }) {
   container.innerHTML = `
+    <div data-el="my-assignments"></div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('preaching.title')}</h2>
@@ -56,6 +62,39 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
   const moderatorSelect = container.querySelector('[data-el="moderator-select"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
   const listEl = container.querySelector('[data-el="list"]');
+
+  if (userId) {
+    renderMyAssignmentsPanel(container.querySelector('[data-el="my-assignments"]'), {
+      departmentId,
+      fetchMyAssignments: async () => {
+        const { data, error } = await supabase
+          .from('preaching_schedule')
+          .select('id, date, moderator_status, moderator_reason, moderator_working_department_id')
+          .eq('moderator_id', userId)
+          .order('date', { ascending: true });
+        if (error) return { error };
+        return {
+          data: (data || []).map((r) => ({
+            id: r.id,
+            label: t('preaching.moderator'),
+            date: r.date,
+            status: r.moderator_status,
+            reason: r.moderator_reason,
+            workingDepartmentId: r.moderator_working_department_id,
+          })),
+        };
+      },
+      updateAssignment: async (id, patch) => {
+        const update = {};
+        if ('status' in patch) { update.moderator_status = patch.status; update.moderator_responded_at = new Date().toISOString(); }
+        if ('reason' in patch) update.moderator_reason = patch.reason;
+        if ('workingDepartmentId' in patch) update.moderator_working_department_id = patch.workingDepartmentId;
+        const { error } = await supabase.from('preaching_schedule').update(update).eq('id', id);
+        if (!error) load();
+        return { error };
+      },
+    });
+  }
 
   if (form) {
     loadModeratorOptions();
@@ -106,10 +145,22 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     formStatusEl.textContent = t('common.saving');
 
     const { data: { user } } = await supabase.auth.getUser();
+    const newModeratorId = form.elements.moderator.value || null;
+
+    const { data: existingRow } = await supabase
+      .from('preaching_schedule')
+      .select('moderator_id')
+      .eq('date', date)
+      .maybeSingle();
+    // A new or changed moderator starts fresh at "pending" — carrying
+    // over the previous moderator's approve/decline status would
+    // misattribute it to whoever is scheduled now.
+    const moderatorChanged = (existingRow?.moderator_id || null) !== newModeratorId;
 
     const { error } = await supabase.from('preaching_schedule').upsert({
       date,
-      moderator_id: form.elements.moderator.value || null,
+      moderator_id: newModeratorId,
+      ...(moderatorChanged ? { moderator_status: 'pending', moderator_reason: null, moderator_working_department_id: null } : {}),
       preacher_name: form.elements.preacher_name.value.trim() || null,
       guest_name: form.elements.guest_name.value.trim() || null,
       sermon_theme: form.elements.sermon_theme.value.trim() || null,
@@ -132,7 +183,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data, error } = await supabase
       .from('preaching_schedule')
-      .select('id, date, preacher_name, guest_name, sermon_theme, moderator:profiles!moderator_id ( full_name )')
+      .select('id, date, preacher_name, guest_name, sermon_theme, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
       .order('date', { ascending: true });
 
     if (error) {
@@ -158,7 +209,9 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
         <div class="text-sm text-slate-500">${escapeHtml(row.date)}</div>
       </div>
       <div class="text-sm text-slate-600 mt-1">
-        ${t('preaching.moderator')}: ${row.moderator?.full_name ? escapeHtml(row.moderator.full_name) : `<span class="text-slate-400">${t('preaching.noModerator')}</span>`}
+        ${t('preaching.moderator')}: ${row.moderator?.full_name
+          ? renderAssigneeBadge({ name: row.moderator.full_name, status: row.moderator_status, reason: row.moderator_reason, workingDepartmentKey: row.working_department?.key })
+          : `<span class="text-slate-400">${t('preaching.noModerator')}</span>`}
         &nbsp;·&nbsp;
         ${t('preaching.preacher')}: ${row.preacher_name ? escapeHtml(row.preacher_name) : `<span class="text-slate-400">${t('preaching.noPreacher')}</span>`}
         &nbsp;·&nbsp;

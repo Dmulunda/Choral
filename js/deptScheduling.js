@@ -4,7 +4,7 @@
 // their own board component instead. Reads which department is active
 // from departments.js rather than taking a param. Finance never reaches
 // this — its Scheduling nav button is hidden in app.js.
-import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment, getViewAsTarget } from './departments.js';
 import { renderShiftBoard } from './components/departmentShiftBoard.js';
 import { renderPreachingSchedule } from './components/preachingScheduleBoard.js';
 import { renderMediaTechBoard } from './components/mediaTechBoard.js';
@@ -25,8 +25,11 @@ export async function renderDeptSchedulingTab() {
 
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = getViewAsTarget()?.id || user?.id;
+
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
   container.innerHTML = '';
   const renderBoard = BESPOKE_BOARDS[active.key] || renderShiftBoard;
-  renderBoard(container, { supabase, departmentId: active.id, canAdminister });
+  renderBoard(container, { supabase, departmentId: active.id, canAdminister, userId });
 }
