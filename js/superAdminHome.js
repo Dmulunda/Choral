@@ -15,6 +15,7 @@ import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { createMenuCustomizerModal } from './components/menuCustomizer.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
+import { createLoginActivityModal } from './components/loginActivity.js';
 import { t, departmentLabel } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -25,6 +26,7 @@ let currentGuestHubModal = null;
 let currentMemberCaseModal = null;
 let currentMenuCustomizerModal = null;
 let currentMessageModerationModal = null;
+let currentLoginActivityModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -67,6 +69,9 @@ export async function renderSuperAdminHomeTab() {
         <button type="button" data-action="open-message-moderation" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('messageModeration.title')}
         </button>
+        <button type="button" data-action="open-login-activity" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('loginActivity.title')}
+        </button>
       ` : ''}
     </div>
   `;
@@ -85,6 +90,7 @@ export async function renderSuperAdminHomeTab() {
   currentMemberCaseModal?.root.remove();
   currentMenuCustomizerModal?.root.remove();
   currentMessageModerationModal?.root.remove();
+  currentLoginActivityModal?.root.remove();
 
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
@@ -119,6 +125,12 @@ export async function renderSuperAdminHomeTab() {
   if (messageModerationBtn) {
     currentMessageModerationModal = createMessageModerationModal({ supabase });
     messageModerationBtn.addEventListener('click', () => currentMessageModerationModal.open());
+  }
+
+  const loginActivityBtn = container.querySelector('[data-action="open-login-activity"]');
+  if (loginActivityBtn) {
+    currentLoginActivityModal = createLoginActivityModal({ supabase });
+    loginActivityBtn.addEventListener('click', () => currentLoginActivityModal.open());
   }
 }
 

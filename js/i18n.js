@@ -358,6 +358,13 @@ const TRANSLATIONS = {
     'messageModeration.loadFailed': 'Failed to load: {message}',
     'messageModeration.none': 'No messages found.',
 
+    'loginActivity.title': 'Login Activity',
+    'loginActivity.intro': "Each person's 3 most recent sign-ins, with date and time.",
+    'loginActivity.searchPlaceholder': 'Search by name…',
+    'loginActivity.loadFailed': 'Failed to load: {message}',
+    'loginActivity.none': 'No login activity found.',
+    'loginActivity.unknownUser': 'Unknown user',
+
     'appSuggestion.title': 'App Suggestion',
     'appSuggestion.intro': 'Send a suggestion directly to the primary administrator.',
     'appSuggestion.placeholder': 'What would make the app better?',
@@ -1288,6 +1295,13 @@ const TRANSLATIONS = {
     'messageModeration.searchPlaceholder': 'Rechercher par nom ou texte du message…',
     'messageModeration.loadFailed': 'Échec du chargement : {message}',
     'messageModeration.none': 'Aucun message trouvé.',
+
+    'loginActivity.title': 'Activité de connexion',
+    'loginActivity.intro': 'Les 3 dernières connexions de chaque personne, avec la date et l’heure.',
+    'loginActivity.searchPlaceholder': 'Rechercher par nom…',
+    'loginActivity.loadFailed': 'Échec du chargement : {message}',
+    'loginActivity.none': 'Aucune activité de connexion trouvée.',
+    'loginActivity.unknownUser': 'Utilisateur inconnu',
 
     'appSuggestion.title': "Suggestion pour l'application",
     'appSuggestion.intro': "Envoyez une suggestion directement à l'administrateur principal.",
