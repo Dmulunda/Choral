@@ -714,13 +714,22 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   refreshInboxBadge();
 }
 
-// Shown for a few seconds right after a genuine sign-in (not a page
-// reload restoring an existing session) — the real app renders
-// underneath in the background so the wait doesn't add to actual load
-// time, then the overlay fades away to reveal it.
-const SPLASH_MIN_DURATION_MS = 3000;
+// Shown right after a genuine sign-in (not a page reload restoring an
+// existing session) — the real app renders underneath in the
+// background so the wait doesn't add to actual load time, then the
+// overlay fades away to reveal it. Only shown the very first time this
+// browser ever signs in (tracked via HAS_WELCOMED_KEY); every sign-in
+// after that skips straight to the app with no delay at all.
+const SPLASH_MIN_DURATION_MS = 1100;
+const HAS_WELCOMED_KEY = 'choir-hub-has-welcomed';
 
 async function showSplashThenApp(session) {
+  if (localStorage.getItem(HAS_WELCOMED_KEY)) {
+    await showApp(session, { isFreshSignIn: true });
+    return;
+  }
+  localStorage.setItem(HAS_WELCOMED_KEY, '1');
+
   loginSplashEl.classList.remove('hidden', 'opacity-0');
   loginSplashEl.classList.add('flex');
 
