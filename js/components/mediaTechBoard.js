@@ -7,19 +7,27 @@
 import { t, mediaTechRoleLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { todayLocal } from '../utils/date.js';
+import { getGlobalRole } from '../departments.js';
 
 const ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator'];
 
 export function renderMediaTechBoard(container, { supabase, departmentId, canAdminister, userId }) {
+  // Super Admin keeps the ability to correct an already-past assignment;
+  // every other department admin is hard-blocked (sql/052's DB trigger
+  // enforces the same rule), so the picker shouldn't even let them try.
+  const dateMinAttr = getGlobalRole() === 'super_admin' ? '' : `min="${todayLocal()}"`;
+
   container.innerHTML = `
     <div data-el="my-assignments"></div>
+    <div data-el="program-panel"></div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('mediaTech.assignForDate')}</h2>
         <form data-el="form" class="space-y-4">
           <div class="max-w-xs">
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.date')}</label>
-            <input type="date" name="date" required class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+            <input type="date" name="date" required ${dateMinAttr} class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
           <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             ${ROLES.map((role) => `
@@ -89,6 +97,79 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   }
 
   load();
+  initProgramPanel();
+
+  // "Today's Program" — Choir's song list and Preaching's Bible verse
+  // for the next upcoming service. Beyond department admins, sql/052
+  // also grants read access to whoever is personally scheduled as
+  // Slides Projection Operator, so they see it here even without being
+  // an admin themselves.
+  async function initProgramPanel() {
+    if (!userId) return;
+    let show = canAdminister;
+    if (!show) {
+      const { data } = await supabase
+        .from('media_tech_assignments')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('role', 'slides_operator')
+        .gte('date', todayLocal())
+        .limit(1);
+      show = (data || []).length > 0;
+    }
+    if (show) renderProgramPanel(container.querySelector('[data-el="program-panel"]'));
+  }
+
+  async function renderProgramPanel(el) {
+    el.innerHTML = `
+      <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">${t('mediaTech.todaysProgram')}</h2>
+        <div data-el="program-body" class="text-sm text-slate-500">${t('common.loading')}</div>
+      </div>
+    `;
+    const bodyEl = el.querySelector('[data-el="program-body"]');
+
+    const [{ data: plan }, { data: preaching }] = await Promise.all([
+      supabase.from('service_plans').select('id, date, title').gte('date', todayLocal()).order('date', { ascending: true }).limit(1).maybeSingle(),
+      supabase.from('preaching_schedule').select('date, sermon_theme, bible_verse').gte('date', todayLocal()).order('date', { ascending: true }).limit(1).maybeSingle(),
+    ]);
+
+    let songsHtml = `<p class="text-slate-400">${t('mediaTech.noUpcomingProgram')}</p>`;
+    if (plan) {
+      const { data: planSongs } = await supabase
+        .from('service_plan_songs')
+        .select('category, note, songs ( title )')
+        .eq('service_plan_id', plan.id)
+        .order('position');
+      const praise = (planSongs || []).filter((r) => r.category === 'praise' && r.songs).map((r) => r.songs.title);
+      const worship = (planSongs || []).filter((r) => r.category === 'worship' && r.songs).map((r) => r.songs.title);
+      songsHtml = `
+        <div class="font-medium text-slate-800">${escapeHtml(plan.title || '')} <span class="text-slate-400 font-normal">— ${escapeHtml(plan.date)}</span></div>
+        <div class="grid sm:grid-cols-2 gap-3 mt-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${t('requests.praiseSongs')}</div>
+            ${praise.length > 0 ? `<ul class="list-disc list-inside text-slate-700">${praise.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : `<p class="text-slate-400">${t('dashboard.noSongsYet')}</p>`}
+          </div>
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${t('requests.worshipSongs')}</div>
+            ${worship.length > 0 ? `<ul class="list-disc list-inside text-slate-700">${worship.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : `<p class="text-slate-400">${t('dashboard.noSongsYet')}</p>`}
+          </div>
+        </div>
+      `;
+    }
+
+    const verseHtml = preaching?.bible_verse
+      ? `<div class="font-medium text-indigo-700">${escapeHtml(preaching.bible_verse)}</div>${preaching.sermon_theme ? `<div class="text-slate-500 text-xs mt-0.5">${escapeHtml(preaching.sermon_theme)}</div>` : ''}`
+      : `<p class="text-slate-400">${t('mediaTech.noUpcomingVerse')}</p>`;
+
+    bodyEl.innerHTML = `
+      <div class="mb-4">${songsHtml}</div>
+      <div class="pt-3 border-t border-slate-100">
+        <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${t('preaching.bibleVerse')}</div>
+        ${verseHtml}
+      </div>
+    `;
+  }
 
   async function loadMemberOptions() {
     const { data } = await supabase

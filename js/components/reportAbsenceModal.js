@@ -5,6 +5,7 @@
 // RPC (sql/024), so this component just calls it and shows the result.
 import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
+import { todayLocal } from '../utils/date.js';
 
 export function createReportAbsenceModal({ supabase, onReported }) {
   const root = document.createElement('div');
@@ -19,7 +20,7 @@ export function createReportAbsenceModal({ supabase, onReported }) {
       <form data-el="form" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('absence.date')}</label>
-          <input type="date" name="date" required class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          <input type="date" name="date" required min="${todayLocal()}" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('absence.reason')}</label>

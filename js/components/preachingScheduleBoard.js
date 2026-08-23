@@ -10,8 +10,15 @@
 import { t } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { todayLocal } from '../utils/date.js';
+import { getGlobalRole } from '../departments.js';
 
 export function renderPreachingSchedule(container, { supabase, departmentId, canAdminister, userId }) {
+  // Super Admin keeps the ability to correct an already-past entry;
+  // every other department admin is hard-blocked (sql/052's DB trigger
+  // enforces the same rule), so the picker shouldn't even let them try.
+  const dateMinAttr = getGlobalRole() === 'super_admin' ? '' : `min="${todayLocal()}"`;
+
   container.innerHTML = `
     <div data-el="my-assignments"></div>
     ${canAdminister ? `
@@ -20,7 +27,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
         <form data-el="form" class="grid sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.date')}</label>
-            <input type="date" name="date" required class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+            <input type="date" name="date" required ${dateMinAttr} class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.moderator')}</label>
@@ -41,6 +48,11 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.sermonTheme')}</label>
             <input type="text" name="sermon_theme" placeholder="${t('preaching.sermonThemePlaceholder')}"
+                   class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.bibleVerse')}</label>
+            <input type="text" name="bible_verse" placeholder="${t('preaching.bibleVersePlaceholder')}"
                    class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
           <div class="sm:col-span-2 flex items-center gap-3">
@@ -125,7 +137,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data: existing } = await supabase
       .from('preaching_schedule')
-      .select('moderator_id, preacher_name, guest_name, sermon_theme')
+      .select('moderator_id, preacher_name, guest_name, sermon_theme, bible_verse')
       .eq('date', dateStr)
       .maybeSingle();
 
@@ -133,6 +145,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     form.elements.preacher_name.value = existing?.preacher_name || '';
     form.elements.guest_name.value = existing?.guest_name || '';
     form.elements.sermon_theme.value = existing?.sermon_theme || '';
+    form.elements.bible_verse.value = existing?.bible_verse || '';
   }
 
   async function handleSubmit(e) {
@@ -164,6 +177,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       preacher_name: form.elements.preacher_name.value.trim() || null,
       guest_name: form.elements.guest_name.value.trim() || null,
       sermon_theme: form.elements.sermon_theme.value.trim() || null,
+      bible_verse: form.elements.bible_verse.value.trim() || null,
       created_by: user.id,
     }, { onConflict: 'date' });
 
@@ -183,7 +197,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data, error } = await supabase
       .from('preaching_schedule')
-      .select('id, date, preacher_name, guest_name, sermon_theme, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
+      .select('id, date, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
       .order('date', { ascending: true });
 
     if (error) {
@@ -217,6 +231,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
         &nbsp;·&nbsp;
         ${t('preaching.guest')}: ${row.guest_name ? escapeHtml(row.guest_name) : `<span class="text-slate-400">${t('preaching.noGuest')}</span>`}
       </div>
+      ${row.bible_verse ? `<div class="text-sm text-indigo-700 mt-1 italic">${t('preaching.bibleVerse')}: ${escapeHtml(row.bible_verse)}</div>` : ''}
       <details class="mt-2">
         <summary class="text-xs font-medium text-slate-500 cursor-pointer">${t('preaching.songProgram')}</summary>
         <div data-el="song-program" class="mt-2 text-sm"></div>

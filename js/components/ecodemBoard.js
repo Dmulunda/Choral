@@ -8,10 +8,17 @@
 import { t, ecodemAgeGroupLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { todayLocal } from '../utils/date.js';
+import { getGlobalRole } from '../departments.js';
 
 const AGE_GROUPS = ['group_1', 'group_2', 'group_3'];
 
 export function renderEcodemBoard(container, { supabase, departmentId, canAdminister, userId }) {
+  // Super Admin keeps the ability to correct an already-past session;
+  // every other department admin is hard-blocked (sql/052's DB trigger
+  // enforces the same rule), so the picker shouldn't even let them try.
+  const dateMinAttr = getGlobalRole() === 'super_admin' ? '' : `min="${todayLocal()}"`;
+
   container.innerHTML = `
     <div data-el="my-assignments"></div>
     ${canAdminister ? `
@@ -20,7 +27,7 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
         <form data-el="form" class="space-y-6">
           <div class="max-w-xs">
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.date')}</label>
-            <input type="date" name="date" required class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+            <input type="date" name="date" required ${dateMinAttr} class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
           <div class="grid sm:grid-cols-3 gap-4">
             ${AGE_GROUPS.map((group) => `

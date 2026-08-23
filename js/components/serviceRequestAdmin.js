@@ -5,8 +5,16 @@
 // response per member.
 import { confirmDialog } from './confirmDialog.js';
 import { t, tn, departmentLabel } from '../i18n.js';
+import { getGlobalRole } from '../departments.js';
+import { todayLocal } from '../utils/date.js';
 
 export function renderServiceRequestAdmin(container, { supabase, adminUserId }) {
+  // Super Admin keeps the ability to correct an already-past service
+  // (sql/052's DB trigger allows it too); every other department admin
+  // is hard-blocked from creating or editing one, so the picker
+  // shouldn't even let them try.
+  const dateMinAttr = getGlobalRole() === 'super_admin' ? '' : `min="${todayLocal()}"`;
+
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">${t('requests.title')}</h2>
@@ -14,7 +22,7 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
       <form data-el="form" class="grid sm:grid-cols-2 gap-4 mb-3">
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.date')}</label>
-          <input type="date" name="date" required class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          <input type="date" name="date" required ${dateMinAttr} class="w-full border border-slate-300 rounded-lg px-3 py-2" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.eventTitle')}</label>

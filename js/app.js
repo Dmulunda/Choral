@@ -15,6 +15,7 @@ import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
+import { createJoinDepartmentModal } from './components/joinDepartmentModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
@@ -369,6 +370,7 @@ function updateSidebarToolsSelect() {
     || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
 
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
+  options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
   if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
   if (canSubmitSuggestion) options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   if (hasAccess) {
@@ -419,6 +421,8 @@ function runSidebarTool(value) {
     createAppSuggestionModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
+  } else if (value === 'join-department') {
+    createJoinDepartmentModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'department-rules' && active) {
     createRulesModal({
       supabase: effectiveSupabase,

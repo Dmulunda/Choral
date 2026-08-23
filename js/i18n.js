@@ -71,6 +71,7 @@ const TRANSLATIONS = {
     'viewAs.blocked': 'This action is disabled while viewing as another user.',
 
     'sidebar.reportAbsence': 'Report Absence',
+    'sidebar.joinDepartment': 'Join a Department',
     'sidebar.notifications': 'Notifications',
 
     'absence.title': 'Report Absence',
@@ -81,6 +82,14 @@ const TRANSLATIONS = {
     'absence.confirmSubmit': 'Report yourself unavailable on {date}? Your departments and church leadership will be notified.',
     'absence.submitFailed': 'Failed to submit: {message}',
     'absence.submitted': 'Reported. Your departments and church leadership have been notified.',
+
+    'joinDepartment.title': 'Join a Department',
+    'joinDepartment.intro': "Forgot to request a department when you registered, or want to join another one? Pick it below — an admin there will approve it, same as any other request.",
+    'joinDepartment.loadFailed': 'Failed to load: {message}',
+    'joinDepartment.none': "You're already in (or have a pending request for) every department.",
+    'joinDepartment.request': 'Request to Join',
+    'joinDepartment.requestFailed': 'Failed to send request: {message}',
+    'joinDepartment.requested': 'Request sent — an admin there will review it.',
 
     'notifications.title': 'Notifications',
     'notifications.loadFailed': 'Failed to load notifications: {message}',
@@ -492,6 +501,8 @@ const TRANSLATIONS = {
     'preaching.noGuest': 'No guest',
     'preaching.sermonTheme': 'Sermon Theme',
     'preaching.sermonThemePlaceholder': 'e.g. Faith in action',
+    'preaching.bibleVerse': 'Bible Verse',
+    'preaching.bibleVersePlaceholder': 'e.g. James 2:14-26',
     'preaching.save': 'Save',
     'preaching.saveFailed': 'Failed to save: {message}',
     'preaching.upcoming': 'Monthly Schedule',
@@ -504,6 +515,9 @@ const TRANSLATIONS = {
     'preaching.noSongProgram': 'No song program available for this date yet.',
 
     'mediaTech.assignForDate': 'Assign for a Service Date',
+    'mediaTech.todaysProgram': "Today's Program",
+    'mediaTech.noUpcomingProgram': 'No upcoming song program yet.',
+    'mediaTech.noUpcomingVerse': 'No upcoming Bible verse yet.',
     'mediaTech.role.stream_operator': 'Live & YouTube Stream Operator',
     'mediaTech.role.sound_operator': 'Sound & Mixer Console Operator',
     'mediaTech.role.media_inventory': 'Media Stories Handler',
@@ -543,6 +557,9 @@ const TRANSLATIONS = {
     'dashboard.unassigned': 'Unassigned',
     'dashboard.thisWeek': "This Week's Services",
     'dashboard.weekServicesFailed': 'Failed to load this week\'s services: {message}',
+    'dashboard.whatsNext': "What's Next",
+    'dashboard.nothingUpcoming': 'Nothing scheduled yet.',
+    'dashboard.loadFailed': 'Failed to load: {message}',
     'dashboard.noServicesThisWeek': 'No services scheduled this week.',
     'dashboard.untitledService': 'Service',
     'dashboard.available': 'Available',
@@ -1009,6 +1026,7 @@ const TRANSLATIONS = {
     'viewAs.blocked': 'Cette action est désactivée en mode de prévisualisation.',
 
     'sidebar.reportAbsence': 'Signaler une absence',
+    'sidebar.joinDepartment': 'Rejoindre un département',
     'sidebar.notifications': 'Notifications',
 
     'absence.title': 'Signaler une absence',
@@ -1019,6 +1037,14 @@ const TRANSLATIONS = {
     'absence.confirmSubmit': 'Vous signaler absent(e) le {date} ? Vos départements et la direction de l’église seront informés.',
     'absence.submitFailed': "Échec de l'envoi : {message}",
     'absence.submitted': 'Signalé. Vos départements et la direction de l’église ont été informés.',
+
+    'joinDepartment.title': 'Rejoindre un département',
+    'joinDepartment.intro': "Vous avez oublié de demander un département lors de votre inscription, ou vous souhaitez en rejoindre un autre ? Choisissez-le ci-dessous — un admin de ce département approuvera la demande, comme toute autre demande.",
+    'joinDepartment.loadFailed': 'Échec du chargement : {message}',
+    'joinDepartment.none': 'Vous êtes déjà dans (ou avez une demande en attente pour) tous les départements.',
+    'joinDepartment.request': 'Demander à rejoindre',
+    'joinDepartment.requestFailed': "Échec de l'envoi de la demande : {message}",
+    'joinDepartment.requested': 'Demande envoyée — un admin de ce département l’examinera.',
 
     'notifications.title': 'Notifications',
     'notifications.loadFailed': 'Échec du chargement des notifications : {message}',
@@ -1430,6 +1456,8 @@ const TRANSLATIONS = {
     'preaching.noGuest': 'Aucun invité',
     'preaching.sermonTheme': 'Thème du sermon',
     'preaching.sermonThemePlaceholder': 'ex. La foi en action',
+    'preaching.bibleVerse': 'Verset biblique',
+    'preaching.bibleVersePlaceholder': 'ex. Jacques 2:14-26',
     'preaching.save': 'Enregistrer',
     'preaching.saveFailed': "Échec de l'enregistrement : {message}",
     'preaching.upcoming': 'Programme mensuel',
@@ -1442,6 +1470,9 @@ const TRANSLATIONS = {
     'preaching.noSongProgram': 'Aucun programme de chants disponible pour cette date.',
 
     'mediaTech.assignForDate': 'Assigner pour une date de service',
+    'mediaTech.todaysProgram': "Programme du jour",
+    'mediaTech.noUpcomingProgram': 'Aucun programme de chants à venir.',
+    'mediaTech.noUpcomingVerse': 'Aucun verset biblique à venir.',
     'mediaTech.role.stream_operator': 'Opérateur de diffusion en direct & YouTube',
     'mediaTech.role.sound_operator': 'Opérateur de la console de son',
     'mediaTech.role.media_inventory': 'Responsable des stories média',
@@ -1481,6 +1512,9 @@ const TRANSLATIONS = {
     'dashboard.unassigned': 'Non assigné',
     'dashboard.thisWeek': 'Services de la semaine',
     'dashboard.weekServicesFailed': 'Échec du chargement des services de la semaine : {message}',
+    'dashboard.whatsNext': 'À venir',
+    'dashboard.nothingUpcoming': 'Rien de programmé pour le moment.',
+    'dashboard.loadFailed': 'Échec du chargement : {message}',
     'dashboard.noServicesThisWeek': 'Aucun service prévu cette semaine.',
     'dashboard.untitledService': 'Service',
     'dashboard.available': 'Disponibles',

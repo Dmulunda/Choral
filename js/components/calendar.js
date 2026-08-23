@@ -101,16 +101,24 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
       grid.appendChild(document.createElement('div'));
     }
 
+    const todayStr = formatDateLocal(new Date());
+
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const cellDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
       const dateStr = formatDateLocal(cellDate);
+      const isPast = dateStr < todayStr;
 
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.dataset.date = dateStr;
       cell.textContent = String(day);
-      cell.className = `h-12 rounded-lg font-medium transition-colors ${STATUS_STYLES[localStatus.get(dateStr)]}`;
-      cell.addEventListener('click', () => toggleDate(dateStr, cell));
+      if (isPast) {
+        cell.disabled = true;
+        cell.className = 'h-12 rounded-lg font-medium bg-slate-50 text-slate-300 cursor-not-allowed';
+      } else {
+        cell.className = `h-12 rounded-lg font-medium transition-colors ${STATUS_STYLES[localStatus.get(dateStr)]}`;
+        cell.addEventListener('click', () => toggleDate(dateStr, cell));
+      }
 
       grid.appendChild(cell);
     }

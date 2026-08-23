@@ -10,6 +10,7 @@ import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
+import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { t } from './i18n.js';
 
 export async function renderDeptDashboardTab() {
@@ -74,6 +75,12 @@ export async function renderDeptDashboardTab() {
     budgetBtn.addEventListener('click', () => {
       createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
     });
+  }
+
+  if (active.key !== 'finance') {
+    const nextUpEl = document.createElement('div');
+    container.appendChild(nextUpEl);
+    renderNextUpcomingWidget(nextUpEl, { supabase, departmentId: active.id, departmentKey: active.key });
   }
 
   const announcementsCard = document.createElement('div');
