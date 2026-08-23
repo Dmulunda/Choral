@@ -632,6 +632,7 @@ const TRANSLATIONS = {
     'scheduling.pleaseSignIn': 'Please sign in to view scheduling.',
     'scheduling.failedToLoadProfile': 'Failed to load profile: {message}',
 
+    'calendar.myAvailability': 'My Availability',
     'calendar.prev': '← Prev',
     'calendar.next': 'Next →',
     'calendar.available': 'Available',
@@ -1561,6 +1562,7 @@ const TRANSLATIONS = {
     'scheduling.pleaseSignIn': 'Veuillez vous connecter pour voir la planification.',
     'scheduling.failedToLoadProfile': 'Échec du chargement du profil : {message}',
 
+    'calendar.myAvailability': 'Mes disponibilités',
     'calendar.prev': '← Précédent',
     'calendar.next': 'Suivant →',
     'calendar.available': 'Disponible',
