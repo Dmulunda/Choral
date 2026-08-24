@@ -623,6 +623,7 @@ const TRANSLATIONS = {
     'requests.yourAssignments': 'Your Assignments',
 
     'common.loading': 'Loading…',
+    'app.updatingNotice': 'Updating to the latest version…',
     'common.yes': 'Yes',
     'common.saving': 'Saving…',
     'common.searching': 'Searching…',
@@ -1583,6 +1584,7 @@ const TRANSLATIONS = {
     'requests.yourAssignments': 'Vos affectations',
 
     'common.loading': 'Chargement…',
+    'app.updatingNotice': 'Mise à jour vers la dernière version…',
     'common.yes': 'Oui',
     'common.saving': 'Enregistrement…',
     'common.searching': 'Recherche…',

@@ -1,5 +1,6 @@
 // Tab navigation — swaps which panel is visible and highlights the active nav link.
 import { supabase } from './supabaseClient.js';
+import { initVersionCheck } from './versionCheck.js';
 import { renderSchedulingTab } from './scheduling.js';
 import { renderSongbookTab } from './songbook.js';
 import { renderVoiceExercises } from './components/voiceExercises.js';
@@ -774,6 +775,8 @@ supabase.auth.getSession().then(({ data: { session }, error }) => {
   if (error) console.error('Supabase session check failed:', error.message);
   if (session) showApp(session); else showAuth();
 });
+
+initVersionCheck();
 
 supabase.auth.onAuthStateChange((event, session) => {
   if (event === 'PASSWORD_RECOVERY') {
