@@ -4,6 +4,7 @@ import { initVersionCheck } from './versionCheck.js';
 import { renderSchedulingTab } from './scheduling.js';
 import { renderSongbookTab } from './songbook.js';
 import { renderVoiceExercises } from './components/voiceExercises.js';
+import { renderUniformSchedule } from './components/uniformSchedule.js';
 import { renderAuthScreen } from './components/authScreen.js';
 import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
@@ -46,6 +47,7 @@ const departmentSwitcherEl = document.querySelector('#department-switcher');
 const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-name"]');
 const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
 const deptSchedulingNavBtn = document.querySelector('#dept-scheduling-nav-btn');
+const uniformNavBtn = document.querySelector('#uniform-nav-btn');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
 const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
@@ -74,6 +76,15 @@ const lazyTabs = {
   scheduling: renderSchedulingTab,
   songbook: renderSongbookTab,
   'voice-exercises': () => renderVoiceExercises(document.querySelector('#voice-exercises-content')),
+  uniform: () => {
+    const active = getActiveDepartment();
+    if (!active) return;
+    renderUniformSchedule(document.querySelector('#uniform-content'), {
+      supabase: getEffectiveSupabase(),
+      departmentId: active.id,
+      canAdminister: active.role === 'admin' || active.role === 'super_admin',
+    });
+  },
   members: renderMembersTab,
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
@@ -167,14 +178,19 @@ function applyActiveDepartment() {
   // Finance keeps Dashboard but explicitly loses Scheduling — every
   // other department gets both.
   deptSchedulingNavBtn.classList.toggle('hidden', isDeptDashboardKind && active.key === 'finance');
+  // Uniform: Choir always has its own button in choir-nav-group: this
+  // one (in the shared lightweight nav) is only for Ushers.
+  uniformNavBtn.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers'));
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
+    loadedTabs.delete('uniform');
     activateTab('dashboard');
   } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
     deptSchedulingNameEl.textContent = departmentLabel(active.key);
+    loadedTabs.delete('uniform');
     // A different department may have been active last time these tab
     // names were used, so force a fresh render rather than trusting the
     // lazy-load cache.

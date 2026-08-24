@@ -217,16 +217,17 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data: { user } } = await supabase.auth.getUser();
     const newModeratorId = form.elements.moderator.value || null;
-    // A new or changed moderator starts fresh at "pending" — carrying
-    // over the previous moderator's approve/decline status would
-    // misattribute it to whoever is scheduled now. A brand new entry
-    // is always "changed" (nothing to carry over from).
+    // A new or changed moderator starts fresh at "approved" — being
+    // scheduled is the approval now (sql/058); carrying over the
+    // previous moderator's declined status would misattribute it to
+    // whoever is scheduled now. A brand new entry is always "changed"
+    // (nothing to carry over from).
     const moderatorChanged = !editingRow || (editingRow.moderator_id || null) !== newModeratorId;
 
     const payload = {
       date,
       moderator_id: newModeratorId,
-      ...(moderatorChanged ? { moderator_status: 'pending', moderator_reason: null, moderator_working_department_id: null } : {}),
+      ...(moderatorChanged ? { moderator_status: 'approved', moderator_reason: null, moderator_working_department_id: null } : {}),
       preacher_id: form.elements.preacher.value || null,
       // Clears out the old free-text value once an entry is saved
       // through this dropdown-based form, so it never shows a stale

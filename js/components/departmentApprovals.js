@@ -4,7 +4,7 @@
 // department, since approving members doesn't require that
 // department's full feature set to exist yet.
 import { confirmDialog } from './confirmDialog.js';
-import { t } from '../i18n.js';
+import { t, tn } from '../i18n.js';
 
 export function renderDepartmentApprovals(container, { supabase, departmentId, adminUserId }) {
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
@@ -29,6 +29,13 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
     }
 
     container.innerHTML = `
+      ${data.length > 1 ? `
+        <div class="flex justify-end mb-2">
+          <button type="button" data-action="approve-all" class="text-xs font-medium text-emerald-700 hover:text-emerald-900 underline">
+            ${tn('approvals.approveAll', data.length)}
+          </button>
+        </div>
+      ` : ''}
       <div class="space-y-2">
         ${data.map((row) => `
           <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3">
@@ -51,6 +58,22 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
     const byId = new Map(data.map((row) => [row.id, row]));
     container.querySelectorAll('[data-action="approve"]').forEach((btn) => btn.addEventListener('click', () => respond(byId.get(btn.dataset.id), 'approved')));
     container.querySelectorAll('[data-action="reject"]').forEach((btn) => btn.addEventListener('click', () => respond(byId.get(btn.dataset.id), 'rejected')));
+    container.querySelector('[data-action="approve-all"]')?.addEventListener('click', () => approveAll(data));
+  }
+
+  async function approveAll(rows) {
+    if (!(await confirmDialog({ message: tn('approvals.confirmApproveAll', rows.length), confirmLabel: t('approvals.approve') }))) return;
+
+    const { error } = await supabase
+      .from('department_memberships')
+      .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: adminUserId })
+      .in('id', rows.map((r) => r.id));
+
+    if (error) {
+      window.alert(t('approvals.updateFailed', { message: error.message }));
+      return;
+    }
+    load();
   }
 
   async function respond(row, status) {

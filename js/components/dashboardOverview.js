@@ -3,6 +3,7 @@
 // who's actually programmed, and the song list, if one exists yet.
 import { formatDateLocal } from '../utils/date.js';
 import { t, voicePartLabel } from '../i18n.js';
+import { loadUniformByDate, uniformLineHtml } from './nextUpcomingWidget.js';
 
 const VOICE_PART_ORDER = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
@@ -82,12 +83,15 @@ async function loadWeekServices(el, supabase) {
   const mondayStr = formatDateLocal(monday);
   const sundayStr = formatDateLocal(sunday);
 
-  const { data: plans, error: plansError } = await supabase
-    .from('service_plans')
-    .select('id, date, title')
-    .gte('date', mondayStr)
-    .lte('date', sundayStr)
-    .order('date', { ascending: true });
+  const [{ data: plans, error: plansError }, { data: choirDept }] = await Promise.all([
+    supabase
+      .from('service_plans')
+      .select('id, date, title')
+      .gte('date', mondayStr)
+      .lte('date', sundayStr)
+      .order('date', { ascending: true }),
+    supabase.from('departments').select('id').eq('key', 'choir').maybeSingle(),
+  ]);
 
   if (plansError) {
     el.innerHTML = `<p class="text-rose-600">${t('dashboard.weekServicesFailed', { message: plansError.message })}</p>`;
@@ -99,11 +103,13 @@ async function loadWeekServices(el, supabase) {
     return;
   }
 
-  const cards = await Promise.all(plans.map((plan) => buildServiceCardHtml(plan, supabase)));
+  const uniformMap = choirDept ? await loadUniformByDate(supabase, choirDept.id, mondayStr, sundayStr) : null;
+
+  const cards = await Promise.all(plans.map((plan) => buildServiceCardHtml(plan, supabase, uniformMap)));
   el.innerHTML = cards.join('');
 }
 
-async function buildServiceCardHtml(plan, supabase) {
+async function buildServiceCardHtml(plan, supabase, uniformMap) {
   const [{ data: assigned }, { data: approvedRsvps }, { data: planSongs }] = await Promise.all([
     supabase.from('service_plan_singers').select('profiles ( full_name )').eq('service_plan_id', plan.id),
     supabase.from('service_rsvps').select('profiles ( full_name )').eq('service_plan_id', plan.id).eq('status', 'approved'),
@@ -120,6 +126,7 @@ async function buildServiceCardHtml(plan, supabase) {
       <div class="mb-3">
         <div class="text-lg font-bold text-slate-800">${escapeHtml(plan.title || t('dashboard.untitledService'))}</div>
         <div class="text-sm text-slate-500">${escapeHtml(plan.date)}</div>
+        ${uniformLineHtml(uniformMap, plan.date)}
       </div>
 
       <div class="grid sm:grid-cols-2 gap-4 mb-3">

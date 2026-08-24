@@ -6,6 +6,7 @@ import { renderAdminAutoPlanner } from './components/autoPlanner.js';
 import { renderServiceRequestAdmin } from './components/serviceRequestAdmin.js';
 import { renderServiceRequestSinger } from './components/serviceRequestSinger.js';
 import { renderReplacementRequests } from './components/replacementRequests.js';
+import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
 import { t } from './i18n.js';
 
 export async function renderSchedulingTab() {
@@ -47,10 +48,14 @@ export async function renderSchedulingTab() {
   const isChoirAdmin = activeDept?.role === 'admin' || activeDept?.role === 'super_admin';
 
   container.innerHTML = '';
+  const deptSwitchEl = document.createElement('div');
   const requestsEl = document.createElement('div');
   const replacementEl = document.createElement('div');
   const plannerEl = document.createElement('div');
   plannerEl.className = 'bg-white rounded-xl shadow p-4 sm:p-6';
+
+  container.append(deptSwitchEl);
+  renderDepartmentSwitchShortcut(deptSwitchEl, { activeKey: 'choir' });
 
   if (isChoirAdmin) {
     // An admin can also be scheduled as a singer for a service, so they

@@ -261,6 +261,10 @@
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Voice Exercises
           </button>
+          <button data-tab-target="uniform" data-i18n="nav.uniform"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Uniform
+          </button>
           <button data-tab-target="members" data-i18n="nav.members" id="members-nav-btn"
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Members
@@ -281,6 +285,12 @@
           <button data-tab-target="dept-scheduling" data-i18n="nav.scheduling" id="dept-scheduling-nav-btn"
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Scheduling
+          </button>
+          <!-- Only Ushers gets this one, alongside Choir — see
+               applyActiveDepartment() in app.js. -->
+          <button data-tab-target="uniform" data-i18n="nav.uniform" id="uniform-nav-btn"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Uniform
           </button>
         </div>
       </nav>
@@ -362,6 +372,11 @@
         <div id="voice-exercises-content" class="bg-white rounded-xl shadow p-4 sm:p-6">
           <p class="text-slate-500" data-i18n="voiceExercises.placeholder">Warm-up and practice material will be rendered here.</p>
         </div>
+      </section>
+
+      <section data-tab-panel="uniform" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.uniform">Uniform</h1>
+        <div id="uniform-content"></div>
       </section>
 
       <section data-tab-panel="members" class="hidden">
