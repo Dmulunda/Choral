@@ -1,6 +1,7 @@
-// Preaching & Moderation monthly schedule: Moderator (a registered app
-// user), Preacher (free text — guests usually have no account), and the
-// Sermon Theme, one row per service date. Each row can expand to show
+// Preaching & Moderation monthly schedule: Moderator and Preacher are
+// both a dropdown of registered members; Guest (an outside preacher
+// without an account) stays free text. Sermon Theme, one row per
+// service date. Each row can expand to show
 // that Sunday's Choir song program — visible here specifically because
 // sql/017_preaching_schedule.sql grants the scheduled moderator read
 // access to it, even without Choir department membership. The
@@ -37,8 +38,9 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.preacher')}</label>
-            <input type="text" name="preacher_name" placeholder="${t('preaching.preacherPlaceholder')}"
-                   class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+            <select name="preacher" data-el="preacher-select" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+              <option value="">${t('preaching.preacherNone')}</option>
+            </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('preaching.guest')}</label>
@@ -72,6 +74,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
   const form = container.querySelector('[data-el="form"]');
   const moderatorSelect = container.querySelector('[data-el="moderator-select"]');
+  const preacherSelect = container.querySelector('[data-el="preacher-select"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
   const listEl = container.querySelector('[data-el="list"]');
 
@@ -109,7 +112,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
   }
 
   if (form) {
-    loadModeratorOptions();
+    loadMemberOptions();
     // Picking a date that already has an entry pre-fills it, so
     // submitting again updates it in place instead of erroring.
     form.elements.date.addEventListener('change', () => prefillFromDate(form.elements.date.value));
@@ -120,7 +123,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
   let allMembers = [];
 
-  async function loadModeratorOptions() {
+  async function loadMemberOptions() {
     const { data } = await supabase
       .from('department_memberships')
       .select('user_id, member:profiles!user_id ( full_name )')
@@ -128,39 +131,45 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       .eq('status', 'approved');
 
     allMembers = (data || []).filter((m) => m.member);
-    renderModeratorOptions(new Set(), null);
+    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), new Set(), null);
+    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), new Set(), null);
   }
 
   // Excludes anyone who reported themselves unavailable for the
   // selected date — the whole point being that scheduling someone who
   // already said they can't make it should not even be possible,
-  // rather than relying on an admin to notice. Whoever's already the
-  // moderator for this date stays in the list regardless, same
+  // rather than relying on an admin to notice. Whoever's already
+  // selected for this date stays in the list regardless, same
   // exception Choir's auto-planner already makes, so an existing
   // (now-unavailable) assignment doesn't just silently disappear.
-  function renderModeratorOptions(unavailableIds, selectedId) {
+  function renderMemberSelect(selectEl, placeholderLabel, unavailableIds, selectedId) {
     const options = allMembers
       .filter((m) => m.user_id === selectedId || !unavailableIds.has(m.user_id))
       .map((m) => `<option value="${m.user_id}" ${m.user_id === selectedId ? 'selected' : ''}>${escapeHtml(m.member.full_name)}${unavailableIds.has(m.user_id) ? ` (${t('deptScheduling.unavailableOnDate')})` : ''}</option>`)
       .join('');
-    moderatorSelect.innerHTML = `<option value="">${t('preaching.moderatorNone')}</option>` + options;
+    selectEl.innerHTML = `<option value="">${placeholderLabel}</option>` + options;
   }
 
   async function prefillFromDate(dateStr) {
-    if (!dateStr) { renderModeratorOptions(new Set(), null); return; }
+    if (!dateStr) {
+      renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), new Set(), null);
+      renderMemberSelect(preacherSelect, t('preaching.preacherNone'), new Set(), null);
+      return;
+    }
 
     const [{ data: existing }, { data: unavailableRows }] = await Promise.all([
       supabase
         .from('preaching_schedule')
-        .select('moderator_id, preacher_name, guest_name, sermon_theme, bible_verse')
+        .select('moderator_id, preacher_id, guest_name, sermon_theme, bible_verse')
         .eq('date', dateStr)
         .maybeSingle(),
       supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
     ]);
 
-    renderModeratorOptions(new Set((unavailableRows || []).map((r) => r.user_id)), existing?.moderator_id || null);
+    const unavailableIds = new Set((unavailableRows || []).map((r) => r.user_id));
+    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), unavailableIds, existing?.moderator_id || null);
+    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), unavailableIds, existing?.preacher_id || null);
 
-    form.elements.preacher_name.value = existing?.preacher_name || '';
     form.elements.guest_name.value = existing?.guest_name || '';
     form.elements.sermon_theme.value = existing?.sermon_theme || '';
     form.elements.bible_verse.value = existing?.bible_verse || '';
@@ -192,7 +201,11 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       date,
       moderator_id: newModeratorId,
       ...(moderatorChanged ? { moderator_status: 'pending', moderator_reason: null, moderator_working_department_id: null } : {}),
-      preacher_name: form.elements.preacher_name.value.trim() || null,
+      preacher_id: form.elements.preacher.value || null,
+      // Clears out the old free-text value once a date is saved through
+      // this dropdown-based form, so a record never shows a stale name
+      // alongside a newly picked preacher_id.
+      preacher_name: null,
       guest_name: form.elements.guest_name.value.trim() || null,
       sermon_theme: form.elements.sermon_theme.value.trim() || null,
       bible_verse: form.elements.bible_verse.value.trim() || null,
@@ -215,7 +228,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data, error } = await supabase
       .from('preaching_schedule')
-      .select('id, date, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
+      .select('id, date, preacher_id, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
       .order('date', { ascending: true });
 
     if (error) {
@@ -245,7 +258,10 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
           ? renderAssigneeBadge({ name: row.moderator.full_name, status: row.moderator_status, reason: row.moderator_reason, workingDepartmentKey: row.working_department?.key })
           : `<span class="text-slate-400">${t('preaching.noModerator')}</span>`}
         &nbsp;·&nbsp;
-        ${t('preaching.preacher')}: ${row.preacher_name ? escapeHtml(row.preacher_name) : `<span class="text-slate-400">${t('preaching.noPreacher')}</span>`}
+        ${t('preaching.preacher')}: ${(() => {
+          const name = row.preacher?.full_name || row.preacher_name;
+          return name ? escapeHtml(name) : `<span class="text-slate-400">${t('preaching.noPreacher')}</span>`;
+        })()}
         &nbsp;·&nbsp;
         ${t('preaching.guest')}: ${row.guest_name ? escapeHtml(row.guest_name) : `<span class="text-slate-400">${t('preaching.noGuest')}</span>`}
       </div>

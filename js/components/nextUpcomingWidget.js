@@ -32,7 +32,7 @@ function todayStr() {
 async function loadPreaching(el, { supabase }) {
   const { data, error } = await supabase
     .from('preaching_schedule')
-    .select('date, sermon_theme, bible_verse, preacher_name, guest_name, moderator:profiles!moderator_id ( full_name )')
+    .select('date, sermon_theme, bible_verse, preacher_id, preacher_name, guest_name, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name )')
     .gte('date', todayStr())
     .order('date', { ascending: true })
     .limit(1)
@@ -41,11 +41,13 @@ async function loadPreaching(el, { supabase }) {
   if (error) { el.innerHTML = errorHtml(error); return; }
   if (!data) { el.innerHTML = noneHtml(); return; }
 
+  const preacherName = data.preacher?.full_name || data.preacher_name;
+
   el.innerHTML = `
     <div class="font-medium text-slate-800">${escapeHtml(data.sermon_theme || t('preaching.noSermonTheme'))} <span class="text-slate-400 font-normal">— ${escapeHtml(data.date)}</span></div>
     <div class="text-slate-600 mt-1">
       ${t('preaching.moderator')}: ${data.moderator?.full_name ? escapeHtml(data.moderator.full_name) : '—'}
-      &nbsp;·&nbsp; ${t('preaching.preacher')}: ${data.preacher_name ? escapeHtml(data.preacher_name) : '—'}
+      &nbsp;·&nbsp; ${t('preaching.preacher')}: ${preacherName ? escapeHtml(preacherName) : '—'}
     </div>
     ${data.bible_verse ? `<div class="text-indigo-700 italic mt-1">${escapeHtml(data.bible_verse)}</div>` : ''}
   `;
