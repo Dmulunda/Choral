@@ -1,16 +1,19 @@
-// Preaching & Moderation monthly schedule: Moderator and Preacher are
-// both a dropdown of registered members; Guest (an outside preacher
-// without an account) stays free text. Sermon Theme, one row per
-// service date. Each row can expand to show
-// that Sunday's Choir song program — visible here specifically because
-// sql/017_preaching_schedule.sql grants the scheduled moderator read
-// access to it, even without Choir department membership. The
-// moderator can approve or decline being scheduled (sql/049), same as
-// every other department now — a moderator slot is the only assignment
-// here that maps to an actual app user.
+// Preaching & Moderation schedule: Moderator and Preacher are both a
+// dropdown of registered members; Guest (an outside preacher without an
+// account) stays free text. A day isn't limited to one entry (sql/057)
+// — e.g. two services, or a lineup of several speakers for a special
+// event — so the form is insert-or-edit-by-id rather than upsert-by-
+// date; clicking "Edit" on a card loads that specific entry, and
+// submitting with nothing being edited always adds a new one. Each
+// entry can expand to show that day's Choir song program — visible
+// here specifically because sql/017_preaching_schedule.sql grants the
+// scheduled moderator read access to it, even without Choir department
+// membership. The moderator can approve or decline being scheduled
+// (sql/049), same as every other department now.
 import { t } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 
@@ -25,6 +28,11 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('preaching.title')}</h2>
+        <p class="text-xs text-slate-500 mb-3">${t('preaching.multipleHint')}</p>
+        <p data-el="edit-indicator" class="hidden text-sm text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2 mb-3">
+          ${t('preaching.editingEntry')}
+          <button type="button" data-action="cancel-edit" class="ml-2 font-medium underline hover:no-underline">${t('preaching.newEntryInstead')}</button>
+        </p>
         <form data-el="form" class="grid sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.date')}</label>
@@ -58,7 +66,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
                    class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
           <div class="sm:col-span-2 flex items-center gap-3">
-            <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+            <button type="submit" data-el="save-btn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
               ${t('preaching.save')}
             </button>
             <span data-el="form-status" class="text-sm text-slate-500"></span>
@@ -76,7 +84,10 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
   const moderatorSelect = container.querySelector('[data-el="moderator-select"]');
   const preacherSelect = container.querySelector('[data-el="preacher-select"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
+  const saveBtn = container.querySelector('[data-el="save-btn"]');
+  const editIndicatorEl = container.querySelector('[data-el="edit-indicator"]');
   const listEl = container.querySelector('[data-el="list"]');
+  let editingRow = null;
 
   if (userId) {
     renderMyAssignmentsPanel(container.querySelector('[data-el="my-assignments"]'), {
@@ -113,10 +124,13 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
   if (form) {
     loadMemberOptions();
-    // Picking a date that already has an entry pre-fills it, so
-    // submitting again updates it in place instead of erroring.
-    form.elements.date.addEventListener('change', () => prefillFromDate(form.elements.date.value));
+    // A day can have several entries now, so picking a date no longer
+    // loads an existing entry into the form automatically — it just
+    // re-filters who's available. Loading a specific entry for editing
+    // only happens via that entry's own "Edit" button in the list.
+    form.elements.date.addEventListener('change', () => refreshAvailabilityForDate(form.elements.date.value));
     form.addEventListener('submit', handleSubmit);
+    container.querySelector('[data-action="cancel-edit"]').addEventListener('click', resetForm);
   }
 
   load();
@@ -150,29 +164,46 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     selectEl.innerHTML = `<option value="">${placeholderLabel}</option>` + options;
   }
 
-  async function prefillFromDate(dateStr) {
+  async function refreshAvailabilityForDate(dateStr) {
     if (!dateStr) {
-      renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), new Set(), null);
-      renderMemberSelect(preacherSelect, t('preaching.preacherNone'), new Set(), null);
+      renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), new Set(), editingRow?.moderator_id || null);
+      renderMemberSelect(preacherSelect, t('preaching.preacherNone'), new Set(), editingRow?.preacher_id || null);
       return;
     }
 
-    const [{ data: existing }, { data: unavailableRows }] = await Promise.all([
-      supabase
-        .from('preaching_schedule')
-        .select('moderator_id, preacher_id, guest_name, sermon_theme, bible_verse')
-        .eq('date', dateStr)
-        .maybeSingle(),
-      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
-    ]);
+    const { data: unavailableRows } = await supabase
+      .from('availability')
+      .select('user_id')
+      .eq('date', dateStr)
+      .eq('status', 'unavailable');
 
     const unavailableIds = new Set((unavailableRows || []).map((r) => r.user_id));
-    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), unavailableIds, existing?.moderator_id || null);
-    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), unavailableIds, existing?.preacher_id || null);
+    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), unavailableIds, editingRow?.moderator_id || null);
+    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), unavailableIds, editingRow?.preacher_id || null);
+  }
 
-    form.elements.guest_name.value = existing?.guest_name || '';
-    form.elements.sermon_theme.value = existing?.sermon_theme || '';
-    form.elements.bible_verse.value = existing?.bible_verse || '';
+  function startEditing(row) {
+    editingRow = row;
+    form.elements.date.value = row.date;
+    form.elements.guest_name.value = row.guest_name || '';
+    form.elements.sermon_theme.value = row.sermon_theme || '';
+    form.elements.bible_verse.value = row.bible_verse || '';
+    refreshAvailabilityForDate(row.date);
+
+    editIndicatorEl.classList.remove('hidden');
+    saveBtn.textContent = t('preaching.update');
+    formStatusEl.textContent = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function resetForm() {
+    editingRow = null;
+    form.reset();
+    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), new Set(), null);
+    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), new Set(), null);
+    editIndicatorEl.classList.add('hidden');
+    saveBtn.textContent = t('preaching.save');
+    formStatusEl.textContent = '';
   }
 
   async function handleSubmit(e) {
@@ -186,31 +217,33 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data: { user } } = await supabase.auth.getUser();
     const newModeratorId = form.elements.moderator.value || null;
-
-    const { data: existingRow } = await supabase
-      .from('preaching_schedule')
-      .select('moderator_id')
-      .eq('date', date)
-      .maybeSingle();
     // A new or changed moderator starts fresh at "pending" — carrying
     // over the previous moderator's approve/decline status would
-    // misattribute it to whoever is scheduled now.
-    const moderatorChanged = (existingRow?.moderator_id || null) !== newModeratorId;
+    // misattribute it to whoever is scheduled now. A brand new entry
+    // is always "changed" (nothing to carry over from).
+    const moderatorChanged = !editingRow || (editingRow.moderator_id || null) !== newModeratorId;
 
-    const { error } = await supabase.from('preaching_schedule').upsert({
+    const payload = {
       date,
       moderator_id: newModeratorId,
       ...(moderatorChanged ? { moderator_status: 'pending', moderator_reason: null, moderator_working_department_id: null } : {}),
       preacher_id: form.elements.preacher.value || null,
-      // Clears out the old free-text value once a date is saved through
-      // this dropdown-based form, so a record never shows a stale name
-      // alongside a newly picked preacher_id.
+      // Clears out the old free-text value once an entry is saved
+      // through this dropdown-based form, so it never shows a stale
+      // name alongside a newly picked preacher_id.
       preacher_name: null,
       guest_name: form.elements.guest_name.value.trim() || null,
       sermon_theme: form.elements.sermon_theme.value.trim() || null,
       bible_verse: form.elements.bible_verse.value.trim() || null,
       created_by: user.id,
-    }, { onConflict: 'date' });
+    };
+
+    // A day isn't limited to one entry (sql/057) — editing an existing
+    // one updates it by id; anything else is a brand new entry for
+    // that date, even if the date already has others.
+    const { error } = editingRow
+      ? await supabase.from('preaching_schedule').update(payload).eq('id', editingRow.id)
+      : await supabase.from('preaching_schedule').insert(payload);
 
     if (error) {
       formStatusEl.className = 'text-sm text-rose-600';
@@ -218,8 +251,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       return;
     }
 
-    form.reset();
-    formStatusEl.textContent = '';
+    resetForm();
     load();
   }
 
@@ -228,7 +260,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     const { data, error } = await supabase
       .from('preaching_schedule')
-      .select('id, date, preacher_id, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
+      .select('id, date, moderator_id, preacher_id, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
       .order('date', { ascending: true });
 
     if (error) {
@@ -251,7 +283,13 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     el.innerHTML = `
       <div class="flex items-baseline justify-between gap-3">
         <div class="font-medium text-slate-800">${row.sermon_theme ? escapeHtml(row.sermon_theme) : `<span class="text-slate-400">${t('preaching.noSermonTheme')}</span>`}</div>
-        <div class="text-sm text-slate-500">${escapeHtml(row.date)}</div>
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="text-sm text-slate-500 whitespace-nowrap">${escapeHtml(row.date)}</div>
+          ${canAdminister ? `
+            <button type="button" data-action="edit" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 whitespace-nowrap">${t('common.edit')}</button>
+            <button type="button" data-action="delete" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('moderation.delete')}</button>
+          ` : ''}
+        </div>
       </div>
       <div class="text-sm text-slate-600 mt-1">
         ${t('preaching.moderator')}: ${row.moderator?.full_name
@@ -278,7 +316,23 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       loadSongProgram(row.date, el.querySelector('[data-el="song-program"]'));
     });
 
+    if (canAdminister) {
+      el.querySelector('[data-action="edit"]').addEventListener('click', () => startEditing(row));
+      el.querySelector('[data-action="delete"]').addEventListener('click', () => deleteEntry(row));
+    }
+
     return el;
+  }
+
+  async function deleteEntry(row) {
+    if (!(await confirmDialog({ message: t('preaching.confirmDelete', { date: row.date }) }))) return;
+    const { error } = await supabase.from('preaching_schedule').delete().eq('id', row.id);
+    if (error) {
+      window.alert(t('preaching.deleteFailed', { message: error.message }));
+      return;
+    }
+    if (editingRow?.id === row.id) resetForm();
+    load();
   }
 
   async function loadSongProgram(date, el) {
