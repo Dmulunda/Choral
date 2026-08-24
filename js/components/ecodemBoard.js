@@ -107,6 +107,8 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
 
   load();
 
+  let allMembers = [];
+
   async function loadMemberOptions() {
     const { data } = await supabase
       .from('department_memberships')
@@ -114,8 +116,16 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
       .eq('department_id', departmentId)
       .eq('status', 'approved');
 
-    const options = (data || [])
-      .filter((m) => m.member)
+    allMembers = (data || []).filter((m) => m.member);
+    renderWorkerOptions(new Set());
+  }
+
+  // Excludes anyone who reported themselves unavailable for the
+  // selected date, so scheduling someone who already said they can't
+  // make it isn't even possible.
+  function renderWorkerOptions(unavailableIds) {
+    const options = allMembers
+      .filter((m) => !unavailableIds.has(m.user_id))
       .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
       .join('');
 
@@ -128,24 +138,43 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
   }
 
   async function prefillFromDate(dateStr) {
-    AGE_GROUPS.forEach((group) => {
-      container.querySelector(`[data-group-topic="${group}"]`).value = '';
-      ['1', '2'].forEach((slot) => {
-        container.querySelector(`[data-group-worker="${group}-${slot}"]`).value = '';
+    if (!dateStr) {
+      renderWorkerOptions(new Set());
+      AGE_GROUPS.forEach((group) => {
+        container.querySelector(`[data-group-topic="${group}"]`).value = '';
       });
-    });
-    if (!dateStr) return;
+      return;
+    }
 
-    const { data: sessions } = await supabase
-      .from('ecodem_sessions')
-      .select('id, age_group, topic, ecodem_session_workers ( user_id )')
-      .eq('date', dateStr);
+    const [{ data: sessions }, { data: unavailableRows }] = await Promise.all([
+      supabase
+        .from('ecodem_sessions')
+        .select('id, age_group, topic, ecodem_session_workers ( user_id, worker:profiles!user_id ( full_name ) )')
+        .eq('date', dateStr),
+      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+    ]);
+
+    renderWorkerOptions(new Set((unavailableRows || []).map((r) => r.user_id)));
+
+    AGE_GROUPS.forEach((group) => { container.querySelector(`[data-group-topic="${group}"]`).value = ''; });
 
     (sessions || []).forEach((session) => {
       container.querySelector(`[data-group-topic="${session.age_group}"]`).value = session.topic || '';
-      const workerIds = (session.ecodem_session_workers || []).map((w) => w.user_id);
-      if (workerIds[0]) container.querySelector(`[data-group-worker="${session.age_group}-1"]`).value = workerIds[0];
-      if (workerIds[1]) container.querySelector(`[data-group-worker="${session.age_group}-2"]`).value = workerIds[1];
+      (session.ecodem_session_workers || []).forEach((worker, idx) => {
+        if (idx > 1) return;
+        const select = container.querySelector(`[data-group-worker="${session.age_group}-${idx + 1}"]`);
+        if (!select) return;
+        // Already assigned here but no longer available for this date —
+        // keep them visible and selected so resaving this form doesn't
+        // silently drop them; an admin has to deliberately swap them out.
+        if (!select.querySelector(`option[value="${worker.user_id}"]`) && worker.worker?.full_name) {
+          const option = document.createElement('option');
+          option.value = worker.user_id;
+          option.textContent = worker.worker.full_name;
+          select.appendChild(option);
+        }
+        select.value = worker.user_id;
+      });
     });
   }
 

@@ -490,6 +490,7 @@ const TRANSLATIONS = {
     'deptScheduling.loadFailed': 'Failed to load shifts: {message}',
     'deptScheduling.none': 'No shifts scheduled yet.',
     'deptScheduling.unassigned': 'Unassigned',
+    'deptScheduling.unavailableOnDate': 'unavailable that day',
 
     'preaching.title': 'Schedule a Service',
     'preaching.moderator': 'Moderator',
@@ -1445,6 +1446,7 @@ const TRANSLATIONS = {
     'deptScheduling.loadFailed': 'Échec du chargement des services : {message}',
     'deptScheduling.none': 'Aucun service planifié pour le moment.',
     'deptScheduling.unassigned': 'Non assigné',
+    'deptScheduling.unavailableOnDate': 'indisponible ce jour-là',
 
     'preaching.title': 'Planifier un service',
     'preaching.moderator': 'Modérateur',

@@ -96,10 +96,13 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
 
   if (form) {
     loadMemberOptions();
+    form.elements.date.addEventListener('change', () => filterMemberOptionsForDate(form.elements.date.value));
     form.addEventListener('submit', handleSubmit);
   }
 
   load();
+
+  let allMembers = [];
 
   async function loadMemberOptions() {
     const { data } = await supabase
@@ -108,10 +111,24 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
       .eq('department_id', departmentId)
       .eq('status', 'approved');
 
-    membersSelect.innerHTML = (data || [])
-      .filter((m) => m.member)
+    allMembers = (data || []).filter((m) => m.member);
+    renderMemberOptions(new Set());
+  }
+
+  function renderMemberOptions(unavailableIds) {
+    membersSelect.innerHTML = allMembers
+      .filter((m) => !unavailableIds.has(m.user_id))
       .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
       .join('');
+  }
+
+  // Excludes anyone who reported themselves unavailable for the
+  // selected date — a brand new shift, so there's no "already assigned"
+  // exception to preserve the way the other boards need.
+  async function filterMemberOptionsForDate(dateStr) {
+    if (!dateStr) { renderMemberOptions(new Set()); return; }
+    const { data } = await supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable');
+    renderMemberOptions(new Set((data || []).map((r) => r.user_id)));
   }
 
   async function handleSubmit(e) {

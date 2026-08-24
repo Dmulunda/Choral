@@ -171,6 +171,8 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
     `;
   }
 
+  let allMembers = [];
+
   async function loadMemberOptions() {
     const { data } = await supabase
       .from('department_memberships')
@@ -178,15 +180,20 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
       .eq('department_id', departmentId)
       .eq('status', 'approved');
 
-    const members = (data || []).filter((m) => m.member);
+    allMembers = (data || []).filter((m) => m.member);
+    renderRoleOptions(new Set());
+  }
 
-    // Not every Media & Tech member can run every role — each role's
-    // select only offers people whose skills (set in the Users tab,
-    // sql/050) actually include it, mirroring how Choir only assigns
-    // singers to their own voice part.
+  // Not every Media & Tech member can run every role — each role's
+  // select only offers people whose skills (set in the Users tab,
+  // sql/050) actually include it, mirroring how Choir only assigns
+  // singers to their own voice part. Also excludes anyone who reported
+  // themselves unavailable for the selected date, so scheduling someone
+  // who already said they can't make it isn't even possible.
+  function renderRoleOptions(unavailableIds) {
     ROLES.forEach((role) => {
-      const options = members
-        .filter((m) => (m.member.media_tech_skills || []).includes(role))
+      const options = allMembers
+        .filter((m) => (m.member.media_tech_skills || []).includes(role) && !unavailableIds.has(m.user_id))
         .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
         .join('');
       container.querySelector(`[data-role-select="${role}"]`).innerHTML = options;
@@ -194,26 +201,27 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   }
 
   async function prefillFromDate(dateStr) {
-    ROLES.forEach((role) => {
-      const select = container.querySelector(`[data-role-select="${role}"]`);
-      Array.from(select.options).forEach((opt) => { opt.selected = false; });
-    });
-    if (!dateStr) return;
+    if (!dateStr) { renderRoleOptions(new Set()); return; }
 
-    const { data } = await supabase
-      .from('media_tech_assignments')
-      .select('role, user_id, assignee:profiles!user_id ( full_name )')
-      .eq('date', dateStr);
+    const [{ data }, { data: unavailableRows }] = await Promise.all([
+      supabase
+        .from('media_tech_assignments')
+        .select('role, user_id, assignee:profiles!user_id ( full_name )')
+        .eq('date', dateStr),
+      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+    ]);
+
+    renderRoleOptions(new Set((unavailableRows || []).map((r) => r.user_id)));
 
     (data || []).forEach((row) => {
       const select = container.querySelector(`[data-role-select="${row.role}"]`);
       if (!select) return;
       let option = select.querySelector(`option[value="${row.user_id}"]`);
       if (!option && row.assignee?.full_name) {
-        // Already assigned here but no longer listed as skilled for
-        // this role (their skills changed since) — keep them visible
-        // and selected so resaving this form doesn't silently drop
-        // them; an admin has to deliberately deselect them instead.
+        // Already assigned here but no longer skilled/available for
+        // this role — keep them visible and selected so resaving this
+        // form doesn't silently drop them; an admin has to deliberately
+        // deselect them instead.
         option = document.createElement('option');
         option.value = row.user_id;
         option.textContent = row.assignee.full_name;

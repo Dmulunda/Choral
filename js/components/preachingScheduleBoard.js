@@ -118,6 +118,8 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
   load();
 
+  let allMembers = [];
+
   async function loadModeratorOptions() {
     const { data } = await supabase
       .from('department_memberships')
@@ -125,23 +127,39 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       .eq('department_id', departmentId)
       .eq('status', 'approved');
 
-    const options = (data || [])
-      .filter((m) => m.member)
-      .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+    allMembers = (data || []).filter((m) => m.member);
+    renderModeratorOptions(new Set(), null);
+  }
+
+  // Excludes anyone who reported themselves unavailable for the
+  // selected date — the whole point being that scheduling someone who
+  // already said they can't make it should not even be possible,
+  // rather than relying on an admin to notice. Whoever's already the
+  // moderator for this date stays in the list regardless, same
+  // exception Choir's auto-planner already makes, so an existing
+  // (now-unavailable) assignment doesn't just silently disappear.
+  function renderModeratorOptions(unavailableIds, selectedId) {
+    const options = allMembers
+      .filter((m) => m.user_id === selectedId || !unavailableIds.has(m.user_id))
+      .map((m) => `<option value="${m.user_id}" ${m.user_id === selectedId ? 'selected' : ''}>${escapeHtml(m.member.full_name)}${unavailableIds.has(m.user_id) ? ` (${t('deptScheduling.unavailableOnDate')})` : ''}</option>`)
       .join('');
     moderatorSelect.innerHTML = `<option value="">${t('preaching.moderatorNone')}</option>` + options;
   }
 
   async function prefillFromDate(dateStr) {
-    if (!dateStr) return;
+    if (!dateStr) { renderModeratorOptions(new Set(), null); return; }
 
-    const { data: existing } = await supabase
-      .from('preaching_schedule')
-      .select('moderator_id, preacher_name, guest_name, sermon_theme, bible_verse')
-      .eq('date', dateStr)
-      .maybeSingle();
+    const [{ data: existing }, { data: unavailableRows }] = await Promise.all([
+      supabase
+        .from('preaching_schedule')
+        .select('moderator_id, preacher_name, guest_name, sermon_theme, bible_verse')
+        .eq('date', dateStr)
+        .maybeSingle(),
+      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+    ]);
 
-    form.elements.moderator.value = existing?.moderator_id || '';
+    renderModeratorOptions(new Set((unavailableRows || []).map((r) => r.user_id)), existing?.moderator_id || null);
+
     form.elements.preacher_name.value = existing?.preacher_name || '';
     form.elements.guest_name.value = existing?.guest_name || '';
     form.elements.sermon_theme.value = existing?.sermon_theme || '';
