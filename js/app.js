@@ -114,6 +114,32 @@ function activateTab(name) {
   }
 }
 
+// Choir and every other department name the "same kind" of page
+// differently (dashboard/dept-dashboard, scheduling/dept-scheduling) —
+// this maps between them so switching departments lands you back on
+// the same kind of page you were already on, instead of always
+// resetting to Dashboard. Tabs with no equivalent on the other side
+// (Songbook, Voice Exercises, Members) fall back to Dashboard.
+const TAB_KIND_MAP = {
+  dashboard: { choir: 'dashboard', other: 'dept-dashboard' },
+  'dept-dashboard': { choir: 'dashboard', other: 'dept-dashboard' },
+  scheduling: { choir: 'scheduling', other: 'dept-scheduling' },
+  'dept-scheduling': { choir: 'scheduling', other: 'dept-scheduling' },
+  uniform: { choir: 'uniform', other: 'uniform' },
+};
+
+function resolveLandingTab(previousTabName, active, isChoir) {
+  const mapping = TAB_KIND_MAP[previousTabName];
+  if (!mapping) return null;
+  const target = isChoir ? mapping.choir : mapping.other;
+  // Uniform only actually exists for Choir/Ushers, and Scheduling is
+  // hidden for Finance — landing on either elsewhere would show a page
+  // with no way back to it via the nav.
+  if (target === 'uniform' && !(isChoir || active.key === 'ushers')) return null;
+  if (target === 'dept-scheduling' && active.key === 'finance') return null;
+  return target;
+}
+
 // ---- Department switcher ----
 // Only Choir has real screens today — other departments show a
 // placeholder until their own phase ships. The switcher itself only
@@ -135,6 +161,10 @@ function populateDepartmentSwitcher() {
 
 function applyActiveDepartment() {
   const active = getActiveDepartment();
+  // Captured before any activateTab() call below overwrites it — this
+  // is genuinely "the tab we were on a moment ago," used to land back
+  // on the same kind of page after a department switch.
+  const previousTabName = currentTabName;
 
   // hasGlobalReach() (not the active department's role) drives this,
   // since active is intentionally null while on the Home console —
@@ -185,7 +215,7 @@ function applyActiveDepartment() {
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     loadedTabs.delete('uniform');
-    activateTab('dashboard');
+    activateTab(resolveLandingTab(previousTabName, active, true) || 'dashboard');
   } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
@@ -196,7 +226,7 @@ function applyActiveDepartment() {
     // lazy-load cache.
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
-    activateTab('dept-dashboard');
+    activateTab(resolveLandingTab(previousTabName, active, false) || 'dept-dashboard');
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
     // 'custom') is handled above; kept as a fallback in case a future
