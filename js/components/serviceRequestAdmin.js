@@ -1,6 +1,6 @@
 // Admin "Service Requests" panel — post a titled, dated event (e.g. a
 // one-off seminar), attach Praise and Worship songs to it, and send an
-// RSVP request to every current member. Distinct from the free-form
+// RSVP request to every approved choir member. Distinct from the free-form
 // availability calendar: each request needs an explicit approve/decline
 // response per member.
 import { confirmDialog } from './confirmDialog.js';
@@ -219,7 +219,18 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
         if (insertSongsError) throw insertSongsError;
       }
 
-      const { data: members, error: membersError } = await supabase.from('profiles').select('id');
+      const { data: choirDept, error: choirDeptError } = await supabase
+        .from('departments')
+        .select('id')
+        .eq('key', 'choir')
+        .single();
+      if (choirDeptError) throw choirDeptError;
+
+      const { data: members, error: membersError } = await supabase
+        .from('department_memberships')
+        .select('user_id')
+        .eq('department_id', choirDept.id)
+        .eq('status', 'approved');
       if (membersError) throw membersError;
 
       const { data: existingRsvps, error: rsvpsError } = await supabase
@@ -230,8 +241,8 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
 
       const alreadyInvited = new Set((existingRsvps || []).map((r) => r.singer_id));
       const newRows = members
-        .filter((member) => !alreadyInvited.has(member.id))
-        .map((member) => ({ service_plan_id: planId, singer_id: member.id, status: 'pending' }));
+        .filter((member) => !alreadyInvited.has(member.user_id))
+        .map((member) => ({ service_plan_id: planId, singer_id: member.user_id, status: 'pending' }));
 
       if (newRows.length > 0) {
         const { error: rsvpInsertError } = await supabase.from('service_rsvps').insert(newRows);
