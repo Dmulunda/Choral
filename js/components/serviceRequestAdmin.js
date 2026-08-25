@@ -254,7 +254,8 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
       }
 
       formStatusEl.className = 'text-sm text-emerald-600';
-      formStatusEl.textContent = tn('requests.sentTo', newRows.length);
+      formStatusEl.textContent = tn('requests.sentTo', newRows.length)
+        + ` [debug: dept=${choirDept.id} raw=${memberRows.length} joined=${members.length}]`;
       form.reset();
       loadRequests();
     } catch (error) {
