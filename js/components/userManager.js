@@ -178,7 +178,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       }
     }
 
-    statusEl.textContent = scope.type === 'department' ? `[debug: dept=${scope.departmentId} rows=${rows.length}]` : '';
+    statusEl.textContent = '';
     renderTable();
   }
 
