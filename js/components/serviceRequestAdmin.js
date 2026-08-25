@@ -226,12 +226,16 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
         .single();
       if (choirDeptError) throw choirDeptError;
 
-      const { data: members, error: membersError } = await supabase
+      // Mirrors the Choir Users tab's query exactly (join + drop rows
+      // whose profile doesn't resolve) so who's invited always matches
+      // who that tab lists as a Choir member.
+      const { data: memberRows, error: membersError } = await supabase
         .from('department_memberships')
-        .select('user_id')
+        .select('user_id, member:profiles!user_id ( id )')
         .eq('department_id', choirDept.id)
         .eq('status', 'approved');
       if (membersError) throw membersError;
+      const members = (memberRows || []).filter((row) => row.member);
 
       const { data: existingRsvps, error: rsvpsError } = await supabase
         .from('service_rsvps')
