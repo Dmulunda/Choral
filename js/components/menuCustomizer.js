@@ -16,7 +16,10 @@ import { getFontChoices, applyAppTheme } from '../theme.js';
 
 const NAV_KEYS = ['nav.dashboard', 'nav.scheduling', 'nav.songbook', 'nav.voiceExercises', 'nav.members', 'nav.home', 'nav.training'];
 const SIDEBAR_KEYS = ['sidebar.churchRules', 'sidebar.attendance', 'sidebar.appSuggestion', 'sidebar.reportAbsence', 'sidebar.departmentRules', 'sidebar.monthlyReport', 'sidebar.guestCases', 'sidebar.memberCases'];
-const DEPARTMENT_LABEL_KEYS = DEPARTMENT_KEYS.map((key) => `department.${key}`);
+// Seed departments as a stable baseline; open() below merges in any
+// departments created later via Create Department (sql/059), so
+// renaming one never needs a code change either.
+let DEPARTMENT_LABEL_KEYS = DEPARTMENT_KEYS.map((key) => `department.${key}`);
 
 const THEME_DEFAULTS = { primary_color: '#4f46e5', text_color: '#1e293b', background_color: '#f1f5f9', font_family: 'default' };
 
@@ -58,9 +61,10 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     statusEl.textContent = '';
 
-    const [{ data, error }, { data: themeRow, error: themeError }] = await Promise.all([
+    const [{ data, error }, { data: themeRow, error: themeError }, { data: deptRows }] = await Promise.all([
       supabase.from('menu_labels').select('key, label_en, label_fr'),
       supabase.from('app_theme').select('primary_color, text_color, background_color, font_family').maybeSingle(),
+      supabase.from('departments').select('key').order('key'),
     ]);
     if (error) {
       bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('menuCustomizer.loadFailed', { message: error.message })}</p>`;
@@ -68,6 +72,10 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     }
     overridesByKey = new Map((data || []).map((r) => [r.key, r]));
     currentTheme = themeError || !themeRow ? { ...THEME_DEFAULTS } : themeRow;
+    if (deptRows?.length) {
+      const keys = new Set([...DEPARTMENT_KEYS, ...deptRows.map((d) => d.key)]);
+      DEPARTMENT_LABEL_KEYS = Array.from(keys).sort().map((key) => `department.${key}`);
+    }
 
     bodyEl.innerHTML = `
       ${renderAppearanceSection()}

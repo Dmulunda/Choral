@@ -16,6 +16,7 @@ import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { createMenuCustomizerModal } from './components/menuCustomizer.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
 import { createLoginActivityModal } from './components/loginActivity.js';
+import { createDepartmentModal } from './components/createDepartmentModal.js';
 import { t, departmentLabel } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -27,6 +28,7 @@ let currentMemberCaseModal = null;
 let currentMenuCustomizerModal = null;
 let currentMessageModerationModal = null;
 let currentLoginActivityModal = null;
+let currentCreateDepartmentModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -63,6 +65,9 @@ export async function renderSuperAdminHomeTab() {
         </button>
       ` : ''}
       ${getGlobalRole() === 'super_admin' ? `
+        <button type="button" data-action="open-create-department" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('superHome.createDepartmentTitle')}
+        </button>
         <button type="button" data-action="open-menu-customizer" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('menuCustomizer.title')}
         </button>
@@ -91,6 +96,7 @@ export async function renderSuperAdminHomeTab() {
   currentMenuCustomizerModal?.root.remove();
   currentMessageModerationModal?.root.remove();
   currentLoginActivityModal?.root.remove();
+  currentCreateDepartmentModal?.root.remove();
 
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
@@ -113,6 +119,16 @@ export async function renderSuperAdminHomeTab() {
   if (memberCasesBtn) {
     currentMemberCaseModal = createMemberCaseModal({ supabase, currentUserId: user.id, scope: { type: 'pastoral' } });
     memberCasesBtn.addEventListener('click', () => currentMemberCaseModal.open());
+  }
+
+  const createDepartmentBtn = container.querySelector('[data-action="open-create-department"]');
+  if (createDepartmentBtn) {
+    currentCreateDepartmentModal = createDepartmentModal({
+      supabase,
+      currentUserId: user.id,
+      onCreated: () => renderMetrics(container.querySelector('[data-el="metrics"]'), supabase),
+    });
+    createDepartmentBtn.addEventListener('click', () => currentCreateDepartmentModal.open());
   }
 
   const menuCustomizerBtn = container.querySelector('[data-action="open-menu-customizer"]');
