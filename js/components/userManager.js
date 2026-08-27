@@ -23,7 +23,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DELETION_GRACE_DAYS = 60;
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
-const MEDIA_TECH_ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator'];
+const MEDIA_TECH_ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator', 'video_content_creator', 'photo_editor'];
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
 
 export function renderUserManager(container, { supabase, scope, currentUserId }) {

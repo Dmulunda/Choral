@@ -1,16 +1,17 @@
-// Media & Tech duty board: five named service roles (stream, sound,
-// media inventory, camera, slides), assigned per service date. Each
-// role gets its own multi-select so more than one person can cover a
-// role if needed (e.g. a second camera operator). Each assignee then
-// approves or declines their own slot (sql/049), same as every other
-// department now.
+// Media & Tech duty board: named service roles (stream, sound, media
+// inventory, camera, slides, video/content creation, photo editing —
+// sql/018, sql/060), assigned per service date. Each role gets its own
+// multi-select so more than one person can cover a role if needed
+// (e.g. a second camera operator). Each assignee then approves or
+// declines their own slot (sql/049), same as every other department
+// now.
 import { t, mediaTechRoleLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 
-const ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator'];
+const ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator', 'video_content_creator', 'photo_editor'];
 
 export function renderMediaTechBoard(container, { supabase, departmentId, canAdminister, userId }) {
   // Super Admin keeps the ability to correct an already-past assignment;
