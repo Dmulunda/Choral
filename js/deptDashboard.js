@@ -11,6 +11,7 @@ import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
+import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { t } from './i18n.js';
 
 export async function renderDeptDashboardTab() {
@@ -25,6 +26,15 @@ export async function renderDeptDashboardTab() {
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
 
   container.innerHTML = '';
+
+  // Preaching's own dashboard already lists the whole week including
+  // their entry (below); everyone else's dashboard gets this instead,
+  // since a preacher scheduled ad hoc often isn't a Preaching member.
+  if (active.key !== 'preaching') {
+    const myPreachingEl = document.createElement('div');
+    container.appendChild(myPreachingEl);
+    renderMyPreachingWidget(myPreachingEl, { supabase, userId: user.id });
+  }
 
   if (canAdminister) {
     const approvalsCard = document.createElement('div');

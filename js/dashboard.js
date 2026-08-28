@@ -4,6 +4,7 @@ import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlob
 import { renderDashboard } from './components/dashboardOverview.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createBudgetRequestModal } from './components/budgetRequests.js';
+import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -21,6 +22,10 @@ export async function renderDashboardTab() {
   const active = getActiveDepartment();
 
   container.innerHTML = '';
+
+  const myPreachingEl = document.createElement('div');
+  container.appendChild(myPreachingEl);
+  renderMyPreachingWidget(myPreachingEl, { supabase, userId: user.id });
 
   const announcementsCard = document.createElement('div');
   announcementsCard.className = `${cardClass} mb-6`;
