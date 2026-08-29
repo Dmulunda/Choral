@@ -29,7 +29,8 @@ export async function renderDeptDashboardTab() {
 
   // Preaching's own dashboard already lists the whole week including
   // their entry (below); everyone else's dashboard gets this instead,
-  // since a preacher scheduled ad hoc often isn't a Preaching member.
+  // since a preacher or moderator scheduled ad hoc often isn't a
+  // Preaching member.
   if (active.key !== 'preaching') {
     const myPreachingEl = document.createElement('div');
     container.appendChild(myPreachingEl);

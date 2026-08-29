@@ -539,7 +539,10 @@ const TRANSLATIONS = {
     'preaching.noModerator': 'No moderator assigned',
     'preaching.noPreacher': 'No preacher assigned',
     'preaching.noSermonTheme': 'No theme set',
-    'preaching.yourUpcoming': "You're Preaching Soon",
+    'preaching.yourUpcomingAssignment': 'Your Upcoming Assignment',
+    'preaching.saveBibleVerse': 'Save Bible Verse',
+    'preaching.bibleVerseSaved': 'Bible verse saved.',
+    'preaching.bibleVerseSaveFailed': 'Failed to save: {message}',
     'preaching.songProgram': "Song Program",
     'preaching.noSongProgram': 'No song program available for this date yet.',
 
@@ -1542,7 +1545,10 @@ const TRANSLATIONS = {
     'preaching.noModerator': 'Aucun modérateur assigné',
     'preaching.noPreacher': 'Aucun prédicateur assigné',
     'preaching.noSermonTheme': 'Aucun thème défini',
-    'preaching.yourUpcoming': 'Vous prêchez bientôt',
+    'preaching.yourUpcomingAssignment': 'Votre prochaine assignation',
+    'preaching.saveBibleVerse': 'Enregistrer le verset',
+    'preaching.bibleVerseSaved': 'Verset biblique enregistré.',
+    'preaching.bibleVerseSaveFailed': "Échec de l'enregistrement : {message}",
     'preaching.songProgram': 'Programme de chants',
     'preaching.noSongProgram': 'Aucun programme de chants disponible pour cette date.',
 
