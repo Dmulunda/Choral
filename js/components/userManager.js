@@ -14,6 +14,7 @@
 //     Access Level column (Super Admin only).
 import { createUserCreatorModal } from './userCreatorModal.js';
 import { createUserEditModal } from './userEditModal.js';
+import { createResetPasswordModal } from './resetPasswordModal.js';
 import { confirmDialog } from './confirmDialog.js';
 import { reassignAdminDialog } from './reassignAdminDialog.js';
 import { isViewingAs, getGlobalRole } from '../departments.js';
@@ -86,6 +87,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   sortByEl?.addEventListener('change', () => { sortBy = sortByEl.value; renderTable(); });
 
   const editModal = createUserEditModal({ supabase, currentUserId, onSaved: loadUsers });
+  const resetPasswordModal = createResetPasswordModal({ supabase });
 
   if (!isViewingAs()) {
     const creatorModal = createUserCreatorModal({ supabase, scope, currentUserId, onCreated: loadUsers });
@@ -386,6 +388,13 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
           reinstateBtn.addEventListener('click', () => reinstateUser(row));
           actionsCell.appendChild(reinstateBtn);
         } else {
+          const resetPasswordBtn = document.createElement('button');
+          resetPasswordBtn.type = 'button';
+          resetPasswordBtn.className = 'text-sm font-medium text-indigo-600 hover:text-indigo-800 whitespace-nowrap block';
+          resetPasswordBtn.textContent = t('users.resetPassword');
+          resetPasswordBtn.addEventListener('click', () => resetPasswordModal.open(row));
+          actionsCell.appendChild(resetPasswordBtn);
+
           const removeChurchBtn = document.createElement('button');
           removeChurchBtn.type = 'button';
           removeChurchBtn.className = 'text-sm font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap block';
