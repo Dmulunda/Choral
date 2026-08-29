@@ -101,24 +101,13 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   initProgramPanel();
 
   // "Today's Program" — Choir's song list and Preaching's Bible verse
-  // for the next upcoming service. Beyond department admins, sql/052
-  // also grants read access to whoever is personally scheduled as
-  // Slides Projection Operator, so they see it here even without being
-  // an admin themselves.
+  // for the next upcoming service. Shown to every Media & Tech member
+  // (sql/063 grants read access to the whole department, not just
+  // admins/the scheduled Slides Operator) — anyone who can reach this
+  // board at all is already an approved member.
   async function initProgramPanel() {
     if (!userId) return;
-    let show = canAdminister;
-    if (!show) {
-      const { data } = await supabase
-        .from('media_tech_assignments')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('role', 'slides_operator')
-        .gte('date', todayLocal())
-        .limit(1);
-      show = (data || []).length > 0;
-    }
-    if (show) renderProgramPanel(container.querySelector('[data-el="program-panel"]'));
+    renderProgramPanel(container.querySelector('[data-el="program-panel"]'));
   }
 
   async function renderProgramPanel(el) {
