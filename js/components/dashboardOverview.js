@@ -1,6 +1,7 @@
-// Dashboard content: the full roster grouped by voice part, plus every
-// service scheduled this week (Monday through Sunday) — who's approved,
-// who's actually programmed, and the song list, if one exists yet.
+// Dashboard content: the full roster grouped by voice part, today's
+// service (if any) shown first, then every other service scheduled
+// this week (Monday through Sunday) — who's approved, who's actually
+// programmed, and the song list, if one exists yet.
 import { formatDateLocal } from '../utils/date.js';
 import { t, voicePartLabel } from '../i18n.js';
 import { loadUniformByDate, uniformLineHtml } from './nextUpcomingWidget.js';
@@ -9,6 +10,10 @@ const VOICE_PART_ORDER = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bass
 
 export function renderDashboard(container, { supabase }) {
   container.innerHTML = `
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">${t('dashboard.today')}</h2>
+      <div data-el="today-service" class="text-sm text-slate-500 space-y-4">${t('common.loading')}</div>
+    </div>
     <div class="grid lg:grid-cols-2 gap-6">
       <details class="bg-white rounded-xl shadow p-4 sm:p-6">
         <summary class="text-lg font-semibold cursor-pointer select-none">${t('dashboard.roster')}</summary>
@@ -22,7 +27,11 @@ export function renderDashboard(container, { supabase }) {
   `;
 
   loadRoster(container.querySelector('[data-el="roster"]'), supabase);
-  loadWeekServices(container.querySelector('[data-el="week-services"]'), supabase);
+  loadWeekServices(
+    container.querySelector('[data-el="today-service"]'),
+    container.querySelector('[data-el="week-services"]'),
+    supabase,
+  );
 }
 
 // Monday-through-Sunday range containing `date`. getDay() is 0=Sun..6=Sat,
@@ -78,10 +87,11 @@ async function loadRoster(el, supabase) {
   `).join('');
 }
 
-async function loadWeekServices(el, supabase) {
+async function loadWeekServices(todayEl, weekEl, supabase) {
   const { monday, sunday } = getWeekRange(new Date());
   const mondayStr = formatDateLocal(monday);
   const sundayStr = formatDateLocal(sunday);
+  const todayStr = formatDateLocal(new Date());
 
   const [{ data: plans, error: plansError }, { data: choirDept }] = await Promise.all([
     supabase
@@ -94,19 +104,28 @@ async function loadWeekServices(el, supabase) {
   ]);
 
   if (plansError) {
-    el.innerHTML = `<p class="text-rose-600">${t('dashboard.weekServicesFailed', { message: plansError.message })}</p>`;
+    todayEl.innerHTML = weekEl.innerHTML = `<p class="text-rose-600">${t('dashboard.weekServicesFailed', { message: plansError.message })}</p>`;
     return;
   }
 
+  const todayPlan = plans.find((plan) => plan.date === todayStr);
+  const restPlans = plans.filter((plan) => plan.date !== todayStr);
+
   if (plans.length === 0) {
-    el.innerHTML = `<p>${t('dashboard.noServicesThisWeek')}</p>`;
+    todayEl.innerHTML = `<p>${t('dashboard.nothingToday')}</p>`;
+    weekEl.innerHTML = `<p>${t('dashboard.noServicesThisWeek')}</p>`;
     return;
   }
 
   const uniformMap = choirDept ? await loadUniformByDate(supabase, choirDept.id, mondayStr, sundayStr) : null;
 
-  const cards = await Promise.all(plans.map((plan) => buildServiceCardHtml(plan, supabase, uniformMap)));
-  el.innerHTML = cards.join('');
+  todayEl.innerHTML = todayPlan
+    ? await buildServiceCardHtml(todayPlan, supabase, uniformMap)
+    : `<p>${t('dashboard.nothingToday')}</p>`;
+
+  weekEl.innerHTML = restPlans.length > 0
+    ? (await Promise.all(restPlans.map((plan) => buildServiceCardHtml(plan, supabase, uniformMap)))).join('')
+    : `<p>${t('dashboard.nothingElseThisWeek')}</p>`;
 }
 
 async function buildServiceCardHtml(plan, supabase, uniformMap) {

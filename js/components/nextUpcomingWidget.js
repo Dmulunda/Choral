@@ -1,13 +1,13 @@
-// "This week's schedule" dashboard widget for every non-Choir
-// department — Choir's Dashboard has always shown its whole current
-// week (dashboardOverview.js); this gives every other department the
-// same view of their own week, using whichever board that
+// "Today, then this week's schedule" dashboard widget for every
+// non-Choir department — Choir's Dashboard has always shown its own
+// week with today pulled out first (dashboardOverview.js); this gives
+// every other department the same shape, using whichever board that
 // department's Scheduling tab already uses. Finance has no scheduling
 // at all, so it's simply never called for that department. Ushers also
 // gets its uniform-of-the-day text (not the photo — that's on the
 // Uniform tab) shown beside each date, same as Choir's own week card.
 import { t, mediaTechRoleLabel, ecodemAgeGroupLabel } from '../i18n.js';
-import { formatDateLocal } from '../utils/date.js';
+import { formatDateLocal, todayLocal } from '../utils/date.js';
 
 export function renderNextUpcomingWidget(container, { supabase, departmentId, departmentKey }) {
   const RENDERERS = {
@@ -19,12 +19,30 @@ export function renderNextUpcomingWidget(container, { supabase, departmentId, de
 
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">${t('dashboard.today')}</h2>
+      <div data-el="today-body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">${t('dashboard.thisWeekSchedule')}</h2>
-      <div data-el="body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
+      <div data-el="week-body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
     </div>
   `;
-  const bodyEl = container.querySelector('[data-el="body"]');
-  load(bodyEl, { supabase, departmentId, departmentKey });
+  const todayEl = container.querySelector('[data-el="today-body"]');
+  const weekEl = container.querySelector('[data-el="week-body"]');
+  load({ todayEl, weekEl }, { supabase, departmentId, departmentKey });
+}
+
+// Splits a week's rows into today's vs. the rest, then renders each
+// half through the same per-row HTML builder every load* function
+// already had — so today's entry shows first, in its own section, and
+// the week section below no longer repeats it.
+function renderTodayAndWeek(todayEl, weekEl, rows, buildHtml) {
+  const todayStr = todayLocal();
+  const todayRows = rows.filter((row) => row.date === todayStr);
+  const restRows = rows.filter((row) => row.date !== todayStr);
+
+  todayEl.innerHTML = todayRows.length > 0 ? buildHtml(todayRows) : noneTodayHtml();
+  weekEl.innerHTML = restRows.length > 0 ? buildHtml(restRows) : noneElseHtml();
 }
 
 // Monday-through-Sunday range containing today, matching Choir's own
@@ -57,7 +75,7 @@ export function uniformLineHtml(uniformMap, date) {
   return desc ? `<div class="text-xs text-purple-700 mt-1">${t('uniform.label')}: ${escapeHtml(desc)}</div>` : '';
 }
 
-async function loadPreaching(el, { supabase }) {
+async function loadPreaching({ todayEl, weekEl }, { supabase }) {
   const { start, end } = getWeekRange();
   const { data, error } = await supabase
     .from('preaching_schedule')
@@ -66,10 +84,12 @@ async function loadPreaching(el, { supabase }) {
     .lte('date', end)
     .order('date', { ascending: true });
 
-  if (error) { el.innerHTML = errorHtml(error); return; }
-  if (!data || data.length === 0) { el.innerHTML = noneHtml(); return; }
+  if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
+  renderTodayAndWeek(todayEl, weekEl, data || [], buildPreachingHtml);
+}
 
-  el.innerHTML = data.map((row) => {
+function buildPreachingHtml(rows) {
+  return rows.map((row) => {
     const preacherName = row.preacher?.full_name || row.preacher_name;
     return `
       <div class="border border-slate-200 rounded-lg p-3">
@@ -84,7 +104,7 @@ async function loadPreaching(el, { supabase }) {
   }).join('');
 }
 
-async function loadMediaTech(el, { supabase }) {
+async function loadMediaTech({ todayEl, weekEl }, { supabase }) {
   const { start, end } = getWeekRange();
   const { data, error } = await supabase
     .from('media_tech_assignments')
@@ -93,18 +113,20 @@ async function loadMediaTech(el, { supabase }) {
     .lte('date', end)
     .order('date', { ascending: true });
 
-  if (error) { el.innerHTML = errorHtml(error); return; }
-  if (!data || data.length === 0) { el.innerHTML = noneHtml(); return; }
+  if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
+  renderTodayAndWeek(todayEl, weekEl, data || [], buildMediaTechHtml);
+}
 
+function buildMediaTechHtml(rows) {
   const byDate = new Map();
-  data.forEach((row) => {
+  rows.forEach((row) => {
     if (!byDate.has(row.date)) byDate.set(row.date, new Map());
     const roleMap = byDate.get(row.date);
     if (!roleMap.has(row.role)) roleMap.set(row.role, []);
     if (row.assignee?.full_name) roleMap.get(row.role).push(row.assignee.full_name);
   });
 
-  el.innerHTML = Array.from(byDate.entries()).map(([date, roleMap]) => `
+  return Array.from(byDate.entries()).map(([date, roleMap]) => `
     <div class="border border-slate-200 rounded-lg p-3">
       <div class="font-medium text-slate-800 mb-1">${escapeHtml(date)}</div>
       <div class="space-y-1 text-sm">
@@ -116,7 +138,7 @@ async function loadMediaTech(el, { supabase }) {
   `).join('');
 }
 
-async function loadEcodem(el, { supabase }) {
+async function loadEcodem({ todayEl, weekEl }, { supabase }) {
   const { start, end } = getWeekRange();
   const { data, error } = await supabase
     .from('ecodem_sessions')
@@ -125,16 +147,18 @@ async function loadEcodem(el, { supabase }) {
     .lte('date', end)
     .order('date', { ascending: true });
 
-  if (error) { el.innerHTML = errorHtml(error); return; }
-  if (!data || data.length === 0) { el.innerHTML = noneHtml(); return; }
+  if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
+  renderTodayAndWeek(todayEl, weekEl, data || [], buildEcodemHtml);
+}
 
+function buildEcodemHtml(rows) {
   const byDate = new Map();
-  data.forEach((session) => {
+  rows.forEach((session) => {
     if (!byDate.has(session.date)) byDate.set(session.date, []);
     byDate.get(session.date).push(session);
   });
 
-  el.innerHTML = Array.from(byDate.entries()).map(([date, sessions]) => `
+  return Array.from(byDate.entries()).map(([date, sessions]) => `
     <div class="border border-slate-200 rounded-lg p-3">
       <div class="font-medium text-slate-800 mb-1">${escapeHtml(date)}</div>
       <div class="grid sm:grid-cols-3 gap-3 text-sm">
@@ -153,7 +177,7 @@ async function loadEcodem(el, { supabase }) {
   `).join('');
 }
 
-async function loadShift(el, { supabase, departmentId, departmentKey }) {
+async function loadShift({ todayEl, weekEl }, { supabase, departmentId, departmentKey }) {
   const { start, end } = getWeekRange();
   const [{ data, error }, uniformMap] = await Promise.all([
     supabase
@@ -166,10 +190,12 @@ async function loadShift(el, { supabase, departmentId, departmentKey }) {
     departmentKey === 'ushers' ? loadUniformByDate(supabase, departmentId, start, end) : Promise.resolve(null),
   ]);
 
-  if (error) { el.innerHTML = errorHtml(error); return; }
-  if (!data || data.length === 0) { el.innerHTML = noneHtml(); return; }
+  if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
+  renderTodayAndWeek(todayEl, weekEl, data || [], (rows) => buildShiftHtml(rows, uniformMap));
+}
 
-  el.innerHTML = data.map((row) => {
+function buildShiftHtml(rows, uniformMap) {
+  return rows.map((row) => {
     const names = (row.department_shift_assignments || []).map((a) => a.assignee?.full_name).filter(Boolean);
     return `
       <div class="border border-slate-200 rounded-lg p-3">
@@ -182,8 +208,12 @@ async function loadShift(el, { supabase, departmentId, departmentKey }) {
   }).join('');
 }
 
-function noneHtml() {
-  return `<p class="text-slate-400">${t('dashboard.nothingUpcoming')}</p>`;
+function noneTodayHtml() {
+  return `<p class="text-slate-400">${t('dashboard.nothingToday')}</p>`;
+}
+
+function noneElseHtml() {
+  return `<p class="text-slate-400">${t('dashboard.nothingElseThisWeek')}</p>`;
 }
 
 function errorHtml(error) {

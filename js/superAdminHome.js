@@ -17,6 +17,7 @@ import { createMenuCustomizerModal } from './components/menuCustomizer.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
 import { createLoginActivityModal } from './components/loginActivity.js';
 import { createDepartmentModal } from './components/createDepartmentModal.js';
+import { renderDateHeader } from './components/dateHeader.js';
 import { t, departmentLabel } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -42,6 +43,7 @@ export async function renderSuperAdminHomeTab() {
   }
 
   container.innerHTML = `
+    <div data-el="date-header"></div>
     <div data-el="metrics"></div>
 
     <div id="super-home-pending" class="bg-white rounded-xl shadow p-4 sm:p-6 mt-6">
@@ -81,6 +83,7 @@ export async function renderSuperAdminHomeTab() {
     </div>
   `;
 
+  renderDateHeader(container.querySelector('[data-el="date-header"]'));
   renderMetrics(container.querySelector('[data-el="metrics"]'), supabase);
   renderAllDepartmentApprovals(container.querySelector('[data-el="pending"]'), { supabase, adminUserId: user.id });
 

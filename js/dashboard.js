@@ -5,6 +5,7 @@ import { renderDashboard } from './components/dashboardOverview.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
+import { renderDateHeader } from './components/dateHeader.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -22,6 +23,10 @@ export async function renderDashboardTab() {
   const active = getActiveDepartment();
 
   container.innerHTML = '';
+
+  const dateHeaderEl = document.createElement('div');
+  container.appendChild(dateHeaderEl);
+  renderDateHeader(dateHeaderEl);
 
   const myPreachingEl = document.createElement('div');
   container.appendChild(myPreachingEl);

@@ -12,6 +12,7 @@ import { createUserManagerModal } from './components/userManager.js';
 import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
+import { renderDateHeader } from './components/dateHeader.js';
 import { t } from './i18n.js';
 
 export async function renderDeptDashboardTab() {
@@ -26,6 +27,10 @@ export async function renderDeptDashboardTab() {
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
 
   container.innerHTML = '';
+
+  const dateHeaderEl = document.createElement('div');
+  container.appendChild(dateHeaderEl);
+  renderDateHeader(dateHeaderEl);
 
   // Preaching's own dashboard already lists the whole week including
   // their entry (below); everyone else's dashboard gets this instead,
