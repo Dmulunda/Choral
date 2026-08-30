@@ -1,33 +1,45 @@
-// Special-program pop-up (sql/065) — checked once per app load
+// Special-program pop-up (sql/065/066) — checked once per app load
 // (app.js's showApp), independent of which department tab is active,
 // since it needs to reach every member regardless of whether they
 // ever visit Church Program. Shows the flyer if one's been uploaded,
 // otherwise a "mark your calendar" placeholder — either way, it
-// reappears on every app load until the program's date passes.
+// reappears on every app load until the program's nearest upcoming
+// date passes (a multi-date program keeps popping up across all of
+// its dates, not just the first one).
 import { t } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
 const FLYER_BUCKET = 'church-program-flyers';
 
 export async function checkSpecialProgramPopup(supabase) {
-  const { data } = await supabase
+  const { data: specialPrograms } = await supabase
     .from('church_programs')
-    .select('id, title, date, flyer_storage_path')
-    .eq('is_special', true)
+    .select('id, title, flyer_storage_path')
+    .eq('is_special', true);
+
+  if (!specialPrograms || specialPrograms.length === 0) return;
+
+  const { data: nextDate } = await supabase
+    .from('church_program_dates')
+    .select('program_id, date')
+    .in('program_id', specialPrograms.map((p) => p.id))
     .gte('date', todayLocal())
     .order('date', { ascending: true })
     .limit(1)
     .maybeSingle();
 
-  if (!data) return;
+  if (!nextDate) return;
+
+  const program = specialPrograms.find((p) => p.id === nextDate.program_id);
+  if (!program) return;
 
   let flyerUrl = null;
-  if (data.flyer_storage_path) {
-    const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(data.flyer_storage_path, 3600);
+  if (program.flyer_storage_path) {
+    const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(program.flyer_storage_path, 3600);
     flyerUrl = signed?.signedUrl || null;
   }
 
-  showPopup(data, flyerUrl);
+  showPopup({ title: program.title, date: nextDate.date }, flyerUrl);
 }
 
 function showPopup(program, flyerUrl) {
