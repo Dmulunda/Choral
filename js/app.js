@@ -25,6 +25,7 @@ import { createAttendanceManagerModal } from './components/attendanceManager.js'
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
+import { checkSpecialProgramPopup } from './components/specialProgramPopup.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t, loadLabelOverrides } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
@@ -133,10 +134,10 @@ function resolveLandingTab(previousTabName, active, isChoir) {
   if (!mapping) return null;
   const target = isChoir ? mapping.choir : mapping.other;
   // Uniform only actually exists for Choir/Ushers, and Scheduling is
-  // hidden for Finance — landing on either elsewhere would show a page
-  // with no way back to it via the nav.
+  // hidden for Finance and Church Program — landing on either
+  // elsewhere would show a page with no way back to it via the nav.
   if (target === 'uniform' && !(isChoir || active.key === 'ushers')) return null;
-  if (target === 'dept-scheduling' && active.key === 'finance') return null;
+  if (target === 'dept-scheduling' && (active.key === 'finance' || active.key === 'church_program')) return null;
   return target;
 }
 
@@ -199,15 +200,15 @@ function applyActiveDepartment() {
   // shape — "lightweight" departments (generic shift board) and
   // "custom" ones (Preaching, Media & Tech, Ecodem — each with its own
   // bespoke board component, picked by deptScheduling.js) alike, so
-  // every department gets Scheduling except Finance, which explicitly
-  // hides just that one tab below.
+  // every department gets Scheduling except Finance and Church Program
+  // (sql/065 — its content is all on Dashboard, there's no shift/duty
+  // concept to schedule), which explicitly hide just that one tab below.
   const isDeptDashboardKind = active.kind === 'lightweight' || active.kind === 'custom';
+  const hasNoScheduling = active.key === 'finance' || active.key === 'church_program';
   choirNavGroupEl.classList.toggle('hidden', !isChoir);
   lightweightNavGroupEl.classList.toggle('hidden', !isDeptDashboardKind);
   membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
-  // Finance keeps Dashboard but explicitly loses Scheduling — every
-  // other department gets both.
-  deptSchedulingNavBtn.classList.toggle('hidden', isDeptDashboardKind && active.key === 'finance');
+  deptSchedulingNavBtn.classList.toggle('hidden', isDeptDashboardKind && hasNoScheduling);
   // Uniform: Choir always has its own button in choir-nav-group: this
   // one (in the shared lightweight nav) is only for Ushers.
   uniformNavBtn.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers'));
@@ -763,6 +764,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   updatePreviewAsMemberUI();
   updateMemberActionsUI();
   refreshInboxBadge();
+  checkSpecialProgramPopup(supabase);
 }
 
 // Shown right after a genuine sign-in (not a page reload restoring an

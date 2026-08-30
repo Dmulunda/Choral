@@ -40,7 +40,9 @@ export function createJoinDepartmentModal({ supabase, currentUserId }) {
     }
 
     const mineIds = new Set((mine || []).map((m) => m.department_id));
-    const available = (departments || []).filter((d) => !mineIds.has(d.id));
+    // Church Program (sql/065) is granted automatically the moment
+    // someone's approved anywhere else — never something to request.
+    const available = (departments || []).filter((d) => !mineIds.has(d.id) && d.key !== 'church_program');
 
     if (available.length === 0) {
       bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('joinDepartment.none')}</p>`;

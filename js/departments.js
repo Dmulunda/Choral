@@ -278,7 +278,14 @@ export function getActiveDepartment() {
 
   const storedKey = localStorage.getItem(ACTIVE_DEPT_STORAGE_KEY);
   const stored = departments.find((d) => d.key === storedKey);
-  return stored || departments[0];
+  if (stored) return stored;
+
+  // No preference saved yet (first-ever visit, or localStorage was
+  // cleared) — everyone lands in Church Program (sql/065) first,
+  // rather than whatever department happens to sort first
+  // alphabetically. Once someone navigates anywhere, that choice is
+  // remembered as usual and this fallback no longer applies to them.
+  return departments.find((d) => d.key === 'church_program') || departments[0];
 }
 
 export function setActiveDepartmentKey(key) {

@@ -12,6 +12,7 @@ import { createUserManagerModal } from './components/userManager.js';
 import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
+import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { t } from './i18n.js';
 
@@ -93,7 +94,11 @@ export async function renderDeptDashboardTab() {
     });
   }
 
-  if (active.key !== 'finance') {
+  if (active.key === 'church_program') {
+    const churchProgramEl = document.createElement('div');
+    container.appendChild(churchProgramEl);
+    renderChurchProgramBoard(churchProgramEl, { supabase, canAdminister, currentUserId: user.id });
+  } else if (active.key !== 'finance') {
     const nextUpEl = document.createElement('div');
     container.appendChild(nextUpEl);
     renderNextUpcomingWidget(nextUpEl, { supabase, departmentId: active.id, departmentKey: active.key });
