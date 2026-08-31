@@ -17,7 +17,7 @@ import { createUserEditModal } from './userEditModal.js';
 import { createResetPasswordModal } from './resetPasswordModal.js';
 import { confirmDialog } from './confirmDialog.js';
 import { reassignAdminDialog } from './reassignAdminDialog.js';
-import { openVideoMeeting } from './videoMeeting.js';
+import { openMeetingWindow, navigateMeetingWindow } from './videoMeeting.js';
 import { isViewingAs, getGlobalRole } from '../departments.js';
 import { t, voicePartLabel, roleLabel, mediaTechRoleLabel } from '../i18n.js';
 
@@ -638,14 +638,17 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
   }
 
   async function startCall(row) {
+    const win = openMeetingWindow();
+
     const { data: room, error } = await supabase.rpc('start_direct_call', { p_recipient_id: row.id });
     if (error) {
+      win?.close();
       window.alert(t('users.callFailed', { message: error.message }));
       return;
     }
 
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
-    openVideoMeeting({ roomName: room, displayName: profile?.full_name || '', title: t('meeting.callWith', { name: row.full_name }) });
+    navigateMeetingWindow(win, { roomName: room, displayName: profile?.full_name || '' });
   }
 }
 

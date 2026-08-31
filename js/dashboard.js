@@ -6,8 +6,8 @@ import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderDateHeader } from './components/dateHeader.js';
-import { openVideoMeeting } from './components/videoMeeting.js';
-import { t, departmentLabel } from './i18n.js';
+import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
+import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
   const supabase = getEffectiveSupabase();
@@ -35,12 +35,9 @@ export async function renderDashboardTab() {
   meetingBtn.textContent = t('meeting.start');
   container.appendChild(meetingBtn);
   meetingBtn.addEventListener('click', async () => {
+    const win = openMeetingWindow();
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    openVideoMeeting({
-      roomName: `choir-app-dept-${active.id}`,
-      displayName: profile?.full_name || '',
-      title: t('meeting.departmentTitle', { department: departmentLabel(active.key) }),
-    });
+    navigateMeetingWindow(win, { roomName: `choir-app-dept-${active.id}`, displayName: profile?.full_name || '' });
   });
 
   const myPreachingEl = document.createElement('div');

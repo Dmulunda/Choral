@@ -16,8 +16,8 @@ import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
 import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderHeadcountBoard } from './components/headcountBoard.js';
 import { renderDateHeader } from './components/dateHeader.js';
-import { openVideoMeeting } from './components/videoMeeting.js';
-import { t, departmentLabel } from './i18n.js';
+import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
+import { t } from './i18n.js';
 
 const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
 
@@ -48,12 +48,9 @@ export async function renderDeptDashboardTab() {
   meetingBtn.textContent = t('meeting.start');
   container.appendChild(meetingBtn);
   meetingBtn.addEventListener('click', async () => {
+    const win = openMeetingWindow();
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    openVideoMeeting({
-      roomName: `choir-app-dept-${active.id}`,
-      displayName: profile?.full_name || '',
-      title: t('meeting.departmentTitle', { department: departmentLabel(active.key) }),
-    });
+    navigateMeetingWindow(win, { roomName: `choir-app-dept-${active.id}`, displayName: profile?.full_name || '' });
   });
 
   // Preaching's own dashboard already lists the whole week including

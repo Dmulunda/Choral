@@ -6,7 +6,7 @@
 // shape as every other modal in this app.
 import { getGlobalRole } from '../departments.js';
 import { confirmDialog } from './confirmDialog.js';
-import { openVideoMeeting } from './videoMeeting.js';
+import { openMeetingWindow, navigateMeetingWindow } from './videoMeeting.js';
 import { t, departmentLabel } from '../i18n.js';
 
 const GLOBAL_MESSAGE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -381,8 +381,9 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
         </button>
       `;
       el.querySelector('[data-action="join-call"]').addEventListener('click', async () => {
+        const win = openMeetingWindow();
         const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
-        openVideoMeeting({ roomName: n.body, displayName: profile?.full_name || '', title: t('meeting.title') });
+        navigateMeetingWindow(win, { roomName: n.body, displayName: profile?.full_name || '' });
       });
     } else {
       el.innerHTML = `

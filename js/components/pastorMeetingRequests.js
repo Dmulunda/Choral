@@ -8,7 +8,7 @@
 // confirmed/declined, so confirmed_by/confirmed_at are always the real
 // actor and the real server time.
 import { t } from '../i18n.js';
-import { openVideoMeeting } from './videoMeeting.js';
+import { openMeetingWindow, navigateMeetingWindow } from './videoMeeting.js';
 
 export function createPastorMeetingRequestModal({ supabase, currentUserId }) {
   const root = document.createElement('div');
@@ -120,8 +120,9 @@ export function createPastorMeetingRequestModal({ supabase, currentUserId }) {
     `;
 
     el.querySelector('[data-action="join"]')?.addEventListener('click', async () => {
+      const win = openMeetingWindow();
       const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
-      openVideoMeeting({ roomName: row.meeting_room, displayName: profile?.full_name || '', title: t('meeting.pastoralTitle') });
+      navigateMeetingWindow(win, { roomName: row.meeting_room, displayName: profile?.full_name || '' });
     });
 
     return el;
@@ -239,9 +240,10 @@ export function createPastorMeetingQueueModal({ supabase }) {
         </button>
       `;
       actionsEl.querySelector('[data-action="join"]').addEventListener('click', async () => {
+        const win = openMeetingWindow();
         const { data: { user } } = await supabase.auth.getUser();
         const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-        openVideoMeeting({ roomName: confirmedRow.meeting_room, displayName: profile?.full_name || '', title: t('meeting.pastoralTitle') });
+        navigateMeetingWindow(win, { roomName: confirmedRow.meeting_room, displayName: profile?.full_name || '' });
       });
     }
     el.querySelector('[data-el="row-status"]').textContent = '';
