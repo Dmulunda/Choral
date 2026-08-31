@@ -17,6 +17,8 @@ import { createMenuCustomizerModal } from './components/menuCustomizer.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
 import { createLoginActivityModal } from './components/loginActivity.js';
 import { createDepartmentModal } from './components/createDepartmentModal.js';
+import { createPastorMeetingQueueModal } from './components/pastorMeetingRequests.js';
+import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { t, departmentLabel } from './i18n.js';
 
@@ -30,6 +32,8 @@ let currentMenuCustomizerModal = null;
 let currentMessageModerationModal = null;
 let currentLoginActivityModal = null;
 let currentCreateDepartmentModal = null;
+let currentPastorMeetingQueueModal = null;
+let currentPrayerRequestQueueModal = null;
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -64,6 +68,12 @@ export async function renderSuperAdminHomeTab() {
         </button>
         <button type="button" data-action="open-member-cases" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('memberCase.title')}
+        </button>
+        <button type="button" data-action="open-pastor-meetings" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('pastorMeeting.queueTitle')}
+        </button>
+        <button type="button" data-action="open-prayer-requests" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('prayerRequest.queueTitle')}
         </button>
       ` : ''}
       ${getGlobalRole() === 'super_admin' ? `
@@ -100,6 +110,8 @@ export async function renderSuperAdminHomeTab() {
   currentMessageModerationModal?.root.remove();
   currentLoginActivityModal?.root.remove();
   currentCreateDepartmentModal?.root.remove();
+  currentPastorMeetingQueueModal?.root.remove();
+  currentPrayerRequestQueueModal?.root.remove();
 
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
@@ -122,6 +134,18 @@ export async function renderSuperAdminHomeTab() {
   if (memberCasesBtn) {
     currentMemberCaseModal = createMemberCaseModal({ supabase, currentUserId: user.id, scope: { type: 'pastoral' } });
     memberCasesBtn.addEventListener('click', () => currentMemberCaseModal.open());
+  }
+
+  const pastorMeetingsBtn = container.querySelector('[data-action="open-pastor-meetings"]');
+  if (pastorMeetingsBtn) {
+    currentPastorMeetingQueueModal = createPastorMeetingQueueModal({ supabase });
+    pastorMeetingsBtn.addEventListener('click', () => currentPastorMeetingQueueModal.open());
+  }
+
+  const prayerRequestsBtn = container.querySelector('[data-action="open-prayer-requests"]');
+  if (prayerRequestsBtn) {
+    currentPrayerRequestQueueModal = createPrayerRequestQueueModal({ supabase });
+    prayerRequestsBtn.addEventListener('click', () => currentPrayerRequestQueueModal.open());
   }
 
   const createDepartmentBtn = container.querySelector('[data-action="open-create-department"]');

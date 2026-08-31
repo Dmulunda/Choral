@@ -1,9 +1,18 @@
 // Singer availability calendar.
 // Renders a monthly grid; clicking a day cycles it through
 // unset -> available -> unavailable -> unset. Changes are staged
-// locally and written to Supabase in a single batch on "Save".
+// locally and written to Supabase in a single batch on "Save" —
+// except marking a day unavailable, which needs a reason: that
+// transition instead confirms, then hands off to Report Absence with
+// the date already added, so the reason (and the replacement-request/
+// notification logic report_absence() already triggers) isn't
+// skipped. Confirming reloads the month once Report Absence succeeds,
+// picking up the real status from the server rather than guessing it
+// locally.
 import { formatDateLocal } from '../utils/date.js';
 import { t, tn, monthName } from '../i18n.js';
+import { confirmDialog } from './confirmDialog.js';
+import { createReportAbsenceModal } from './reportAbsenceModal.js';
 
 const STATUS_CYCLE = [undefined, 'available', 'unavailable'];
 
@@ -54,6 +63,7 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
   const grid = container.querySelector('[data-el="grid"]');
   const statusEl = container.querySelector('[data-el="status"]');
   const saveBtn = container.querySelector('[data-action="save"]');
+  const reportAbsenceModal = createReportAbsenceModal({ supabase, onReported: () => loadMonth() });
 
   container.querySelector('[data-action="prev-month"]').addEventListener('click', () => {
     viewDate.setMonth(viewDate.getMonth() - 1);
@@ -128,6 +138,13 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
     const current = localStatus.get(dateStr);
     const nextIndex = (STATUS_CYCLE.indexOf(current) + 1) % STATUS_CYCLE.length;
     const next = STATUS_CYCLE[nextIndex];
+
+    if (next === 'unavailable') {
+      confirmDialog({ message: t('calendar.confirmUnavailable', { date: dateStr }), danger: false }).then((confirmed) => {
+        if (confirmed) reportAbsenceModal.open(dateStr);
+      });
+      return;
+    }
 
     if (next === undefined) {
       localStatus.delete(dateStr);

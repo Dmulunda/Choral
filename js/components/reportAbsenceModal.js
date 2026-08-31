@@ -122,9 +122,9 @@ export function createReportAbsenceModal({ supabase, onReported }) {
     onReported?.();
   }
 
-  function open() {
+  function open(prefillDate) {
     form.reset();
-    dates = [];
+    dates = prefillDate ? [prefillDate] : [];
     renderChips();
     formStatusEl.textContent = '';
     root.classList.remove('hidden');

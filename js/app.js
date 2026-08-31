@@ -25,6 +25,8 @@ import { createAttendanceManagerModal } from './components/attendanceManager.js'
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
+import { createPastorMeetingRequestModal } from './components/pastorMeetingRequests.js';
+import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { checkSpecialProgramPopup } from './components/specialProgramPopup.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t, loadLabelOverrides } from './i18n.js';
 import {
@@ -419,6 +421,8 @@ function updateSidebarToolsSelect() {
 
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
   options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
+  options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
+  options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
   if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
   if (canSubmitSuggestion) options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   if (hasAccess) {
@@ -471,6 +475,10 @@ function runSidebarTool(value) {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'join-department') {
     createJoinDepartmentModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'pastor-meeting') {
+    createPastorMeetingRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'prayer-request') {
+    createPrayerRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'department-rules' && active) {
     createRulesModal({
       supabase: effectiveSupabase,

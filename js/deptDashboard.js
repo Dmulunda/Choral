@@ -13,8 +13,12 @@ import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './comp
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
+import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
+import { renderHeadcountBoard } from './components/headcountBoard.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { t } from './i18n.js';
+
+const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
 
 export async function renderDeptDashboardTab() {
   const supabase = getEffectiveSupabase();
@@ -26,6 +30,10 @@ export async function renderDeptDashboardTab() {
 
   const { data: { user } } = await supabase.auth.getUser();
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
+  // Broader than canAdminister — a department secretary manages
+  // day-to-day things (prayer requests, headcounts) without needing
+  // full admin rights.
+  const canManageDept = canAdminister || active.role === 'secretary';
 
   container.innerHTML = '';
 
@@ -94,6 +102,16 @@ export async function renderDeptDashboardTab() {
     });
   }
 
+  if (active.key === 'intercession' && canManageDept) {
+    const prayerRequestsBtn = document.createElement('button');
+    prayerRequestsBtn.type = 'button';
+    prayerRequestsBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+    prayerRequestsBtn.textContent = t('prayerRequest.queueTitle');
+    container.appendChild(prayerRequestsBtn);
+    const prayerQueueModal = createPrayerRequestQueueModal({ supabase });
+    prayerRequestsBtn.addEventListener('click', () => prayerQueueModal.open());
+  }
+
   if (active.key === 'church_program') {
     const churchProgramEl = document.createElement('div');
     container.appendChild(churchProgramEl);
@@ -102,6 +120,12 @@ export async function renderDeptDashboardTab() {
     const nextUpEl = document.createElement('div');
     container.appendChild(nextUpEl);
     renderNextUpcomingWidget(nextUpEl, { supabase, departmentId: active.id, departmentKey: active.key });
+  }
+
+  if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key) && canManageDept) {
+    const headcountEl = document.createElement('div');
+    container.appendChild(headcountEl);
+    renderHeadcountBoard(headcountEl, { supabase, departmentId: active.id });
   }
 
   const announcementsCard = document.createElement('div');
