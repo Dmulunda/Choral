@@ -126,6 +126,13 @@ const TRANSLATIONS = {
     'headcount.none': 'No headcounts recorded yet.',
     'headcount.loadFailed': 'Failed to load: {message}',
 
+    'meeting.title': 'Meeting',
+    'meeting.departmentTitle': '{department} Meeting',
+    'meeting.pastoralTitle': 'Pastoral Meeting',
+    'meeting.start': 'Start Meeting',
+    'meeting.join': 'Join Meeting',
+    'meeting.loadFailed': 'Failed to load the meeting service. Check your connection and try again.',
+
     'absence.title': 'Report Absence',
     'absence.intro': 'Lets your departments and church leadership know you won’t be available.',
     'absence.dates': 'Dates',
@@ -1218,6 +1225,13 @@ const TRANSLATIONS = {
     'headcount.history': 'Historique',
     'headcount.none': 'Aucun décompte enregistré pour le moment.',
     'headcount.loadFailed': 'Échec du chargement : {message}',
+
+    'meeting.title': 'Réunion',
+    'meeting.departmentTitle': 'Réunion {department}',
+    'meeting.pastoralTitle': 'Réunion pastorale',
+    'meeting.start': 'Démarrer la réunion',
+    'meeting.join': 'Rejoindre la réunion',
+    'meeting.loadFailed': 'Échec du chargement du service de réunion. Vérifiez votre connexion et réessayez.',
 
     'absence.title': 'Signaler une absence',
     'absence.intro': 'Informe vos départements et la direction de l’église que vous ne serez pas disponible.',

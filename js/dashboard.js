@@ -6,7 +6,8 @@ import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderDateHeader } from './components/dateHeader.js';
-import { t } from './i18n.js';
+import { openVideoMeeting } from './components/videoMeeting.js';
+import { t, departmentLabel } from './i18n.js';
 
 export async function renderDashboardTab() {
   const supabase = getEffectiveSupabase();
@@ -27,6 +28,20 @@ export async function renderDashboardTab() {
   const dateHeaderEl = document.createElement('div');
   container.appendChild(dateHeaderEl);
   renderDateHeader(dateHeaderEl);
+
+  const meetingBtn = document.createElement('button');
+  meetingBtn.type = 'button';
+  meetingBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
+  meetingBtn.textContent = t('meeting.start');
+  container.appendChild(meetingBtn);
+  meetingBtn.addEventListener('click', async () => {
+    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+    openVideoMeeting({
+      roomName: `choir-app-dept-${active.id}`,
+      displayName: profile?.full_name || '',
+      title: t('meeting.departmentTitle', { department: departmentLabel(active.key) }),
+    });
+  });
 
   const myPreachingEl = document.createElement('div');
   container.appendChild(myPreachingEl);

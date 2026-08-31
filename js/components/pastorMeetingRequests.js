@@ -8,6 +8,7 @@
 // confirmed/declined, so confirmed_by/confirmed_at are always the real
 // actor and the real server time.
 import { t } from '../i18n.js';
+import { openVideoMeeting } from './videoMeeting.js';
 
 export function createPastorMeetingRequestModal({ supabase, currentUserId }) {
   const root = document.createElement('div');
@@ -88,7 +89,7 @@ export function createPastorMeetingRequestModal({ supabase, currentUserId }) {
 
     const { data, error } = await supabase
       .from('pastor_meeting_requests')
-      .select('id, note, status, created_at')
+      .select('id, note, status, meeting_room, created_at')
       .eq('user_id', currentUserId)
       .order('created_at', { ascending: false });
 
@@ -102,15 +103,28 @@ export function createPastorMeetingRequestModal({ supabase, currentUserId }) {
       return;
     }
 
-    historyEl.innerHTML = data.map((row) => `
-      <div class="border border-slate-200 rounded-lg p-2.5 text-sm">
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-slate-500">${escapeHtml(new Date(row.created_at).toLocaleDateString())}</span>
-          ${statusBadge(row.status)}
-        </div>
-        ${row.note ? `<p class="text-slate-700 mt-1">${escapeHtml(row.note)}</p>` : ''}
+    historyEl.innerHTML = '';
+    data.forEach((row) => historyEl.appendChild(buildHistoryRow(row)));
+  }
+
+  function buildHistoryRow(row) {
+    const el = document.createElement('div');
+    el.className = 'border border-slate-200 rounded-lg p-2.5 text-sm';
+    el.innerHTML = `
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-slate-500">${escapeHtml(new Date(row.created_at).toLocaleDateString())}</span>
+        ${statusBadge(row.status)}
       </div>
-    `).join('');
+      ${row.note ? `<p class="text-slate-700 mt-1">${escapeHtml(row.note)}</p>` : ''}
+      ${row.meeting_room ? `<button type="button" data-action="join" class="mt-2 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : ''}
+    `;
+
+    el.querySelector('[data-action="join"]')?.addEventListener('click', async () => {
+      const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
+      openVideoMeeting({ roomName: row.meeting_room, displayName: profile?.full_name || '', title: t('meeting.pastoralTitle') });
+    });
+
+    return el;
   }
 
   return { open, root };
@@ -178,7 +192,7 @@ export function createPastorMeetingQueueModal({ supabase }) {
           <div class="text-xs text-slate-400">${escapeHtml(new Date(row.created_at).toLocaleDateString())}</div>
           ${row.note ? `<p class="text-sm text-slate-600 mt-1">${escapeHtml(row.note)}</p>` : ''}
         </div>
-        <div class="flex gap-2 shrink-0">
+        <div data-el="actions" class="flex gap-2 shrink-0">
           <button type="button" data-action="confirm" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
             ${t('pastorMeeting.confirm')}
           </button>
@@ -201,7 +215,36 @@ export function createPastorMeetingQueueModal({ supabase }) {
       el.querySelector('[data-el="row-status"]').textContent = t('pastorMeeting.respondFailed', { message: error.message });
       return;
     }
-    load();
+
+    if (status !== 'confirmed') {
+      load();
+      return;
+    }
+
+    // Show Join Meeting right here instead of reloading straight to
+    // load() — a reload would only show pending requests and this one
+    // just left that state, so the person who confirmed it would have
+    // no way back to the room they just created.
+    const { data: confirmedRow } = await supabase
+      .from('pastor_meeting_requests')
+      .select('meeting_room')
+      .eq('id', id)
+      .single();
+
+    const actionsEl = el.querySelector('[data-el="actions"]');
+    if (actionsEl && confirmedRow?.meeting_room) {
+      actionsEl.innerHTML = `
+        <button type="button" data-action="join" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
+          ${t('meeting.join')}
+        </button>
+      `;
+      actionsEl.querySelector('[data-action="join"]').addEventListener('click', async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+        openVideoMeeting({ roomName: confirmedRow.meeting_room, displayName: profile?.full_name || '', title: t('meeting.pastoralTitle') });
+      });
+    }
+    el.querySelector('[data-el="row-status"]').textContent = '';
   }
 
   return { open, root };
