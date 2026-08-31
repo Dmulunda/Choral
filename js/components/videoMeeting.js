@@ -11,7 +11,14 @@
 // await), then point it at the real room once the display name is
 // ready (navigateMeetingWindow).
 export function openMeetingWindow() {
-  return window.open('about:blank', '_blank', 'noopener,noreferrer');
+  // Deliberately no noopener/noreferrer: both make window.open() return
+  // null in most browsers (that's the whole point of noopener — sever
+  // the reference), which would break navigateMeetingWindow below,
+  // which needs that reference to point the tab at the real room once
+  // the async display-name lookup finishes. meet.jit.si is a trusted
+  // destination, so the small tabnabbing exposure this leaves is
+  // acceptable.
+  return window.open('about:blank', '_blank');
 }
 
 export function navigateMeetingWindow(win, { roomName, displayName }) {
