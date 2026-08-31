@@ -6,6 +6,7 @@
 // shape as every other modal in this app.
 import { getGlobalRole } from '../departments.js';
 import { confirmDialog } from './confirmDialog.js';
+import { openVideoMeeting } from './videoMeeting.js';
 import { t, departmentLabel } from '../i18n.js';
 
 const GLOBAL_MESSAGE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -341,7 +342,7 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
 
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, title, body, created_at, read_at')
+      .select('id, type, title, body, created_at, read_at')
       .eq('recipient_id', currentUserId)
       .order('created_at', { ascending: false });
 
@@ -355,19 +356,42 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
       return;
     }
 
-    notificationsPanelEl.innerHTML = data.map((n) => `
-      <div class="border rounded-lg p-3 ${n.read_at ? 'border-slate-200' : 'border-indigo-300 bg-indigo-50'}">
-        <div class="font-medium text-slate-800">${escapeHtml(n.title)}</div>
-        ${n.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(n.body)}</p>` : ''}
-        <div class="text-xs text-slate-400 mt-2">${escapeHtml(n.created_at.slice(0, 10))}</div>
-      </div>
-    `).join('');
+    notificationsPanelEl.innerHTML = '';
+    data.forEach((n) => notificationsPanelEl.appendChild(buildNotificationRow(n)));
 
     const unreadIds = data.filter((n) => !n.read_at).map((n) => n.id);
     if (unreadIds.length > 0) {
       await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
       onRead?.();
     }
+  }
+
+  // A call_invite's body is the Jitsi room name (sql/069) rather than
+  // free text — this is the one notification type with a real action
+  // instead of just being informational.
+  function buildNotificationRow(n) {
+    const el = document.createElement('div');
+    el.className = `border rounded-lg p-3 ${n.read_at ? 'border-slate-200' : 'border-indigo-300 bg-indigo-50'}`;
+    if (n.type === 'call_invite') {
+      el.innerHTML = `
+        <div class="font-medium text-slate-800">${escapeHtml(n.title)}</div>
+        <div class="text-xs text-slate-400 mt-1">${escapeHtml(n.created_at.slice(0, 10))}</div>
+        <button type="button" data-action="join-call" class="mt-2 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
+          ${t('meeting.join')}
+        </button>
+      `;
+      el.querySelector('[data-action="join-call"]').addEventListener('click', async () => {
+        const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
+        openVideoMeeting({ roomName: n.body, displayName: profile?.full_name || '', title: t('meeting.title') });
+      });
+    } else {
+      el.innerHTML = `
+        <div class="font-medium text-slate-800">${escapeHtml(n.title)}</div>
+        ${n.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(n.body)}</p>` : ''}
+        <div class="text-xs text-slate-400 mt-2">${escapeHtml(n.created_at.slice(0, 10))}</div>
+      `;
+    }
+    return el;
   }
 
   function open() {

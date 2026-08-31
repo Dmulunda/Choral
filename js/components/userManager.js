@@ -17,6 +17,7 @@ import { createUserEditModal } from './userEditModal.js';
 import { createResetPasswordModal } from './resetPasswordModal.js';
 import { confirmDialog } from './confirmDialog.js';
 import { reassignAdminDialog } from './reassignAdminDialog.js';
+import { openVideoMeeting } from './videoMeeting.js';
 import { isViewingAs, getGlobalRole } from '../departments.js';
 import { t, voicePartLabel, roleLabel, mediaTechRoleLabel } from '../i18n.js';
 
@@ -344,6 +345,19 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       editBtn.addEventListener('click', openEdit);
       actionsCell.appendChild(editBtn);
 
+      // Only an admin ever reaches this screen for a department scope
+      // (the caller gates the "Users" button on canAdminister before
+      // rendering it); the global Directory is also open to Super
+      // Viewer, so that one needs an explicit isSuperAdmin check.
+      if ((scope.type === 'department' || (isGlobal && isSuperAdmin)) && row.id !== currentUserId) {
+        const callBtn = document.createElement('button');
+        callBtn.type = 'button';
+        callBtn.className = 'text-sm font-medium text-emerald-600 hover:text-emerald-800 whitespace-nowrap block mb-1';
+        callBtn.textContent = t('users.call');
+        callBtn.addEventListener('click', () => startCall(row));
+        actionsCell.appendChild(callBtn);
+      }
+
       if (row.email) {
         const resetBtn = document.createElement('button');
         resetBtn.type = 'button';
@@ -621,6 +635,17 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
       return;
     }
     window.alert(t('users.resetSent', { name: row.full_name }));
+  }
+
+  async function startCall(row) {
+    const { data: room, error } = await supabase.rpc('start_direct_call', { p_recipient_id: row.id });
+    if (error) {
+      window.alert(t('users.callFailed', { message: error.message }));
+      return;
+    }
+
+    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
+    openVideoMeeting({ roomName: room, displayName: profile?.full_name || '', title: t('meeting.callWith', { name: row.full_name }) });
   }
 }
 

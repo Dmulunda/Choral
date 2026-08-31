@@ -132,6 +132,7 @@ const TRANSLATIONS = {
     'meeting.start': 'Start Meeting',
     'meeting.join': 'Join Meeting',
     'meeting.loadFailed': 'Failed to load the meeting service. Check your connection and try again.',
+    'meeting.callWith': 'Call with {name}',
 
     'absence.title': 'Report Absence',
     'absence.intro': 'Lets your departments and church leadership know you won’t be available.',
@@ -941,6 +942,8 @@ const TRANSLATIONS = {
     'users.sendReset': 'Send password reset',
     'users.resetSent': 'Password reset email sent to {name}.',
     'users.resetFailed': 'Failed to send reset email: {message}',
+    'users.call': 'Call',
+    'users.callFailed': 'Failed to start call: {message}',
     'users.allDepartments': 'All departments',
     'users.noDepartment': 'No department',
     'users.sortByName': 'Sort: Name',
@@ -1232,6 +1235,7 @@ const TRANSLATIONS = {
     'meeting.start': 'Démarrer la réunion',
     'meeting.join': 'Rejoindre la réunion',
     'meeting.loadFailed': 'Échec du chargement du service de réunion. Vérifiez votre connexion et réessayez.',
+    'meeting.callWith': 'Appel avec {name}',
 
     'absence.title': 'Signaler une absence',
     'absence.intro': 'Informe vos départements et la direction de l’église que vous ne serez pas disponible.',
@@ -2041,6 +2045,8 @@ const TRANSLATIONS = {
     'users.sendReset': 'Envoyer la réinitialisation du mot de passe',
     'users.resetSent': 'E-mail de réinitialisation envoyé à {name}.',
     'users.resetFailed': "Échec de l'envoi de l'e-mail : {message}",
+    'users.call': 'Appeler',
+    'users.callFailed': "Échec du démarrage de l'appel : {message}",
     'users.allDepartments': 'Tous les départements',
     'users.noDepartment': 'Aucun département',
     'users.sortByName': 'Trier : Nom',
