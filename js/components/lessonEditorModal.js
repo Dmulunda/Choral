@@ -184,8 +184,79 @@ export function createLessonEditorModal({ supabase, onSaved }) {
         <label class="block text-sm font-medium text-slate-600 mb-1">${t('courses.passingScore')}</label>
         <input type="number" data-el="passing-score" min="0" max="10" value="${quiz?.passing_score ?? 8}" class="w-24 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
       </div>
+      <div class="border border-dashed border-slate-300 rounded-lg p-3">
+        <label class="block text-sm font-medium text-slate-600 mb-1">${t('courses.generateFromText')}</label>
+        <textarea data-el="generate-source" rows="4" placeholder="${t('courses.generateFromTextPlaceholder')}"
+                  class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2"></textarea>
+        <div class="flex items-center gap-3">
+          <button type="button" data-action="generate-quiz"
+                  class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+            ${t('courses.generate')}
+          </button>
+          <span data-el="generate-status" class="text-sm text-slate-500"></span>
+        </div>
+      </div>
       ${slots.map((slot, i) => renderQuestionSlot(slot, i)).join('')}
     `;
+
+    container.querySelector('[data-action="generate-quiz"]').addEventListener('click', () => generateQuiz(container));
+  }
+
+  async function generateQuiz(container) {
+    const sourceText = container.querySelector('[data-el="generate-source"]').value.trim();
+    const genBtn = container.querySelector('[data-action="generate-quiz"]');
+    const genStatusEl = container.querySelector('[data-el="generate-status"]');
+
+    if (!sourceText) {
+      genStatusEl.className = 'text-sm text-rose-600';
+      genStatusEl.textContent = t('courses.generateMissingText');
+      return;
+    }
+
+    genBtn.disabled = true;
+    genStatusEl.className = 'text-sm text-slate-500';
+    genStatusEl.textContent = t('courses.generating');
+
+    const { data, error } = await supabase.functions.invoke('generate-quiz', { body: { source_text: sourceText } });
+
+    genBtn.disabled = false;
+    if (error || data?.error) {
+      genStatusEl.className = 'text-sm text-rose-600';
+      genStatusEl.textContent = t('courses.generateFailed', { message: data?.error || error.message });
+      return;
+    }
+
+    fillGeneratedQuestions(container, data.questions);
+    genStatusEl.className = 'text-sm text-emerald-600';
+    genStatusEl.textContent = t('courses.generateDone');
+  }
+
+  // Writes straight into the already-rendered 10 slots (review/edit
+  // still happens through the normal fields — Save is a separate,
+  // deliberate step, same as filling the form in by hand).
+  function fillGeneratedQuestions(container, generated) {
+    const slotEls = Array.from(container.querySelectorAll('[data-question-slot]'));
+    generated.forEach((q, i) => {
+      const slotEl = slotEls[i];
+      if (!slotEl) return;
+
+      const textEl = slotEl.querySelector('[data-el="q-text"]');
+      if (textEl) textEl.value = q.question_text || '';
+
+      if (slotEl.dataset.questionType === 'multiple_choice') {
+        const options = q.options || ['', '', '', ''];
+        [0, 1, 2, 3].forEach((o) => {
+          const optEl = slotEl.querySelector(`[data-el="q-option-${o}"]`);
+          if (optEl) optEl.value = options[o] || '';
+        });
+        const correctIndex = options.findIndex((opt) => opt === q.correct_answer);
+        const radio = correctIndex >= 0 ? slotEl.querySelector(`[data-el="q-correct"][value="${correctIndex}"]`) : null;
+        if (radio) radio.checked = true;
+      } else {
+        const radio = slotEl.querySelector(q.correct_answer === 'true' ? '[data-el="q-true"]' : '[data-el="q-false"]');
+        if (radio) radio.checked = true;
+      }
+    });
   }
 
   function renderQuestionSlot(slot, index) {

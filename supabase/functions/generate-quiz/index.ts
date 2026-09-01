@@ -1,0 +1,113 @@
+// Auto-generates a lesson quiz (7 multiple-choice + 3 true/false,
+// matching lessonEditorModal.js's fixed spec exactly) from pasted
+// source text, via the Claude API. Must run server-side: the
+// Anthropic API key is a secret that can never ship to the browser.
+//
+// Deploy: Supabase Dashboard -> Edge Functions -> deploy this file as
+// "generate-quiz" (or `supabase functions deploy generate-quiz`).
+// Needs one secret set manually — Dashboard -> Edge Functions ->
+// generate-quiz -> Secrets -> ANTHROPIC_API_KEY (from
+// console.anthropic.com). SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are
+// already provided automatically to every function.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const MC_COUNT = 7;
+const TF_COUNT = 3;
+
+const SYSTEM_PROMPT = `You are a quiz-writing assistant for a church training course. Given source text, write a quiz based ONLY on facts and ideas actually present in that text.
+
+Produce exactly ${MC_COUNT} multiple-choice questions, each with exactly 4 answer options where exactly one is correct, followed by exactly ${TF_COUNT} true/false questions.
+
+Respond with ONLY a JSON object — no markdown fences, no commentary before or after — matching exactly this shape:
+{"questions": [
+  {"type": "multiple_choice", "question_text": "...", "options": ["...", "...", "...", "..."], "correct_answer": "<the exact text of the correct option, copied verbatim from options>"},
+  ... ${MC_COUNT} of these ...
+  {"type": "true_false", "question_text": "...", "correct_answer": "true"},
+  ... ${TF_COUNT} of these ...
+]}`;
+
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  try {
+    const jwt = (req.headers.get('Authorization') ?? '').replace('Bearer ', '');
+    if (!jwt) return json({ error: 'Missing authorization' }, 401);
+
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL'),
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    );
+
+    const { data: { user: caller }, error: callerError } = await admin.auth.getUser(jwt);
+    if (callerError || !caller) return json({ error: 'Invalid session' }, 401);
+
+    const { data: callerProfile, error: profileError } = await admin
+      .from('profiles')
+      .select('is_school_admin, global_role')
+      .eq('id', caller.id)
+      .single();
+    if (profileError || !(callerProfile?.is_school_admin || callerProfile?.global_role === 'super_admin')) {
+      return json({ error: 'Only a School Admin can generate a quiz' }, 403);
+    }
+
+    const { source_text } = await req.json();
+    if (!source_text || !source_text.trim()) return json({ error: 'source_text is required' }, 400);
+
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!apiKey) return json({ error: 'ANTHROPIC_API_KEY is not configured on this function' }, 500);
+
+    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: source_text.slice(0, 20000) }],
+      }),
+    });
+
+    if (!anthropicRes.ok) {
+      const errBody = await anthropicRes.text();
+      return json({ error: `Quiz generation failed: ${errBody}` }, 502);
+    }
+
+    const anthropicData = await anthropicRes.json();
+    const rawText = anthropicData.content?.[0]?.text ?? '';
+
+    let parsed;
+    try {
+      // Strip an accidental ```json fence in case the model adds one
+      // despite the "no markdown" instruction.
+      const cleaned = rawText.trim().replace(/^```json\s*/i, '').replace(/```$/, '');
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return json({ error: 'Could not parse the generated quiz. Try again.' }, 502);
+    }
+
+    if (!Array.isArray(parsed.questions) || parsed.questions.length !== MC_COUNT + TF_COUNT) {
+      return json({ error: 'Generated quiz did not match the expected shape. Try again.' }, 502);
+    }
+
+    return json({ questions: parsed.questions });
+  } catch (err) {
+    return json({ error: err instanceof Error ? err.message : 'Unexpected error' }, 500);
+  }
+});
