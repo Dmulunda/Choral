@@ -17,6 +17,7 @@ import { createMenuCustomizerModal } from './components/menuCustomizer.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
 import { createLoginActivityModal } from './components/loginActivity.js';
 import { createDepartmentModal } from './components/createDepartmentModal.js';
+import { createBibleImportModal } from './components/bibleImportTool.js';
 import { createPastorMeetingQueueModal } from './components/pastorMeetingRequests.js';
 import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderDateHeader } from './components/dateHeader.js';
@@ -32,6 +33,7 @@ let currentMenuCustomizerModal = null;
 let currentMessageModerationModal = null;
 let currentLoginActivityModal = null;
 let currentCreateDepartmentModal = null;
+let currentBibleImportModal = null;
 let currentPastorMeetingQueueModal = null;
 let currentPrayerRequestQueueModal = null;
 
@@ -91,6 +93,9 @@ export async function renderSuperAdminHomeTab() {
         <button type="button" data-action="open-login-activity" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('loginActivity.title')}
         </button>
+        <button type="button" data-action="open-bible-import" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('bibleImport.title')}
+        </button>
       ` : ''}
     </div>
   `;
@@ -112,6 +117,7 @@ export async function renderSuperAdminHomeTab() {
   currentMessageModerationModal?.root.remove();
   currentLoginActivityModal?.root.remove();
   currentCreateDepartmentModal?.root.remove();
+  currentBibleImportModal?.root.remove();
   currentPastorMeetingQueueModal?.root.remove();
   currentPrayerRequestQueueModal?.root.remove();
 
@@ -176,6 +182,12 @@ export async function renderSuperAdminHomeTab() {
   if (loginActivityBtn) {
     currentLoginActivityModal = createLoginActivityModal({ supabase });
     loginActivityBtn.addEventListener('click', () => currentLoginActivityModal.open());
+  }
+
+  const bibleImportBtn = container.querySelector('[data-action="open-bible-import"]');
+  if (bibleImportBtn) {
+    currentBibleImportModal = createBibleImportModal({ supabase });
+    bibleImportBtn.addEventListener('click', () => currentBibleImportModal.open());
   }
 }
 

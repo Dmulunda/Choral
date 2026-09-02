@@ -292,6 +292,14 @@
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Uniform
           </button>
+          <!-- Only Media & Tech gets this one — its own page instead of
+               being buried inside Dashboard, since it's what that
+               department actually lives in during a service. See
+               applyActiveDepartment() in app.js. -->
+          <button data-tab-target="dept-projection" data-i18n="nav.projection" id="dept-projection-nav-btn"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Projection
+          </button>
         </div>
       </nav>
 
@@ -399,6 +407,14 @@
       <section data-tab-panel="dept-scheduling" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-el="dept-scheduling-name"></h1>
         <div id="dept-scheduling-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Media & Tech only. -->
+      <section data-tab-panel="dept-projection" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.projection">Projection</h1>
+        <div id="dept-projection-content">
           <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
         </div>
       </section>

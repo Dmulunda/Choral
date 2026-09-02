@@ -8,6 +8,7 @@
 // heads-up, not silently — the moment it changes from what this tab
 // started with.
 import { t } from './i18n.js';
+import { isProjectionPanelMounted } from './utils/projectionGuard.js';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const VERSION_URL = 'version.txt';
@@ -37,6 +38,12 @@ async function fetchVersion() {
 
 async function checkForUpdate() {
   if (reloading) return;
+  // Never yank the Projection page out from under whoever's running
+  // it — setup and staged content live only in that tab's memory, and
+  // a forced reload loses all of it. Just keep checking; the moment
+  // they leave, the next poll (at most POLL_INTERVAL_MS later, or
+  // immediately on next tab focus) picks the update back up.
+  if (isProjectionPanelMounted()) return;
   const current = await fetchVersion();
   if (current === null || current === loadedVersion) return;
   reloading = true;

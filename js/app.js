@@ -10,6 +10,7 @@ import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
+import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab } from './superAdminHome.js';
 import { renderTrainingTab } from './training.js';
@@ -37,6 +38,7 @@ import {
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
+import { confirmLeaveIfProjecting } from './utils/projectionGuard.js';
 
 registerServiceWorker();
 
@@ -51,6 +53,7 @@ const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-nam
 const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
 const deptSchedulingNavBtn = document.querySelector('#dept-scheduling-nav-btn');
 const uniformNavBtn = document.querySelector('#uniform-nav-btn');
+const deptProjectionNavBtn = document.querySelector('#dept-projection-nav-btn');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
 const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
@@ -91,6 +94,7 @@ const lazyTabs = {
   members: renderMembersTab,
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
+  'dept-projection': renderDeptProjectionTab,
   'super-home': renderSuperAdminHomeTab,
   training: renderTrainingTab,
 };
@@ -169,6 +173,15 @@ function applyActiveDepartment() {
   // on the same kind of page after a department switch.
   const previousTabName = currentTabName;
 
+  // Unconditional, independent of which tab we're landing on — the
+  // projection panel's own teardown (deptDashboard.js) only runs when
+  // the dept-dashboard tab itself re-renders, which doesn't happen if
+  // you're leaving Media & Tech from its Scheduling tab (TAB_KIND_MAP
+  // lands you on the new department's Scheduling tab instead). Without
+  // this, the "leave anyway?" guard could stay armed and fire on a
+  // later switch away from a completely unrelated department.
+  if (active?.key !== 'media_tech') teardownProjectionIfActive();
+
   // hasGlobalReach() (not the active department's role) drives this,
   // since active is intentionally null while on the Home console —
   // Home itself lives inside this same nav group.
@@ -214,6 +227,8 @@ function applyActiveDepartment() {
   // Uniform: Choir always has its own button in choir-nav-group: this
   // one (in the shared lightweight nav) is only for Ushers.
   uniformNavBtn.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers'));
+  // Projection: its own page, Media & Tech only.
+  deptProjectionNavBtn.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech'));
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
@@ -229,6 +244,7 @@ function applyActiveDepartment() {
     // lazy-load cache.
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
+    loadedTabs.delete('dept-projection');
     activateTab(resolveLandingTab(previousTabName, active, false) || 'dept-dashboard');
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
@@ -251,8 +267,17 @@ function applyActiveDepartment() {
   }
 }
 
-departmentSwitcherEl.addEventListener('change', () => {
-  setActiveDepartmentKey(departmentSwitcherEl.value);
+departmentSwitcherEl.addEventListener('change', async () => {
+  const active = getActiveDepartment();
+  const previousKey = active ? active.key : (isHomeActive() ? HOME_KEY : '');
+  const nextKey = departmentSwitcherEl.value;
+
+  if (nextKey !== previousKey && !(await confirmLeaveIfProjecting())) {
+    departmentSwitcherEl.value = previousKey;
+    return;
+  }
+
+  setActiveDepartmentKey(nextKey);
   applyActiveDepartment();
   updatePreviewAsMemberUI();
   closeSidebar();
