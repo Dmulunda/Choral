@@ -73,6 +73,11 @@ export function createCourseCreditModal({ supabase }) {
         selectedEl.textContent = t('courses.selectedStudent', { name: selectedStudent.full_name });
         resultsEl.classList.add('hidden');
         searchInput.value = '';
+        // Reload with this student's existing progress marked, so
+        // it's clear what they already have before granting more —
+        // the same view doubles as an after-the-fact check of who a
+        // credit landed on.
+        loadModules();
       });
     });
   }
@@ -108,6 +113,14 @@ export function createCourseCreditModal({ supabase }) {
       : { data: [] };
     const quizByLessonId = new Map((quizzes || []).map((q) => [q.lesson_id, q]));
 
+    // Only meaningful once a student is picked — shows what they
+    // already have credit for, both as a sanity check before granting
+    // more and as the answer to "who did I just credit" afterward.
+    const { data: progress } = selectedStudent && lessonIds.length > 0
+      ? await supabase.from('lesson_progress').select('lesson_id, quiz_score, completed').eq('user_id', selectedStudent.id).in('lesson_id', lessonIds)
+      : { data: [] };
+    const progressByLessonId = new Map((progress || []).map((p) => [p.lesson_id, p]));
+
     if (!modules || modules.length === 0) {
       modulesEl.innerHTML = `<p class="text-sm text-slate-500">${t('courses.noModules')}</p>`;
       return;
@@ -129,6 +142,7 @@ export function createCourseCreditModal({ supabase }) {
       const lessonsEl = section.querySelector('[data-el="lessons"]');
       moduleLessons.forEach((l) => {
         const quiz = quizByLessonId.get(l.id);
+        const existing = progressByLessonId.get(l.id);
         const row = document.createElement('div');
         row.className = 'flex items-center gap-2 text-sm';
         row.dataset.lessonId = l.id;
@@ -136,8 +150,9 @@ export function createCourseCreditModal({ supabase }) {
           <label class="flex items-center gap-2 flex-1">
             <input type="checkbox" data-el="lesson-check" />
             ${escapeHtml(l.title)}
+            ${existing?.completed ? `<span class="px-1.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">${existing.quiz_score != null ? t('courses.alreadyCreditedWithScore', { score: existing.quiz_score }) : t('courses.alreadyCredited')}</span>` : ''}
           </label>
-          ${quiz ? `<input type="number" data-el="lesson-score" min="0" max="10" placeholder="${t('courses.markOutOf10')}" value="${quiz.passing_score}" class="w-20 border border-slate-300 rounded-lg px-2 py-1 text-xs" />` : ''}
+          ${quiz ? `<input type="number" data-el="lesson-score" min="0" max="10" placeholder="${t('courses.markOutOf10')}" value="${existing?.quiz_score ?? quiz.passing_score}" class="w-20 border border-slate-300 rounded-lg px-2 py-1 text-xs" />` : ''}
         `;
         lessonsEl.appendChild(row);
       });
@@ -184,7 +199,8 @@ export function createCourseCreditModal({ supabase }) {
 
     grantBtn.disabled = false;
     grantStatusEl.className = 'text-sm text-emerald-600';
-    grantStatusEl.textContent = t('courses.grantDone', { count: checkedRows.length });
+    grantStatusEl.textContent = t('courses.grantDone', { count: checkedRows.length, name: selectedStudent.full_name });
+    await loadModules();
   }
 
   return { open, root };
