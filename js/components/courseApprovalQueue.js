@@ -1,9 +1,10 @@
-// Leader (School Admin) verification queue — every course_approvals
-// row with status 'pending', expandable to show that student's
-// per-lesson quiz scores before granting sign-off. Approve/Reject call
-// review_course_approval() (security definer, is_school_admin()-gated
-// again server-side). A short history of already-decided approvals
-// sits below for reference.
+// Leader (School Admin) verification queue. Three sections: pending
+// course_enrollments (sql/070 — gate on starting a course at all,
+// decided via review_course_enrollment()), pending course_approvals
+// (completion sign-off, expandable to that student's per-lesson quiz
+// scores, decided via review_course_approval()), and a short history
+// of already-decided completions. Both review_* RPCs are security
+// definer, is_school_admin()-gated again server-side.
 import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
 
@@ -13,17 +14,22 @@ export function renderCourseApprovalQueue(container, { supabase }) {
   async function load() {
     container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const [{ data: pending, error: pendingError }, { data: decided }] = await Promise.all([
+    const [{ data: pending, error: pendingError }, { data: decided }, { data: enrollments, error: enrollError }] = await Promise.all([
       supabase.from('course_approvals').select('id, user_id, course_id, created_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').eq('status', 'pending').order('created_at'),
       supabase.from('course_approvals').select('id, user_id, course_id, status, approved_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').neq('status', 'pending').order('approved_at', { ascending: false }).limit(20),
+      supabase.from('course_enrollments').select('id, user_id, course_id, requested_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').eq('status', 'pending').order('requested_at'),
     ]);
 
-    if (pendingError) {
-      container.innerHTML = `<p class="text-sm text-rose-600">${t('courses.loadFailed', { message: pendingError.message })}</p>`;
+    if (pendingError || enrollError) {
+      container.innerHTML = `<p class="text-sm text-rose-600">${t('courses.loadFailed', { message: (pendingError || enrollError).message })}</p>`;
       return;
     }
 
     container.innerHTML = `
+      <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">${t('courses.enrollmentRequests')}</h2>
+        <div data-el="enrollments"></div>
+      </div>
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('courses.pendingApprovals')}</h2>
         <div data-el="pending"></div>
@@ -34,8 +40,51 @@ export function renderCourseApprovalQueue(container, { supabase }) {
       </div>
     `;
 
+    renderEnrollments(container.querySelector('[data-el="enrollments"]'), enrollments || []);
     renderPending(container.querySelector('[data-el="pending"]'), pending || []);
     renderDecided(container.querySelector('[data-el="decided"]'), decided || []);
+  }
+
+  function renderEnrollments(el, rows) {
+    if (rows.length === 0) {
+      el.innerHTML = `<p class="text-sm text-slate-500">${t('courses.noEnrollmentRequests')}</p>`;
+      return;
+    }
+
+    el.innerHTML = '';
+    rows.forEach((row) => {
+      const card = document.createElement('div');
+      card.className = 'flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3 mb-2';
+      card.innerHTML = `
+        <span>
+          <span class="font-medium text-slate-800">${escapeHtml(row.student?.full_name || '—')}</span>
+          <span class="text-sm text-slate-500"> — ${escapeHtml(row.course?.title || '—')}</span>
+        </span>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" data-action="approve" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">${t('courses.approveEnrollment')}</button>
+          <button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg text-rose-600 text-xs font-medium hover:bg-rose-50">${t('courses.rejectEnrollment')}</button>
+        </div>
+      `;
+      card.querySelector('[data-action="approve"]').addEventListener('click', () => decideEnrollment(row, 'approved', card));
+      card.querySelector('[data-action="reject"]').addEventListener('click', () => decideEnrollment(row, 'rejected', card));
+      el.appendChild(card);
+    });
+  }
+
+  async function decideEnrollment(row, status, card) {
+    const confirmed = await confirmDialog({
+      message: t(status === 'approved' ? 'courses.confirmApprove' : 'courses.confirmReject', { name: row.student?.full_name || '', course: row.course?.title || '' }),
+      confirmLabel: t(status === 'approved' ? 'courses.approveEnrollment' : 'courses.rejectEnrollment'),
+      danger: status === 'rejected',
+    });
+    if (!confirmed) return;
+
+    const { error } = await supabase.rpc('review_course_enrollment', { p_enrollment_id: row.id, p_status: status });
+    if (error) {
+      window.alert(t('courses.saveFailed', { message: error.message }));
+      return;
+    }
+    card.remove();
   }
 
   function renderPending(el, rows) {

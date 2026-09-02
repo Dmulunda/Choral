@@ -1,7 +1,11 @@
-// Published-course catalog for students — each card shows the
-// signed-in member's own status (not started / in progress / pending
-// approval / approved), computed from lesson_progress +
-// course_approvals. Selecting a course swaps in coursePlayer.js.
+// Published-course catalog for students. A course not yet approved
+// for enrollment (sql/070) shows a Request Access button instead of
+// its content — RLS blocks the actual lesson/quiz/video content
+// either way, this just keeps the UI from offering a button that
+// would fail. Once enrolled, each card shows the signed-in member's
+// own status (not started / in progress / pending approval /
+// approved), computed from lesson_progress + course_approvals.
+// Selecting a course swaps in coursePlayer.js.
 import { renderCoursePlayer } from './coursePlayer.js';
 import { openCertificate } from './certificate.js';
 import { t } from '../i18n.js';
@@ -23,11 +27,13 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
       return;
     }
 
-    const [{ data: approvals }, { data: profile }] = await Promise.all([
+    const [{ data: approvals }, { data: profile }, { data: enrollments }] = await Promise.all([
       supabase.from('course_approvals').select('course_id, status, approved_at').eq('user_id', currentUserId),
       supabase.from('profiles').select('full_name').eq('id', currentUserId).single(),
+      supabase.from('course_enrollments').select('course_id, status').eq('user_id', currentUserId),
     ]);
     const approvalByCourseId = new Map((approvals || []).map((a) => [a.course_id, a]));
+    const enrollmentByCourseId = new Map((enrollments || []).map((e) => [e.course_id, e]));
 
     // Enough to label "Not Started" vs "In Progress" — three flat
     // queries joined client-side rather than a deep nested PostgREST
@@ -47,6 +53,59 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
     const gridEl = container.querySelector('[data-el="grid"]');
 
     courses.forEach((course) => {
+      const enrollment = enrollmentByCourseId.get(course.id);
+      const isEnrolled = enrollment?.status === 'approved';
+
+      const card = document.createElement('div');
+      card.className = 'text-left bg-white rounded-xl shadow p-4 sm:p-6 hover:shadow-md transition-shadow';
+
+      if (!isEnrolled) {
+        card.appendChild(buildEnrollmentCard(course, enrollment));
+      } else {
+        card.appendChild(buildCourseCard(course));
+      }
+      gridEl.appendChild(card);
+    });
+
+    function buildEnrollmentCard(course, enrollment) {
+      const status = enrollment?.status;
+      const statusLabel = status === 'pending' ? t('courses.enrollPending')
+        : status === 'rejected' ? t('courses.enrollRejected')
+        : t('courses.enrollNotRequested');
+      const statusClass = status === 'pending' ? 'bg-amber-100 text-amber-700'
+        : status === 'rejected' ? 'bg-rose-100 text-rose-700'
+        : 'bg-slate-100 text-slate-500';
+
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <span class="font-semibold text-slate-800">${escapeHtml(course.title)}</span>
+          <span class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${statusClass}">${statusLabel}</span>
+        </div>
+        ${course.description ? `<p class="text-sm text-slate-500">${escapeHtml(course.description)}</p>` : ''}
+        ${status !== 'pending' ? `
+          <button type="button" data-action="request" class="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            ${t('courses.requestAccess')}
+          </button>
+          <p data-el="request-status" class="text-xs mt-1"></p>
+        ` : ''}
+      `;
+      el.querySelector('[data-action="request"]')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        const { error } = await supabase.from('course_enrollments').insert({ user_id: currentUserId, course_id: course.id });
+        if (error) {
+          btn.disabled = false;
+          el.querySelector('[data-el="request-status"]').className = 'text-xs mt-1 text-rose-600';
+          el.querySelector('[data-el="request-status"]').textContent = t('courses.requestFailed', { message: error.message });
+          return;
+        }
+        load();
+      });
+      return el;
+    }
+
+    function buildCourseCard(course) {
       const approval = approvalByCourseId.get(course.id);
       const approvalStatus = approval?.status;
       const statusLabel = approvalStatus === 'approved' ? t('courses.statusApproved')
@@ -59,9 +118,8 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
         : approvalStatus === 'rejected' ? 'bg-rose-100 text-rose-700'
         : 'bg-slate-100 text-slate-500';
 
-      const card = document.createElement('div');
-      card.className = 'text-left bg-white rounded-xl shadow p-4 sm:p-6 hover:shadow-md transition-shadow';
-      card.innerHTML = `
+      const el = document.createElement('div');
+      el.innerHTML = `
         <button type="button" data-action="open" class="w-full text-left">
           <div class="flex items-start justify-between gap-2 mb-2">
             <span class="font-semibold text-slate-800">${escapeHtml(course.title)}</span>
@@ -75,12 +133,12 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
           </button>
         ` : ''}
       `;
-      card.querySelector('[data-action="open"]').addEventListener('click', () => openCourse(course));
-      card.querySelector('[data-action="certificate"]')?.addEventListener('click', () => {
+      el.querySelector('[data-action="open"]').addEventListener('click', () => openCourse(course));
+      el.querySelector('[data-action="certificate"]')?.addEventListener('click', () => {
         openCertificate({ studentName: profile?.full_name || '', courseTitle: course.title, approvedAt: approval.approved_at });
       });
-      gridEl.appendChild(card);
-    });
+      return el;
+    }
   }
 
   function openCourse(course) {
