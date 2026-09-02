@@ -145,6 +145,7 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
     renderCoursePlayer(container, {
       supabase,
       course,
+      currentUserId,
       onBack: load,
       onProgressChanged: () => {},
     });

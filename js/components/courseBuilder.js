@@ -5,12 +5,14 @@
 // how every other multi-panel tool in this app works.
 import { confirmDialog } from './confirmDialog.js';
 import { createLessonEditorModal } from './lessonEditorModal.js';
+import { createCourseCreditModal } from './courseCreditModal.js';
 import { t } from '../i18n.js';
 
 export function renderCourseBuilder(container, { supabase, currentUserId }) {
   let view = 'list';
   let activeCourseId = null;
   const lessonEditor = createLessonEditorModal({ supabase, onSaved: () => renderDetail(activeCourseId) });
+  const creditModal = createCourseCreditModal({ supabase });
 
   renderList();
 
@@ -110,15 +112,21 @@ export function renderCourseBuilder(container, { supabase, currentUserId }) {
 
       <div data-el="modules"></div>
 
-      <button type="button" data-action="add-module" class="mt-4 px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800">
-        ${t('courses.addModule')}
-      </button>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button type="button" data-action="add-module" class="px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800">
+          ${t('courses.addModule')}
+        </button>
+        <button type="button" data-action="grant-credit" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700">
+          ${t('courses.grantCreditTitle')}
+        </button>
+      </div>
     `;
 
     container.querySelector('[data-action="back"]').addEventListener('click', renderList);
     container.querySelector('[data-action="save-course"]').addEventListener('click', () => saveCourse(courseId));
     container.querySelector('[data-action="delete-course"]').addEventListener('click', () => deleteCourse(courseId, course.title));
     container.querySelector('[data-action="add-module"]').addEventListener('click', () => addModule(courseId, (modules || []).length));
+    container.querySelector('[data-action="grant-credit"]').addEventListener('click', () => creditModal.open({ id: courseId, title: course.title }));
 
     const modulesEl = container.querySelector('[data-el="modules"]');
     if ((modules || []).length === 0) {
