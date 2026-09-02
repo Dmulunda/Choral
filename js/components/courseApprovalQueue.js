@@ -1,6 +1,8 @@
-// Leader (School Admin) verification queue. Four sections: pending
-// course_enrollments (sql/070 — gate on starting a course at all,
-// decided via review_course_enrollment()), unanswered course_questions
+// Leader (School Admin) verification queue. Four sections: pending +
+// rejected course_enrollments (sql/070/073 — gate on starting a
+// course at all, decided via review_course_enrollment(); a rejected
+// one can be approved directly here without the student re-requesting
+// first), unanswered course_questions
 // (sql/071, answered via answer_course_question()), pending
 // course_approvals (completion sign-off, expandable to that student's
 // per-lesson quiz scores, decided via review_course_approval()), and a
@@ -19,7 +21,7 @@ export function renderCourseApprovalQueue(container, { supabase }) {
     const [{ data: pending, error: pendingError }, { data: decided }, { data: enrollments, error: enrollError }, { data: questions, error: questionsError }] = await Promise.all([
       supabase.from('course_approvals').select('id, user_id, course_id, created_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').eq('status', 'pending').order('created_at'),
       supabase.from('course_approvals').select('id, user_id, course_id, status, approved_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').neq('status', 'pending').order('approved_at', { ascending: false }).limit(20),
-      supabase.from('course_enrollments').select('id, user_id, course_id, requested_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').eq('status', 'pending').order('requested_at'),
+      supabase.from('course_enrollments').select('id, user_id, course_id, status, requested_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').in('status', ['pending', 'rejected']).order('requested_at'),
       supabase.from('course_questions').select('id, question_text, created_at, student:profiles!user_id ( full_name ), course:courses!course_id ( title )').is('answer_text', null).order('created_at'),
     ]);
 
@@ -61,20 +63,22 @@ export function renderCourseApprovalQueue(container, { supabase }) {
 
     el.innerHTML = '';
     rows.forEach((row) => {
+      const isRejected = row.status === 'rejected';
       const card = document.createElement('div');
       card.className = 'flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3 mb-2';
       card.innerHTML = `
         <span>
           <span class="font-medium text-slate-800">${escapeHtml(row.student?.full_name || '—')}</span>
           <span class="text-sm text-slate-500"> — ${escapeHtml(row.course?.title || '—')}</span>
+          ${isRejected ? `<span class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700">${t('courses.statusRejected')}</span>` : ''}
         </span>
         <div class="flex items-center gap-2 shrink-0">
           <button type="button" data-action="approve" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">${t('courses.approveEnrollment')}</button>
-          <button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg text-rose-600 text-xs font-medium hover:bg-rose-50">${t('courses.rejectEnrollment')}</button>
+          ${!isRejected ? `<button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg text-rose-600 text-xs font-medium hover:bg-rose-50">${t('courses.rejectEnrollment')}</button>` : ''}
         </div>
       `;
       card.querySelector('[data-action="approve"]').addEventListener('click', () => decideEnrollment(row, 'approved', card));
-      card.querySelector('[data-action="reject"]').addEventListener('click', () => decideEnrollment(row, 'rejected', card));
+      card.querySelector('[data-action="reject"]')?.addEventListener('click', () => decideEnrollment(row, 'rejected', card));
       el.appendChild(card);
     });
   }

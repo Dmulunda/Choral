@@ -2,10 +2,14 @@
 // for enrollment (sql/070) shows a Request Access button instead of
 // its content — RLS blocks the actual lesson/quiz/video content
 // either way, this just keeps the UI from offering a button that
-// would fail. Once enrolled, each card shows the signed-in member's
-// own status (not started / in progress / pending approval /
-// approved), computed from lesson_progress + course_approvals.
-// Selecting a course swaps in coursePlayer.js.
+// would fail. A rejected request can be sent again (sql/073's
+// request_course_enrollment() resets the existing row rather than
+// inserting a duplicate — course_enrollments is unique on
+// (user_id, course_id), so a raw second insert would just error).
+// Once enrolled, each card shows the signed-in member's own status
+// (not started / in progress / pending approval / approved), computed
+// from lesson_progress + course_approvals. Selecting a course swaps in
+// coursePlayer.js.
 import { renderCoursePlayer } from './coursePlayer.js';
 import { openCertificate } from './certificate.js';
 import { t } from '../i18n.js';
@@ -93,7 +97,11 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
       el.querySelector('[data-action="request"]')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         btn.disabled = true;
-        const { error } = await supabase.from('course_enrollments').insert({ user_id: currentUserId, course_id: course.id });
+        // request_course_enrollment() rather than a raw insert — a
+        // rejected course already has a row (unique on user_id,
+        // course_id), so re-requesting has to reset that row, not
+        // insert a second one.
+        const { error } = await supabase.rpc('request_course_enrollment', { p_course_id: course.id });
         if (error) {
           btn.disabled = false;
           el.querySelector('[data-el="request-status"]').className = 'text-xs mt-1 text-rose-600';
