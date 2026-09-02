@@ -20,6 +20,12 @@ import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeet
 import { t } from './i18n.js';
 
 const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
+// Matched by name, not key — these are admin-created departments (the
+// Create Department tool generates the key from the name, and that's
+// not guaranteed stable/predictable), and a meeting doesn't make sense
+// for either: one's a read-only calendar, the other a community info
+// board.
+const NO_MEETING_DEPARTMENT_NAMES = ['VPD Community', 'Church Calendar'];
 
 export async function renderDeptDashboardTab() {
   const supabase = getEffectiveSupabase();
@@ -42,16 +48,18 @@ export async function renderDeptDashboardTab() {
   container.appendChild(dateHeaderEl);
   renderDateHeader(dateHeaderEl);
 
-  const meetingBtn = document.createElement('button');
-  meetingBtn.type = 'button';
-  meetingBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
-  meetingBtn.textContent = t('meeting.start');
-  container.appendChild(meetingBtn);
-  meetingBtn.addEventListener('click', async () => {
-    const win = openMeetingWindow();
-    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    navigateMeetingWindow(win, { roomName: `choir-app-dept-${active.id}`, displayName: profile?.full_name || '' });
-  });
+  if (!NO_MEETING_DEPARTMENT_NAMES.includes(active.name)) {
+    const meetingBtn = document.createElement('button');
+    meetingBtn.type = 'button';
+    meetingBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
+    meetingBtn.textContent = t('meeting.start');
+    container.appendChild(meetingBtn);
+    meetingBtn.addEventListener('click', async () => {
+      const win = openMeetingWindow();
+      const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+      navigateMeetingWindow(win, { roomName: `choir-app-dept-${active.id}`, displayName: profile?.full_name || '' });
+    });
+  }
 
   // Preaching's own dashboard already lists the whole week including
   // their entry (below); everyone else's dashboard gets this instead,

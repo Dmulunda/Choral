@@ -69,11 +69,13 @@ export async function renderSuperAdminHomeTab() {
         <button type="button" data-action="open-member-cases" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('memberCase.title')}
         </button>
-        <button type="button" data-action="open-pastor-meetings" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('pastorMeeting.queueTitle')}
-        </button>
         <button type="button" data-action="open-prayer-requests" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
           ${t('prayerRequest.queueTitle')}
+        </button>
+      ` : ''}
+      ${['super_admin', 'church_secretary'].includes(getGlobalRole()) ? `
+        <button type="button" data-action="open-pastor-meetings" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          ${t('pastorMeeting.queueTitle')}
         </button>
       ` : ''}
       ${getGlobalRole() === 'super_admin' ? `
