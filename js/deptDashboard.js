@@ -17,13 +17,16 @@ import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderHeadcountBoard } from './components/headcountBoard.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
-import { t } from './i18n.js';
+import { t, departmentLabel } from './i18n.js';
 
 const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
-// Matched by name, not key — these are admin-created departments (the
-// Create Department tool generates the key from the name, and that's
-// not guaranteed stable/predictable), and a meeting doesn't make sense
-// for either: one's a read-only calendar, the other a community info
+// Matched by displayed label, not the raw departments.name column —
+// these are admin-created departments (the Create Department tool
+// generates the key from the name, so it's not guaranteed stable/
+// predictable) and their label may since have been renamed via
+// Customize Menu, which overrides departmentLabel() but doesn't touch
+// the underlying name column. A meeting doesn't make sense for
+// either: one's a read-only calendar, the other a community info
 // board.
 const NO_MEETING_DEPARTMENT_NAMES = ['VPD Community', 'Church Calendar'];
 
@@ -48,7 +51,7 @@ export async function renderDeptDashboardTab() {
   container.appendChild(dateHeaderEl);
   renderDateHeader(dateHeaderEl);
 
-  if (!NO_MEETING_DEPARTMENT_NAMES.includes(active.name)) {
+  if (!NO_MEETING_DEPARTMENT_NAMES.includes(departmentLabel(active.key)) && !NO_MEETING_DEPARTMENT_NAMES.includes(active.name)) {
     const meetingBtn = document.createElement('button');
     meetingBtn.type = 'button';
     meetingBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
