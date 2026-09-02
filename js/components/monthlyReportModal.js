@@ -80,7 +80,7 @@ export function createMonthlyReportModal({ supabase, departmentId, departmentKey
 
     const [{ data: absenceRows }, previousMonthCount, { data: reportRow }] = await Promise.all([
       memberIds.length > 0
-        ? supabase.from('absence_reports').select('user_id, absence_date, reason, member:profiles!user_id ( full_name )').in('user_id', memberIds).gte('absence_date', start).lt('absence_date', end).order('absence_date')
+        ? supabase.from('absence_reports').select('user_id, absence_date, reason, created_at, member:profiles!user_id ( full_name )').in('user_id', memberIds).gte('absence_date', start).lt('absence_date', end).order('absence_date')
         : Promise.resolve({ data: [] }),
       absenceCountForMonth(memberIds, previousMonthValue(monthValue)),
       supabase.from('department_monthly_reports').select('notes, needs').eq('department_id', departmentId).eq('report_month', start).maybeSingle(),
@@ -120,7 +120,7 @@ export function createMonthlyReportModal({ supabase, departmentId, departmentKey
         <div class="mb-4">
           <p class="text-sm font-medium text-slate-600 mb-1">${t('monthlyReport.absenceDetail')}</p>
           <ul class="text-sm text-slate-600 space-y-1">
-            ${absenceRows.map((r) => `<li>${escapeHtml(r.member?.full_name || '—')} — ${escapeHtml(r.absence_date)}${r.reason ? ` (${escapeHtml(r.reason)})` : ''}</li>`).join('')}
+            ${absenceRows.map((r) => `<li>${escapeHtml(r.member?.full_name || '—')} — ${escapeHtml(r.absence_date)}${r.reason ? ` (${escapeHtml(r.reason)})` : ''} <span class="text-slate-400">· ${t('monthlyReport.reportedAt', { when: escapeHtml(formatReportedAt(r.created_at)) })}</span></li>`).join('')}
           </ul>
         </div>
       ` : ''}
@@ -188,6 +188,11 @@ export function createMonthlyReportModal({ supabase, departmentId, departmentKey
   }
 
   return { open };
+}
+
+function formatReportedAt(isoString) {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function escapeHtml(str) {
