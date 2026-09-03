@@ -1,14 +1,18 @@
 // Bridges course lesson videos to Cloudflare R2 instead of Supabase
 // Storage (sql/079) — R2 charges nothing for egress, which matters
 // here since lesson videos get streamed by every enrolled student,
-// potentially rewatched. R2 is S3-compatible, so this uses the AWS S3
-// SDK pointed at R2's endpoint; the browser never touches R2
-// credentials — it only ever gets a short-lived presigned URL from
-// here, generated after this function has already re-checked
-// permission server-side (same pattern as every other sensitive
-// action in this app).
+// potentially rewatched. Uses aws4fetch (a small, dependency-free
+// library built specifically for signing S3-compatible requests from
+// edge runtimes like this one) rather than the full AWS SDK — the SDK
+// pulls in a large Node-oriented dependency tree that doesn't reliably
+// boot in Deno's edge environment; aws4fetch is the standard choice
+// for R2 from exactly this kind of function. The browser never
+// touches R2 credentials — it only ever gets a short-lived presigned
+// URL from here, generated after this function has already
+// re-checked permission server-side (same pattern as every other
+// sensitive action in this app).
 //
-// Two actions, dispatched by `action` in the request body:
+// Three actions, dispatched by `action` in the request body:
 //   'upload_url'   — School Admin only. Returns a presigned PUT URL
 //                     the browser uploads the file to directly (so a
 //                     multi-GB video never has to pass through this
@@ -17,6 +21,8 @@
 //                     course_enrollments before ever generating a URL,
 //                     same enrollment gate the Supabase Storage path
 //                     already enforces via RLS.
+//   'delete'       — School Admin only. Deletes directly (no need to
+//                     hand back a presigned URL for a server-side action).
 //
 // Deploy: Supabase Dashboard -> Edge Functions -> deploy this file as
 // "course-video-r2". Needs four secrets — Dashboard -> Edge Functions
@@ -24,8 +30,7 @@
 //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 // SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from 'npm:@aws-sdk/client-s3@3';
-import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3';
+import { AwsClient } from 'https://esm.sh/aws4fetch@1.0.20';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -49,17 +54,19 @@ function sanitizeFilename(name) {
     .replace(/-+/g, '-');
 }
 
-function getR2Client() {
-  const accountId = Deno.env.get('R2_ACCOUNT_ID');
-  const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID');
-  const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY');
-  if (!accountId || !accessKeyId || !secretAccessKey) return null;
+function getR2({ accountId, accessKeyId, secretAccessKey, bucket }) {
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region: 'auto' });
+  const endpoint = `https://${accountId}.r2.cloudflarestorage.com/${bucket}`;
+  return { client, endpoint };
+}
 
-  return new S3Client({
-    region: 'auto',
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
+async function presign(client, url, method, extraHeaders = {}) {
+  const signed = await client.sign(url, {
+    method,
+    headers: extraHeaders,
+    aws: { signQuery: true },
   });
+  return signed.url;
 }
 
 Deno.serve(async (req) => {
@@ -78,9 +85,14 @@ Deno.serve(async (req) => {
     const { data: { user: caller }, error: callerError } = await admin.auth.getUser(jwt);
     if (callerError || !caller) return json({ error: 'Invalid session' }, 401);
 
+    const accountId = Deno.env.get('R2_ACCOUNT_ID');
+    const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID');
+    const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY');
     const bucket = Deno.env.get('R2_BUCKET');
-    const s3 = getR2Client();
-    if (!s3 || !bucket) return json({ error: 'R2 is not configured on this function (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET)' }, 500);
+    if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
+      return json({ error: 'R2 is not configured on this function (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET)' }, 500);
+    }
+    const { client, endpoint } = getR2({ accountId, accessKeyId, secretAccessKey, bucket });
 
     const { action, lesson_id, file_name, content_type, object_key } = await req.json();
 
@@ -96,16 +108,13 @@ Deno.serve(async (req) => {
       if (!lesson_id || !file_name) return json({ error: 'lesson_id and file_name are required' }, 400);
 
       const objectKey = `${lesson_id}/${Date.now()}-${sanitizeFilename(file_name)}`;
-      // ContentType is part of the signed request, so the browser's PUT
-      // must send this exact same header back (see lessonEditorModal.js)
-      // — otherwise R2 stores it as generic binary and <video> playback
-      // can't reliably auto-detect the format from the signed GET later.
       const resolvedContentType = content_type || 'application/octet-stream';
-      const uploadUrl = await getSignedUrl(
-        s3,
-        new PutObjectCommand({ Bucket: bucket, Key: objectKey, ContentType: resolvedContentType }),
-        { expiresIn: UPLOAD_URL_TTL_SECONDS },
-      );
+      const url = new URL(`${endpoint}/${objectKey}`);
+      url.searchParams.set('X-Amz-Expires', String(UPLOAD_URL_TTL_SECONDS));
+      // Content-Type is part of the signature here, so the browser's
+      // PUT must send this exact same header back (see
+      // lessonEditorModal.js) — otherwise the signature won't match.
+      const uploadUrl = await presign(client, url, 'PUT', { 'content-type': resolvedContentType });
 
       return json({ upload_url: uploadUrl, object_key: objectKey, content_type: resolvedContentType });
     }
@@ -133,11 +142,9 @@ Deno.serve(async (req) => {
         if (!enrollment) return json({ error: 'Not enrolled in this course' }, 403);
       }
 
-      const playbackUrl = await getSignedUrl(
-        s3,
-        new GetObjectCommand({ Bucket: bucket, Key: lesson.video_storage_path }),
-        { expiresIn: PLAYBACK_URL_TTL_SECONDS },
-      );
+      const url = new URL(`${endpoint}/${lesson.video_storage_path}`);
+      url.searchParams.set('X-Amz-Expires', String(PLAYBACK_URL_TTL_SECONDS));
+      const playbackUrl = await presign(client, url, 'GET');
 
       return json({ url: playbackUrl });
     }
@@ -146,7 +153,10 @@ Deno.serve(async (req) => {
       if (!isSchoolAdmin) return json({ error: 'Only a School Admin can delete lesson videos' }, 403);
       if (!object_key) return json({ error: 'object_key is required' }, 400);
 
-      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: object_key }));
+      const deleteResponse = await client.fetch(`${endpoint}/${object_key}`, { method: 'DELETE' });
+      if (!deleteResponse.ok && deleteResponse.status !== 404) {
+        return json({ error: `R2 delete failed (HTTP ${deleteResponse.status})` }, 500);
+      }
       return json({ deleted: true });
     }
 
