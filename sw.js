@@ -9,3 +9,31 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(event.request));
 });
+
+// Web Push — see js/pushNotifications.js (subscribe) and
+// supabase/functions/send-push (send). Independent of the no-caching
+// policy above; this just displays whatever the push payload says.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { /* non-JSON payload — show with defaults */ }
+
+  event.waitUntil(self.registration.showNotification(data.title || 'VPD Church', {
+    body: data.body || '',
+    icon: 'img/icons/icon-192.png',
+    badge: 'img/icons/icon-192.png',
+    data: { url: data.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || './';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientsList) => {
+      for (const client of clientsList) {
+        if ('focus' in client) return client.focus();
+      }
+      return self.clients.openWindow(targetUrl);
+    }),
+  );
+});

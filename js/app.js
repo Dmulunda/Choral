@@ -28,6 +28,8 @@ import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { createPastorMeetingRequestModal } from './components/pastorMeetingRequests.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
+import { createChangePasswordModal } from './components/changePasswordModal.js';
+import { createNotificationSettingsModal } from './components/notificationSettingsModal.js';
 import { checkSpecialProgramPopup } from './components/specialProgramPopup.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t, loadLabelOverrides } from './i18n.js';
 import {
@@ -445,6 +447,8 @@ function updateSidebarToolsSelect() {
     || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
 
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
+  if (!isViewingAs()) options.push({ value: 'change-password', label: t('sidebar.changePassword') });
+  if (!isViewingAs()) options.push({ value: 'notifications', label: t('sidebar.notifications') });
   options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
   options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
@@ -485,7 +489,11 @@ function runSidebarTool(value) {
   const active = getActiveDepartment();
   const effectiveSupabase = getEffectiveSupabase();
 
-  if (value === 'church-rules') {
+  if (value === 'change-password') {
+    createChangePasswordModal({ supabase: effectiveSupabase }).open();
+  } else if (value === 'notifications') {
+    createNotificationSettingsModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'church-rules') {
     createRulesModal({
       supabase: effectiveSupabase,
       scope: { type: 'church', canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin' },

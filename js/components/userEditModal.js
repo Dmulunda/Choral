@@ -56,6 +56,11 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
         <div data-el="custom-powers-wrap" class="hidden border-t border-slate-200 pt-4">
           <p class="text-sm font-medium text-slate-600 mb-1">${t('userEdit.customAccessTitle')}</p>
           <p class="text-xs text-slate-400 mb-2">${t('userEdit.customAccessHint')}</p>
+          <button type="button" data-action="apply-technical-helper-preset"
+                  class="mb-2 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">
+            ${t('userEdit.technicalHelperPreset')}
+          </button>
+          <p class="text-xs text-slate-400 mb-2">${t('userEdit.technicalHelperPresetHint')}</p>
           <div class="space-y-1.5">
             ${CUSTOM_POWERS.map((key) => `
               <label class="flex items-center gap-2 text-sm text-slate-700">
@@ -81,6 +86,9 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
         <div data-el="memberships" class="space-y-2 mb-3"></div>
         <div class="flex items-center gap-2">
           <select data-el="add-dept-select" class="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm"></select>
+          <select data-el="add-dept-role" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+            ${DEPARTMENT_ROLES.map((r) => `<option value="${r}">${roleLabel(r)}</option>`).join('')}
+          </select>
           <button type="button" data-action="add-dept" class="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800">
             ${t('userEdit.addDepartment')}
           </button>
@@ -99,19 +107,36 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
   const saveBtn = root.querySelector('[data-el="save-btn"]');
   const membershipsEl = root.querySelector('[data-el="memberships"]');
   const addDeptSelectEl = root.querySelector('[data-el="add-dept-select"]');
+  const addDeptRoleEl = root.querySelector('[data-el="add-dept-role"]');
 
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
   root.querySelector('[data-action="add-dept"]').addEventListener('click', addDepartment);
+  // Fills in the checkboxes only — still needs Save, same as manually
+  // checking each box, so nothing changes until the admin reviews and
+  // confirms it like any other edit here.
+  root.querySelector('[data-action="apply-technical-helper-preset"]').addEventListener('click', () => {
+    form.elements.can_view_all_departments.checked = true;
+    form.elements.can_approve_any_membership.checked = true;
+    form.elements.can_manage_pastoral_cases.checked = false;
+  });
   form.addEventListener('submit', handleSubmit);
 
   let targetUser = null;
   let allDepartments = [];
   let memberships = [];
 
+  // getGlobalRole() reads the real, unfiltered role directly — unlike
+  // getMyDepartments(), it isn't affected by Standard User Mode or
+  // View-As, and it's populated from a live query over every
+  // department (sql/059's Create Department tool included), so a
+  // brand-new department with no members yet is never a blind spot
+  // here the way it could be relying on the synthesized list.
   function canApprove(deptId) {
+    const role = getGlobalRole();
+    if (role === 'super_admin' || role === 'pastor_admin') return true;
     const mine = getMyDepartments().find((d) => d.id === deptId);
-    return mine?.role === 'admin' || mine?.role === 'super_admin' || mine?.role === 'pastor_admin';
+    return mine?.role === 'admin';
   }
 
   async function loadDepartmentsAndMemberships() {
@@ -202,12 +227,17 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     if (!departmentId) return;
 
     const approved = canApprove(departmentId);
+    // A pending (not-yet-approved) row can only ever be role 'member'
+    // (sql/021's insert policy enforces this too) — a role someone
+    // picked before it's actually approved would just fail the insert,
+    // so it's forced back to 'member' here instead.
+    const role = approved ? addDeptRoleEl.value : 'member';
     const { data, error } = await supabase
       .from('department_memberships')
       .insert({
         user_id: targetUser.id,
         department_id: departmentId,
-        role: 'member',
+        role,
         status: approved ? 'approved' : 'pending',
         ...(approved ? { approved_at: new Date().toISOString(), approved_by: currentUserId } : {}),
       })
@@ -222,6 +252,7 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     memberships.push(data);
     renderMemberships();
     renderAddDeptSelect();
+    addDeptRoleEl.value = 'member';
   }
 
   async function handleSubmit(e) {
