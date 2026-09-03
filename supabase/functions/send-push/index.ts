@@ -1,7 +1,21 @@
 // Sends Web Push notifications to a department's approved members, or
-// to everyone (sql/078). Re-derives the recipient list and re-checks
-// permission server-side — never trusts a client-supplied user list —
-// same pattern as every other sensitive action in this app.
+// to everyone (sql/078). Two request shapes:
+//
+//   Announcement-style (admin/secretary of the department, or global
+//   reach): { department_id, title, body } or { global: true, title, body }
+//   — title/body are sent as-is, caller supplies them.
+//
+//   Self-service: { kind: 'absence_report', dates: string[] } — any
+//   signed-in member can trigger this one, but ONLY about their own
+//   absence and ONLY to departments they're actually a member of; the
+//   notification text and the recipient list are both derived
+//   server-side from the caller's own identity, never from anything
+//   the client sends, so this can't be used to push arbitrary text to
+//   an arbitrary department the way the announcement path could.
+//
+// Both paths re-derive the recipient list and re-check permission
+// server-side — never trust a client-supplied user list — same
+// pattern as every other sensitive action in this app.
 //
 // Deploy: Supabase Dashboard -> Edge Functions -> deploy this file as
 // "send-push" (or `supabase functions deploy send-push`). Needs two
@@ -28,6 +42,45 @@ function json(body, status = 200) {
   });
 }
 
+async function sendToUsers(admin, userIds, title, body) {
+  if (userIds.length === 0) return { sent: 0, failed: 0 };
+
+  const { data: subs } = await admin
+    .from('push_subscriptions')
+    .select('id, endpoint, p256dh, auth')
+    .in('user_id', userIds);
+
+  const vapidPublic = Deno.env.get('VAPID_PUBLIC_KEY');
+  const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
+  if (!vapidPublic || !vapidPrivate) throw new Error('VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY are not configured on this function');
+  webpush.setVapidDetails('mailto:admin@eglisevpd.com', vapidPublic, vapidPrivate);
+
+  const payload = JSON.stringify({ title, body: body ?? '', url: './' });
+
+  let sent = 0;
+  let failed = 0;
+  const staleIds = [];
+
+  for (const sub of subs ?? []) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload,
+      );
+      sent++;
+    } catch (err) {
+      failed++;
+      // 404/410 means the browser dropped this subscription (uninstalled,
+      // permission revoked, etc.) — stop trying to reach it.
+      if (err?.statusCode === 404 || err?.statusCode === 410) staleIds.push(sub.id);
+    }
+  }
+
+  if (staleIds.length > 0) await admin.from('push_subscriptions').delete().in('id', staleIds);
+
+  return { sent, failed };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -44,7 +97,38 @@ Deno.serve(async (req) => {
     const { data: { user: caller }, error: callerError } = await admin.auth.getUser(jwt);
     if (callerError || !caller) return json({ error: 'Invalid session' }, 401);
 
-    const { department_id, global: isGlobal, title, body } = await req.json();
+    const requestBody = await req.json();
+
+    if (requestBody.kind === 'absence_report') {
+      const dates = Array.isArray(requestBody.dates) ? requestBody.dates : [];
+      if (dates.length === 0) return json({ error: 'dates is required' }, 400);
+
+      const [{ data: callerProfile }, { data: memberships }] = await Promise.all([
+        admin.from('profiles').select('full_name').eq('id', caller.id).single(),
+        admin.from('department_memberships').select('department_id').eq('user_id', caller.id).eq('status', 'approved'),
+      ]);
+
+      const title = 'Absence Reported';
+      const dateList = dates.length <= 3 ? dates.join(', ') : `${dates.slice(0, 3).join(', ')} +${dates.length - 3} more`;
+      const body = `${callerProfile?.full_name ?? 'A member'} won't be available: ${dateList}`;
+
+      let totalSent = 0;
+      let totalFailed = 0;
+      for (const m of memberships ?? []) {
+        const { data: deptMembers } = await admin
+          .from('department_memberships')
+          .select('user_id')
+          .eq('department_id', m.department_id)
+          .eq('status', 'approved')
+          .neq('user_id', caller.id); // no need to notify yourself of your own report
+        const { sent, failed } = await sendToUsers(admin, (deptMembers ?? []).map((r) => r.user_id), title, body);
+        totalSent += sent;
+        totalFailed += failed;
+      }
+      return json({ sent: totalSent, failed: totalFailed });
+    }
+
+    const { department_id, global: isGlobal, title, body } = requestBody;
     if (!title) return json({ error: 'title is required' }, 400);
 
     const { data: callerProfile } = await admin
@@ -78,44 +162,10 @@ Deno.serve(async (req) => {
       const { data: everyone } = await admin.from('profiles').select('id').is('removed_at', null);
       targetUserIds = (everyone ?? []).map((p) => p.id);
     } else {
-      return json({ error: 'Specify department_id or global' }, 400);
+      return json({ error: 'Specify department_id, global, or kind: "absence_report"' }, 400);
     }
 
-    if (targetUserIds.length === 0) return json({ sent: 0, failed: 0 });
-
-    const { data: subs } = await admin
-      .from('push_subscriptions')
-      .select('id, endpoint, p256dh, auth')
-      .in('user_id', targetUserIds);
-
-    const vapidPublic = Deno.env.get('VAPID_PUBLIC_KEY');
-    const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
-    if (!vapidPublic || !vapidPrivate) return json({ error: 'VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY are not configured on this function' }, 500);
-    webpush.setVapidDetails('mailto:admin@eglisevpd.com', vapidPublic, vapidPrivate);
-
-    const payload = JSON.stringify({ title, body: body ?? '', url: './' });
-
-    let sent = 0;
-    let failed = 0;
-    const staleIds = [];
-
-    for (const sub of subs ?? []) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload,
-        );
-        sent++;
-      } catch (err) {
-        failed++;
-        // 404/410 means the browser dropped this subscription (uninstalled,
-        // permission revoked, etc.) — stop trying to reach it.
-        if (err?.statusCode === 404 || err?.statusCode === 410) staleIds.push(sub.id);
-      }
-    }
-
-    if (staleIds.length > 0) await admin.from('push_subscriptions').delete().in('id', staleIds);
-
+    const { sent, failed } = await sendToUsers(admin, targetUserIds, title, body);
     return json({ sent, failed });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : 'Unexpected error' }, 500);

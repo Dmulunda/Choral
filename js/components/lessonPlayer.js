@@ -116,15 +116,39 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     }
   }
 
-  async function setupUploadedVideo(wrapEl, hasQuiz) {
+  async function getSupabaseStoragePlaybackUrl(wrapEl) {
     const { data, error } = await supabase.storage.from('course-videos').createSignedUrl(lesson.video_storage_path, 3600);
     if (error || !data) {
       wrapEl.innerHTML = `<p class="text-sm text-rose-600">${t('courses.videoLoadFailed', { message: error?.message || '' })}</p>`;
-      return;
+      return null;
     }
+    return data.signedUrl;
+  }
+
+  async function getR2PlaybackUrl(wrapEl) {
+    const { data, error } = await supabase.functions.invoke('course-video-r2', {
+      body: { action: 'playback_url', lesson_id: lesson.id },
+    });
+    if (error || data?.error || !data?.url) {
+      wrapEl.innerHTML = `<p class="text-sm text-rose-600">${t('courses.videoLoadFailed', { message: data?.error || error?.message || '' })}</p>`;
+      return null;
+    }
+    return data.url;
+  }
+
+  async function setupUploadedVideo(wrapEl, hasQuiz) {
+    // video_provider (sql/079) picks which backend this particular
+    // lesson's video actually lives on — 'r2' for anything uploaded
+    // since Cloudflare R2 was wired in (zero egress fee, which matters
+    // once a video is streamed by every enrolled student), 'supabase'
+    // for anything uploaded before that, still served the original way.
+    const signedUrl = lesson.video_provider === 'r2'
+      ? await getR2PlaybackUrl(wrapEl)
+      : await getSupabaseStoragePlaybackUrl(wrapEl);
+    if (!signedUrl) return;
 
     const videoEl = document.createElement('video');
-    videoEl.src = data.signedUrl;
+    videoEl.src = signedUrl;
     videoEl.controls = true;
     videoEl.className = 'w-full rounded-lg bg-black';
     wrapEl.appendChild(videoEl);

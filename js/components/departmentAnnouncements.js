@@ -7,6 +7,7 @@
 // department, reusing the existing single-department schema rather than
 // adding a join table.
 import { confirmDialog } from './confirmDialog.js';
+import { notifyDepartment } from '../utils/notifyDepartment.js';
 import { t, departmentLabel } from '../i18n.js';
 
 export function renderAnnouncements(container, { supabase, departmentId, canPost, isGlobalPoster, canManage, currentUserId }) {
@@ -111,12 +112,7 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
       formStatusEl.textContent = '';
       load();
 
-      // Best-effort — the announcement itself already succeeded above,
-      // so a push failure (no one subscribed, function not deployed
-      // yet, etc.) shouldn't surface as an error here.
-      targetDeptIds.forEach((id) => {
-        supabase.functions.invoke('send-push', { body: { department_id: id, title, body } }).catch(() => {});
-      });
+      targetDeptIds.forEach((id) => notifyDepartment(supabase, id, title, body));
     });
   }
 

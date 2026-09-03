@@ -10,6 +10,7 @@ import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
+import { notifyDepartment } from '../utils/notifyDepartment.js';
 
 export function renderShiftBoard(container, { supabase, departmentId, canAdminister, userId }) {
   // Super Admin keeps the ability to correct an already-past shift; every
@@ -170,6 +171,7 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
     form.reset();
     formStatusEl.textContent = '';
     load();
+    notifyDepartment(supabase, departmentId, t('notifications.newSchedule'), t('notifications.newScheduleBody', { date, title }));
   }
 
   async function load() {

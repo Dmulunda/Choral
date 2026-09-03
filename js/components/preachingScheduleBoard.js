@@ -16,6 +16,7 @@ import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
+import { notifyDepartment } from '../utils/notifyDepartment.js';
 
 export function renderPreachingSchedule(container, { supabase, departmentId, canAdminister, userId }) {
   // Super Admin keeps the ability to correct an already-past entry;
@@ -254,6 +255,7 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
 
     resetForm();
     load();
+    notifyDepartment(supabase, departmentId, t('notifications.newSchedule'), t('notifications.newScheduleBodyDate', { date }));
   }
 
   async function load() {

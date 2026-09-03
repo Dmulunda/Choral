@@ -120,6 +120,13 @@ export function createReportAbsenceModal({ supabase, onReported }) {
     formStatusEl.className = 'text-sm text-emerald-600';
     formStatusEl.textContent = t('absence.submitted');
     onReported?.();
+
+    // Best-effort — the report itself already succeeded above. The
+    // edge function derives which departments to notify (and builds
+    // the message) from the caller's own identity server-side, so this
+    // can't be used to notify anyone about anything other than the
+    // reporter's own absence.
+    supabase.functions.invoke('send-push', { body: { kind: 'absence_report', dates } }).catch(() => {});
   }
 
   function open(prefillDate) {

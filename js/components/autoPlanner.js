@@ -3,6 +3,7 @@
 // who marked themselves available that date, auto-fill the roster from
 // that pool, and let the admin override any slot before saving.
 import { t, tn, voicePartLabel } from '../i18n.js';
+import { notifyDepartment } from '../utils/notifyDepartment.js';
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
@@ -303,6 +304,10 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
       }
 
       statusEl.textContent = tn('planner.rosterSaved', rows.length, { date: dateStr });
+      if (rows.length > 0) {
+        const { data: choirDept } = await supabase.from('departments').select('id').eq('key', 'choir').single();
+        if (choirDept) notifyDepartment(supabase, choirDept.id, t('notifications.newSchedule'), t('notifications.newScheduleBodyDate', { date: dateStr }));
+      }
     } catch (error) {
       statusEl.textContent = t('planner.saveFailed', { message: error.message });
     } finally {

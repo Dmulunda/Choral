@@ -24,7 +24,7 @@ export function renderCoursePlayer(container, { supabase, course, currentUserId,
 
     const moduleIds = (modules || []).map((m) => m.id);
     const { data: lessons } = moduleIds.length > 0
-      ? await supabase.from('lessons').select('id, module_id, title, video_source, pdf_storage_path, position').in('module_id', moduleIds).order('position')
+      ? await supabase.from('lessons').select('id, module_id, title, video_source, video_url, video_storage_path, video_provider, pdf_storage_path, position').in('module_id', moduleIds).order('position')
       : { data: [] };
 
     const lessonIds = (lessons || []).map((l) => l.id);

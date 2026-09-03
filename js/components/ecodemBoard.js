@@ -10,6 +10,7 @@ import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
+import { notifyDepartment } from '../utils/notifyDepartment.js';
 
 const AGE_GROUPS = ['group_1', 'group_2', 'group_3'];
 
@@ -262,6 +263,9 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
     form.reset();
     formStatusEl.textContent = '';
     load();
+    if (groupsToSave.length > 0) {
+      notifyDepartment(supabase, departmentId, t('notifications.newSchedule'), t('notifications.newScheduleBodyDate', { date }));
+    }
   }
 
   async function load() {

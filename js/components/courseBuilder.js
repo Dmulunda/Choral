@@ -80,7 +80,7 @@ export function renderCourseBuilder(container, { supabase, currentUserId }) {
 
     const moduleIds = (modules || []).map((m) => m.id);
     const { data: lessons } = moduleIds.length > 0
-      ? await supabase.from('lessons').select('id, module_id, title, video_source, video_url, pdf_storage_path, pdf_file_name, position').in('module_id', moduleIds).order('position')
+      ? await supabase.from('lessons').select('id, module_id, title, video_source, video_url, video_storage_path, video_provider, pdf_storage_path, pdf_file_name, position').in('module_id', moduleIds).order('position')
       : { data: [] };
     const lessonsByModule = new Map();
     (lessons || []).forEach((l) => {
@@ -205,7 +205,13 @@ export function renderCourseBuilder(container, { supabase, currentUserId }) {
     row.querySelector('[data-action="delete-lesson"]').addEventListener('click', async () => {
       const confirmed = await confirmDialog({ message: t('courses.confirmDeleteLesson', { title: lesson.title }) });
       if (!confirmed) return;
-      if (lesson.video_source === 'upload' && lesson.video_storage_path) await supabase.storage.from('course-videos').remove([lesson.video_storage_path]);
+      if (lesson.video_source === 'upload' && lesson.video_storage_path) {
+        if (lesson.video_provider === 'r2') {
+          await supabase.functions.invoke('course-video-r2', { body: { action: 'delete', object_key: lesson.video_storage_path } });
+        } else {
+          await supabase.storage.from('course-videos').remove([lesson.video_storage_path]);
+        }
+      }
       if (lesson.pdf_storage_path) await supabase.storage.from('course-pdfs').remove([lesson.pdf_storage_path]);
       await supabase.from('lessons').delete().eq('id', lesson.id);
       renderDetail(activeCourseId);

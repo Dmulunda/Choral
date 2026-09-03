@@ -31,11 +31,8 @@ export async function renderDeptProjectionTab() {
 
   // Tab is torn down and rebuilt on every visit (app.js clears
   // 'dept-projection' from loadedTabs on every department switch) —
-  // close the previous instance's Realtime channel first.
+  // close the previous instance's broadcast channel first.
   teardownProjectionIfActive();
-
-  const canAdminister = active.role === 'admin' || active.role === 'super_admin';
-  const canManageDept = canAdminister || active.role === 'secretary';
 
   container.innerHTML = '';
 
@@ -45,6 +42,6 @@ export async function renderDeptProjectionTab() {
 
   const projectionEl = document.createElement('div');
   container.appendChild(projectionEl);
-  currentProjectionControl = renderProjectionControl(projectionEl, { supabase, canManage: canManageDept });
+  currentProjectionControl = renderProjectionControl(projectionEl, { supabase });
   registerProjectionLiveChecker(() => currentProjectionControl.isLive());
 }

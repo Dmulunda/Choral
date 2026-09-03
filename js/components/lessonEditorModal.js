@@ -124,9 +124,15 @@ export function createLessonEditorModal({ supabase, onSaved }) {
     const pdfStatusEl = bodyEl.querySelector('[data-el="pdf-status"]');
 
     bodyEl.querySelector('[data-action="remove-video"]')?.addEventListener('click', async () => {
-      if (lesson.video_storage_path) await supabase.storage.from('course-videos').remove([lesson.video_storage_path]);
-      const { error } = await supabase.from('lessons').update({ video_source: null, video_url: null, video_storage_path: null }).eq('id', lesson.id);
-      if (!error) { lesson.video_source = null; lesson.video_url = null; lesson.video_storage_path = null; render(); }
+      if (lesson.video_storage_path) {
+        if (lesson.video_provider === 'r2') {
+          await supabase.functions.invoke('course-video-r2', { body: { action: 'delete', object_key: lesson.video_storage_path } });
+        } else {
+          await supabase.storage.from('course-videos').remove([lesson.video_storage_path]);
+        }
+      }
+      const { error } = await supabase.from('lessons').update({ video_source: null, video_url: null, video_storage_path: null, video_provider: 'supabase' }).eq('id', lesson.id);
+      if (!error) { lesson.video_source = null; lesson.video_url = null; lesson.video_storage_path = null; lesson.video_provider = 'supabase'; render(); }
     });
 
     bodyEl.querySelector('[data-action="save-video-url"]')?.addEventListener('click', async () => {
@@ -144,12 +150,24 @@ export function createLessonEditorModal({ supabase, onSaved }) {
       const file = fileInput.files?.[0];
       if (!file) return;
       videoStatusEl.textContent = t('courses.uploading');
-      const path = `${lesson.id}/${Date.now()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage.from('course-videos').upload(path, file);
-      if (uploadError) { videoStatusEl.textContent = t('courses.saveFailed', { message: uploadError.message }); return; }
-      const { error } = await supabase.from('lessons').update({ video_source: 'upload', video_storage_path: path, video_url: null }).eq('id', lesson.id);
+
+      // Lesson videos go to Cloudflare R2, not Supabase Storage —
+      // R2 charges no egress fee, which matters once a video is
+      // streamed by every enrolled student, possibly rewatched (see
+      // sql/079). The edge function hands back a presigned URL; the
+      // actual file bytes go straight from this browser to R2, never
+      // through Supabase at all.
+      const { data: urlData, error: urlError } = await supabase.functions.invoke('course-video-r2', {
+        body: { action: 'upload_url', lesson_id: lesson.id, file_name: file.name, content_type: file.type },
+      });
+      if (urlError || urlData?.error) { videoStatusEl.textContent = t('courses.saveFailed', { message: urlData?.error || urlError.message }); return; }
+
+      const putResponse = await fetch(urlData.upload_url, { method: 'PUT', headers: { 'Content-Type': urlData.content_type }, body: file });
+      if (!putResponse.ok) { videoStatusEl.textContent = t('courses.saveFailed', { message: `Upload failed (HTTP ${putResponse.status})` }); return; }
+
+      const { error } = await supabase.from('lessons').update({ video_source: 'upload', video_storage_path: urlData.object_key, video_provider: 'r2', video_url: null }).eq('id', lesson.id);
       if (error) { videoStatusEl.textContent = t('courses.saveFailed', { message: error.message }); return; }
-      lesson.video_source = 'upload'; lesson.video_storage_path = path; lesson.video_url = null;
+      lesson.video_source = 'upload'; lesson.video_storage_path = urlData.object_key; lesson.video_provider = 'r2'; lesson.video_url = null;
       render();
     });
 

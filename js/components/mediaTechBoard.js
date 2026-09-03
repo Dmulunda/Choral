@@ -10,6 +10,7 @@ import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
+import { notifyDepartment } from '../utils/notifyDepartment.js';
 
 const ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator', 'video_content_creator', 'photo_editor'];
 
@@ -275,6 +276,9 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
 
     formStatusEl.textContent = '';
     load();
+    if (toInsert.length > 0 || toDeleteIds.length > 0) {
+      notifyDepartment(supabase, departmentId, t('notifications.newSchedule'), t('notifications.newScheduleBodyDate', { date }));
+    }
   }
 
   async function load() {

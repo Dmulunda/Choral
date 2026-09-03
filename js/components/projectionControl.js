@@ -1,30 +1,35 @@
-// Media & Tech's live projection operator panel (sql/074, sql/075) —
-// picks a Bible verse, a song's lyrics, a background image, or a
-// video (YouTube or uploaded file) and pushes it to whichever browser
-// window has projector.html open, via a Supabase Realtime broadcast
-// channel. No DB table backs "what's currently on screen" — it's
-// purely live; see js/utils/projection.js and js/projectorPage.js.
-// The one exception is the backdrop image, which persists across
-// services (projection_settings) since it's a standing choice, not a
-// per-service cue.
+// Media & Tech's live projection operator panel — picks a Bible verse,
+// a song's lyrics, a background image, or a video (YouTube or a local
+// file) and pushes it to whichever browser window has projector.html
+// open. Sync happens over a BroadcastChannel, not the network — the
+// operator and the projector only ever work as two windows on the
+// SAME computer in real use (one laptop, HDMI out to the projector),
+// so there's no reason this needs the internet at all. See
+// js/utils/projection.js.
+//
+// Image/video/background are local files, picked straight from this
+// computer, never uploaded anywhere — no Supabase Storage, no cost,
+// and it works with no internet connection. The real trade-off: they
+// only exist for the current session (nothing persists after a
+// reload, and there's no cross-device "Library" to reuse from), and
+// they can't be pre-picked into the Schedule days in advance the way
+// a Bible verse or song can, since a local file only exists in this
+// tab's memory at the moment you pick it, not as a stable link.
 //
 // Verse/song advance is deliberately "live on click", not stage-then-
 // go — Next/Previous immediately re-broadcast, matching how an
 // operator actually runs a service (there's no useful distinction
-// between "preview" and "live" for a single-projector setup).
-//
-// Uploading new media (backdrop/image/video file) is restricted to
-// Media & Tech admins/secretaries (storage RLS enforces this too —
-// canManage here only controls whether the UI is shown); everyone
-// approved can still run Bible/song/YouTube cueing.
+// between "preview" and "live" for a single-projector setup). A grid
+// of jump-anywhere targets (Bible's Preview button, Song's slide grid,
+// Image/Video's Preview button) stages into the Preview box first
+// instead, since those are easier to mis-click — only the shared
+// "Send to Live" arrow (or a double-click on a song slide) actually
+// puts it on screen.
 import { t } from '../i18n.js';
-import { PROJECTION_CHANNEL } from '../utils/projection.js';
+import { createProjectionChannel } from '../utils/projection.js';
 import { extractYouTubeId } from '../utils/youtube.js';
-import { confirmDialog } from './confirmDialog.js';
 
-const MEDIA_BUCKET = 'projection-media';
-
-export function renderProjectionControl(container, { supabase, canManage }) {
+export function renderProjectionControl(container, { supabase }) {
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -40,7 +45,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
       </div>
 
       <div class="mb-4 pb-4 border-b border-slate-100">
-        <div class="flex flex-wrap items-center gap-4 mb-2">
+        <div class="flex flex-wrap items-center gap-4">
           <div class="flex items-center gap-2">
             <label class="text-sm text-slate-600">${t('projection.textSize')}</label>
             <input type="range" data-el="font-scale" min="50" max="600" step="10" value="100" class="w-32" />
@@ -49,21 +54,15 @@ export function renderProjectionControl(container, { supabase, canManage }) {
           <div class="flex items-center gap-2">
             <label class="text-sm text-slate-600">${t('projection.background')}</label>
             <img data-el="backdrop-thumb" class="hidden w-10 h-10 object-cover rounded border border-slate-200" alt="" />
-            <button type="button" data-action="toggle-backdrop-library" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">
-              ${t('projection.library')}
-            </button>
-            ${canManage ? `
-              <label class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 cursor-pointer">
-                ${t('projection.uploadBackground')}
-                <input type="file" accept="image/*" data-el="backdrop-input" class="hidden" />
-              </label>
-            ` : ''}
+            <label class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 cursor-pointer">
+              ${t('projection.uploadBackground')}
+              <input type="file" accept="image/*" data-el="backdrop-input" class="hidden" />
+            </label>
             <button type="button" data-action="clear-backdrop" data-el="clear-backdrop-btn" class="hidden px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">
               ${t('projection.clearBackground')}
             </button>
           </div>
         </div>
-        <div data-el="backdrop-library" class="hidden flex-wrap gap-2"></div>
       </div>
 
       <div class="flex gap-2 mb-4 border-b border-slate-200 flex-wrap">
@@ -121,25 +120,17 @@ export function renderProjectionControl(container, { supabase, canManage }) {
       </div>
 
       <div data-el="image-panel" class="hidden">
-        ${canManage ? `
-          <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-3">
-            ${t('projection.uploadImage')}
-            <input type="file" accept="image/*" data-el="image-input" class="hidden" />
-          </label>
-        ` : `<p class="text-sm text-slate-400 mb-3">${t('projection.needsManager')}</p>`}
-        <p class="text-xs font-medium text-slate-500 mb-1">${t('projection.library')}</p>
-        <div data-el="image-library" class="flex flex-wrap gap-2 mb-3"></div>
+        <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-3">
+          ${t('projection.uploadImage')}
+          <input type="file" accept="image/*" data-el="image-input" class="hidden" />
+        </label>
+        <p class="text-xs text-slate-400 mb-3">${t('projection.localFileHint')}</p>
         <div class="mb-3">
           <img data-el="image-preview" class="hidden max-h-40 rounded-lg border border-slate-200" alt="" />
         </div>
-        <div class="flex items-center gap-2">
-          <button type="button" data-action="project-image" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
-            ${t('projection.preview')}
-          </button>
-          <button type="button" data-action="schedule-image" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>
-            ${t('projection.addToSchedule')}
-          </button>
-        </div>
+        <button type="button" data-action="project-image" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
+          ${t('projection.preview')}
+        </button>
       </div>
 
       <div data-el="video-panel" class="hidden">
@@ -149,14 +140,11 @@ export function renderProjectionControl(container, { supabase, canManage }) {
             ${t('projection.load')}
           </button>
         </div>
-        ${canManage ? `
-          <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-3">
-            ${t('projection.uploadVideo')}
-            <input type="file" accept="video/*" data-el="video-input" class="hidden" />
-          </label>
-        ` : ''}
-        <p class="text-xs font-medium text-slate-500 mb-1">${t('projection.library')}</p>
-        <div data-el="video-library" class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-32 overflow-y-auto mb-3"></div>
+        <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-1">
+          ${t('projection.uploadVideo')}
+          <input type="file" accept="video/*" data-el="video-input" class="hidden" />
+        </label>
+        <p class="text-xs text-slate-400 mb-3">${t('projection.localFileHint')}</p>
         <p data-el="video-selected" class="text-sm text-slate-600 mb-3"></p>
         <div class="flex items-center gap-2">
           <button type="button" data-action="project-video" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
@@ -165,9 +153,6 @@ export function renderProjectionControl(container, { supabase, canManage }) {
           <button type="button" data-action="toggle-video" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>
             ${t('projection.pause')}
           </button>
-          <button type="button" data-action="schedule-video" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>
-            ${t('projection.addToSchedule')}
-          </button>
         </div>
       </div>
 
@@ -175,6 +160,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
         <div class="flex items-center gap-2 mb-3">
           <input type="date" data-el="schedule-date" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
         </div>
+        <p class="text-xs text-slate-400 mb-3">${t('projection.scheduleLocalHint')}</p>
         <div data-el="schedule-list" class="space-y-1.5"></div>
       </div>
 
@@ -222,18 +208,14 @@ export function renderProjectionControl(container, { supabase, canManage }) {
   const slidePositionEl = container.querySelector('[data-el="slide-position"]');
 
   const imageInputEl = container.querySelector('[data-el="image-input"]');
-  const imageLibraryEl = container.querySelector('[data-el="image-library"]');
   const imagePreviewEl = container.querySelector('[data-el="image-preview"]');
   const projectImageBtn = container.querySelector('[data-action="project-image"]');
-  const scheduleImageBtn = container.querySelector('[data-action="schedule-image"]');
 
   const youtubeInputEl = container.querySelector('[data-el="youtube-input"]');
   const videoInputEl = container.querySelector('[data-el="video-input"]');
-  const videoLibraryEl = container.querySelector('[data-el="video-library"]');
   const videoSelectedEl = container.querySelector('[data-el="video-selected"]');
   const projectVideoBtn = container.querySelector('[data-action="project-video"]');
   const toggleVideoBtn = container.querySelector('[data-action="toggle-video"]');
-  const scheduleVideoBtn = container.querySelector('[data-action="schedule-video"]');
 
   const scheduleDateEl = container.querySelector('[data-el="schedule-date"]');
   const scheduleListEl = container.querySelector('[data-el="schedule-list"]');
@@ -243,8 +225,6 @@ export function renderProjectionControl(container, { supabase, canManage }) {
   const backdropThumbEl = container.querySelector('[data-el="backdrop-thumb"]');
   const backdropInputEl = container.querySelector('[data-el="backdrop-input"]');
   const clearBackdropBtn = container.querySelector('[data-el="clear-backdrop-btn"]');
-  const backdropLibraryEl = container.querySelector('[data-el="backdrop-library"]');
-  const toggleBackdropLibraryBtn = container.querySelector('[data-action="toggle-backdrop-library"]');
 
   const nowShowingEl = container.querySelector('[data-el="now-showing"]');
   const previewBoxEl = container.querySelector('[data-el="preview-box"]');
@@ -267,33 +247,42 @@ export function renderProjectionControl(container, { supabase, canManage }) {
   let songTitle = '';
   let selectedSongId = null;
   let slideIndex = -1; // which slide is actually LIVE
+
   // Shared across all four tabs — only one thing can be "next in line"
   // at a time, matching the single shared Preview box/arrow.
   let stagedKind = null; // 'bible' | 'song' | 'image' | 'video' | null
-  let stagedPayload = null; // exactly what Preview renders, and (for image/video) what gets sent as-is
+  let stagedPayload = null; // exactly what gets sent, plus whatever contentPreviewHtml needs to render it
   let stagedBibleIndex = -1; // into bookVerses, when stagedKind === 'bible'
   let stagedSlideIndex = -1; // into songSlides, when stagedKind === 'song'
-  let stagedVideoInfo = null; // {source, videoId?, url?}, when stagedKind === 'video'
 
-  let pendingImageUrl = null;
+  let pendingImageBlob = null;
+  let pendingImageObjectUrl = null; // this tab's own preview only — never sent over the channel
 
-  let pendingVideo = null; // { source: 'youtube'|'file', videoId?, url? }
+  let pendingVideo = null; // { source: 'youtube', videoId } or { source: 'file' } (the file itself is pendingVideoBlob)
+  let pendingVideoBlob = null;
   let videoLoaded = false;
   let videoPlaying = false;
 
   let currentFontScale = 1;
-  let currentBackdropUrl = null;
+  let currentBackdropBlob = null;
+  let currentBackdropObjectUrl = null; // this tab's own toolbar thumbnail only
 
   let currentPayload = null;
   let projectorWindowRef = null;
   let liveScheduleItemId = null; // which schedule item (if any) is currently live — for the LIVE/NEXT badges
 
-  const channel = supabase.channel(PROJECTION_CHANNEL);
-  channel
-    .on('broadcast', { event: 'hello' }, () => {
-      channel.send({ type: 'broadcast', event: 'show', payload: currentPayload || { kind: 'blank' } });
-    })
-    .subscribe();
+  // BroadcastChannel, not Supabase Realtime — see js/utils/projection.js.
+  // Works only between windows on this same computer/browser, which is
+  // exactly the real setup (laptop -> HDMI -> projector), and means
+  // none of this needs an internet connection once the page has loaded.
+  const channel = createProjectionChannel();
+  channel.onmessage = (e) => {
+    if (e.data?.event !== 'hello') return;
+    // The projector just (re)connected — resend both what's live and
+    // the current backdrop, since it has no other way to know either.
+    channel.postMessage({ event: 'show', payload: currentPayload || { kind: 'blank' } });
+    channel.postMessage({ event: 'backdrop', blob: currentBackdropBlob });
+  };
 
   container.querySelector('[data-action="open-screen"]').addEventListener('click', async () => {
     // The Window Management API (getScreenDetails) only exists in
@@ -340,10 +329,10 @@ export function renderProjectionControl(container, { supabase, canManage }) {
 
   function send(payload) {
     if (payload.kind === 'bible' || payload.kind === 'song') {
-      payload = { ...payload, backdrop: currentBackdropUrl, fontScale: currentFontScale };
+      payload = { ...payload, fontScale: currentFontScale };
     }
     currentPayload = payload;
-    channel.send({ type: 'broadcast', event: 'show', payload });
+    channel.postMessage({ event: 'show', payload });
     renderNowShowing(payload);
 
     // Cleared by default on every send(); runScheduleItem re-marks
@@ -366,7 +355,13 @@ export function renderProjectionControl(container, { supabase, canManage }) {
         ${payload.reference ? `<p class="text-xs text-slate-300 mt-2">${escapeHtml(payload.reference)}</p>` : ''}
       `;
     }
-    if (payload.kind === 'image') return `<img src="${escapeAttr(payload.url)}" class="max-h-24 rounded" alt="" />`;
+    if (payload.kind === 'image') {
+      // Fine to mint a fresh object URL per render here — this tab's
+      // own preview only, images are shown far less often than
+      // verses/songs, and it's all released anyway the moment this
+      // page reloads or closes.
+      return `<img src="${escapeAttr(URL.createObjectURL(payload.blob))}" class="max-h-24 rounded" alt="" />`;
+    }
     if (payload.kind === 'video') {
       // A staged video hasn't actually started playing yet — only the
       // live "Now Showing" copy of this reflects real playback state.
@@ -397,52 +392,26 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     if (currentPayload?.kind === 'bible' || currentPayload?.kind === 'song') send(currentPayload);
   });
 
-  async function loadBackdropSetting() {
-    const { data } = await supabase.from('projection_settings').select('backdrop_path').eq('id', true).maybeSingle();
-    applyBackdropPath(data?.backdrop_path || null);
+  // A local file, picked straight from this computer — never uploaded
+  // anywhere. Applies immediately (own toolbar thumbnail + sent to the
+  // projector right away) and lasts for this session only; nothing
+  // persists across a reload, unlike the old cloud-backed backdrop.
+  function setBackdropBlob(blob) {
+    if (currentBackdropObjectUrl) URL.revokeObjectURL(currentBackdropObjectUrl);
+    currentBackdropBlob = blob;
+    currentBackdropObjectUrl = blob ? URL.createObjectURL(blob) : null;
+    backdropThumbEl.classList.toggle('hidden', !currentBackdropObjectUrl);
+    clearBackdropBtn.classList.toggle('hidden', !currentBackdropBlob);
+    if (currentBackdropObjectUrl) backdropThumbEl.src = currentBackdropObjectUrl;
+    channel.postMessage({ event: 'backdrop', blob: currentBackdropBlob });
   }
 
-  function applyBackdropPath(path) {
-    currentBackdropUrl = path ? supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl : null;
-    backdropThumbEl.classList.toggle('hidden', !currentBackdropUrl);
-    clearBackdropBtn.classList.toggle('hidden', !currentBackdropUrl);
-    if (currentBackdropUrl) backdropThumbEl.src = currentBackdropUrl;
-  }
-
-  // Shared by upload, the library picker, and Clear — not gated by
-  // canManage — clearing/picking (unlike uploading) doesn't touch
-  // storage, and anyone running the panel live should be able to
-  // change or get rid of an unreadable/distracting background
-  // immediately. RLS still enforces the real permission check on the
-  // update; a denial surfaces as an alert instead of failing silently.
-  async function setBackdropPath(path) {
-    const { error } = await supabase.from('projection_settings').update({ backdrop_path: path, updated_at: new Date().toISOString() }).eq('id', true);
-    if (error) { window.alert(t('projection.uploadFailed', { message: error.message })); return; }
-    applyBackdropPath(path);
-    if (currentPayload?.kind === 'bible' || currentPayload?.kind === 'song') send(currentPayload);
-  }
-
-  if (backdropInputEl) {
-    backdropInputEl.addEventListener('change', async () => {
-      const file = backdropInputEl.files[0];
-      if (!file) return;
-      const path = `backdrop-${Date.now()}-${sanitizeFilename(file.name)}`;
-      const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file);
-      if (uploadError) { window.alert(t('projection.uploadFailed', { message: uploadError.message })); return; }
-
-      await setBackdropPath(path);
-      loadMediaLibrary();
-    });
-  }
-
-  toggleBackdropLibraryBtn.addEventListener('click', () => {
-    backdropLibraryEl.classList.toggle('hidden');
-    backdropLibraryEl.classList.toggle('flex');
+  backdropInputEl.addEventListener('change', () => {
+    const file = backdropInputEl.files[0];
+    if (file) setBackdropBlob(file);
   });
 
-  clearBackdropBtn.addEventListener('click', async () => {
-    await setBackdropPath(null);
-  });
+  clearBackdropBtn.addEventListener('click', () => setBackdropBlob(null));
 
   // --- Bible panel ---
 
@@ -656,7 +625,6 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     stagedPayload = null;
     stagedBibleIndex = -1;
     stagedSlideIndex = -1;
-    stagedVideoInfo = null;
     renderStagePreview(null);
   }
 
@@ -672,7 +640,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
   // The one action behind the arrow between Preview and Now Showing —
   // routes to whichever tab actually staged something, since Bible and
   // Song need their own dropdowns/grid re-synced (not just a broadcast),
-  // while Image/Video can go out close to as-is.
+  // while Image/Video go out close to as-is.
   function sendStaged() {
     if (!stagedPayload) return;
 
@@ -681,17 +649,14 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     } else if (stagedKind === 'song') {
       projectSlideAt(stagedSlideIndex);
     } else if (stagedKind === 'image') {
-      selectImage(stagedPayload.url);
-      send({ kind: 'image', url: stagedPayload.url });
+      send({ kind: 'image', blob: stagedPayload.blob });
     } else if (stagedKind === 'video') {
-      pendingVideo = stagedVideoInfo;
       videoLoaded = true;
       videoPlaying = true;
       projectVideoBtn.disabled = false;
-      scheduleVideoBtn.disabled = false;
       toggleVideoBtn.disabled = false;
       toggleVideoBtn.textContent = t('projection.pause');
-      send({ kind: 'video', action: 'play', ...pendingVideo });
+      send(buildVideoPlayPayload());
     }
 
     clearStaged();
@@ -713,113 +678,27 @@ export function renderProjectionControl(container, { supabase, canManage }) {
   prevSlideBtn.addEventListener('click', () => projectSlideAt(slideIndex - 1));
   nextSlideBtn.addEventListener('click', () => projectSlideAt(slideIndex + 1));
 
-  // --- Media library ---
-  // Every image/video ever uploaded stays in the bucket (nothing here
-  // ever deletes them), so rather than re-uploading a recurring
-  // announcement video or a themed background every week, it's just
-  // picked from what's already there.
+  // --- Image panel ---
+  // A local file, read straight from this computer — never uploaded.
+  // Sent to the projector as the actual file (a Blob, structured-
+  // cloned over the BroadcastChannel), which mints its own local
+  // preview from it; nothing here ever becomes a URL on any server.
 
-  function selectImage(url) {
-    pendingImageUrl = url;
-    imagePreviewEl.src = url;
+  imageInputEl.addEventListener('change', () => {
+    const file = imageInputEl.files[0];
+    if (!file) return;
+    if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
+    pendingImageBlob = file;
+    pendingImageObjectUrl = URL.createObjectURL(file);
+    imagePreviewEl.src = pendingImageObjectUrl;
     imagePreviewEl.classList.remove('hidden');
     projectImageBtn.disabled = false;
-    scheduleImageBtn.disabled = false;
-  }
-
-  function selectVideoFile(url, label) {
-    pendingVideo = { source: 'file', url };
-    videoSelectedEl.textContent = t('projection.videoReady') + (label ? ` (${label})` : '');
-    projectVideoBtn.disabled = false;
-    scheduleVideoBtn.disabled = false;
-  }
-
-  // Deleting is gated the same as uploading (storage RLS enforces this
-  // regardless) — removing something everyone else's cues might still
-  // point at is as much a "changes things for other people" action as
-  // adding it.
-  async function deleteMediaFile(name) {
-    if (!(await confirmDialog({ message: t('projection.confirmDeleteMedia') }))) return;
-    const { error } = await supabase.storage.from(MEDIA_BUCKET).remove([name]);
-    if (error) { window.alert(t('projection.uploadFailed', { message: error.message })); return; }
-    if (currentBackdropUrl?.includes(name)) await setBackdropPath(null);
-    loadMediaLibrary();
-  }
-
-  function thumbnailHtml(name, dataAttr) {
-    return `
-      <div class="relative">
-        <button type="button" data-${dataAttr}="${escapeAttr(name)}" class="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-indigo-400">
-          <img src="${escapeAttr(supabase.storage.from(MEDIA_BUCKET).getPublicUrl(name).data.publicUrl)}" class="w-full h-full object-cover" alt="" />
-        </button>
-        ${canManage ? `<button type="button" data-delete-name="${escapeAttr(name)}" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-600 text-white text-xs leading-none flex items-center justify-center hover:bg-rose-700">&times;</button>` : ''}
-      </div>
-    `;
-  }
-
-  async function loadMediaLibrary() {
-    const { data } = await supabase.storage.from(MEDIA_BUCKET).list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-    const files = data || [];
-
-    const images = files.filter((f) => f.name.startsWith('image-'));
-    imageLibraryEl.innerHTML = images.length === 0
-      ? `<p class="text-sm text-slate-400">${t('projection.noMediaYet')}</p>`
-      : images.map((f) => thumbnailHtml(f.name, 'image-name')).join('');
-    imageLibraryEl.querySelectorAll('[data-image-name]').forEach((btn) => {
-      btn.addEventListener('click', () => selectImage(supabase.storage.from(MEDIA_BUCKET).getPublicUrl(btn.dataset.imageName).data.publicUrl));
-    });
-    imageLibraryEl.querySelectorAll('[data-delete-name]').forEach((btn) => {
-      btn.addEventListener('click', (e) => { e.stopPropagation(); deleteMediaFile(btn.dataset.deleteName); });
-    });
-
-    const videos = files.filter((f) => f.name.startsWith('video-'));
-    videoLibraryEl.innerHTML = videos.length === 0
-      ? `<p class="text-sm text-slate-400 px-3 py-2">${t('projection.noMediaYet')}</p>`
-      : videos.map((f) => `
-          <div class="flex items-center">
-            <button type="button" data-video-name="${escapeAttr(f.name)}" class="flex-1 text-left px-3 py-2 text-sm hover:bg-slate-50">🎬 ${escapeHtml(f.name.replace(/^video-\d+-/, ''))}</button>
-            ${canManage ? `<button type="button" data-delete-name="${escapeAttr(f.name)}" class="px-3 text-rose-500 hover:text-rose-700">&times;</button>` : ''}
-          </div>
-        `).join('');
-    videoLibraryEl.querySelectorAll('[data-video-name]').forEach((btn) => {
-      const name = btn.dataset.videoName;
-      btn.addEventListener('click', () => selectVideoFile(supabase.storage.from(MEDIA_BUCKET).getPublicUrl(name).data.publicUrl, name.replace(/^video-\d+-/, '')));
-    });
-    videoLibraryEl.querySelectorAll('[data-delete-name]').forEach((btn) => {
-      btn.addEventListener('click', () => deleteMediaFile(btn.dataset.deleteName));
-    });
-
-    const backdrops = files.filter((f) => f.name.startsWith('backdrop-'));
-    backdropLibraryEl.innerHTML = backdrops.length === 0
-      ? `<p class="text-sm text-slate-400">${t('projection.noMediaYet')}</p>`
-      : backdrops.map((f) => thumbnailHtml(f.name, 'backdrop-name')).join('');
-    backdropLibraryEl.querySelectorAll('[data-backdrop-name]').forEach((btn) => {
-      btn.addEventListener('click', () => setBackdropPath(btn.dataset.backdropName));
-    });
-    backdropLibraryEl.querySelectorAll('[data-delete-name]').forEach((btn) => {
-      btn.addEventListener('click', (e) => { e.stopPropagation(); deleteMediaFile(btn.dataset.deleteName); });
-    });
-  }
-
-  // --- Image panel ---
-
-  if (imageInputEl) {
-    imageInputEl.addEventListener('change', async () => {
-      const file = imageInputEl.files[0];
-      if (!file) return;
-      const path = `image-${Date.now()}-${sanitizeFilename(file.name)}`;
-      const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file);
-      if (uploadError) { window.alert(t('projection.uploadFailed', { message: uploadError.message })); return; }
-
-      selectImage(supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl);
-      loadMediaLibrary();
-    });
-  }
+  });
 
   projectImageBtn.addEventListener('click', () => {
-    if (!pendingImageUrl) return;
+    if (!pendingImageBlob) return;
     stagedKind = 'image';
-    stagedPayload = { kind: 'image', url: pendingImageUrl };
+    stagedPayload = { kind: 'image', blob: pendingImageBlob };
     renderStagePreview(stagedPayload);
   });
 
@@ -829,30 +708,29 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     const videoId = extractYouTubeId(youtubeInputEl.value.trim());
     if (!videoId) { window.alert(t('projection.invalidYoutubeUrl')); return; }
     pendingVideo = { source: 'youtube', videoId };
+    pendingVideoBlob = null;
     videoSelectedEl.textContent = t('projection.videoReady');
     projectVideoBtn.disabled = false;
-    scheduleVideoBtn.disabled = false;
   });
 
-  if (videoInputEl) {
-    videoInputEl.addEventListener('change', async () => {
-      const file = videoInputEl.files[0];
-      if (!file) return;
-      videoSelectedEl.textContent = t('projection.uploadingVideo');
-      const path = `video-${Date.now()}-${sanitizeFilename(file.name)}`;
-      const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file);
-      if (uploadError) { window.alert(t('projection.uploadFailed', { message: uploadError.message })); videoSelectedEl.textContent = ''; return; }
+  videoInputEl.addEventListener('change', () => {
+    const file = videoInputEl.files[0];
+    if (!file) return;
+    pendingVideo = { source: 'file' };
+    pendingVideoBlob = file;
+    videoSelectedEl.textContent = `${t('projection.videoReady')} (${file.name})`;
+    projectVideoBtn.disabled = false;
+  });
 
-      selectVideoFile(supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl, file.name);
-      loadMediaLibrary();
-    });
+  function buildVideoPlayPayload() {
+    if (pendingVideo.source === 'youtube') return { kind: 'video', action: 'play', source: 'youtube', videoId: pendingVideo.videoId };
+    return { kind: 'video', action: 'play', source: 'file', blob: pendingVideoBlob };
   }
 
   projectVideoBtn.addEventListener('click', () => {
     if (!pendingVideo) return;
     stagedKind = 'video';
-    stagedVideoInfo = pendingVideo;
-    stagedPayload = { kind: 'video', action: 'play', ...pendingVideo };
+    stagedPayload = buildVideoPlayPayload();
     renderStagePreview(stagedPayload);
   });
 
@@ -860,24 +738,21 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     if (!videoLoaded) return;
     videoPlaying = !videoPlaying;
     toggleVideoBtn.textContent = videoPlaying ? t('projection.pause') : t('projection.resume');
-    // Keep source/videoId/url in the tracked payload even on a plain
-    // pause/resume — otherwise a projector reconnecting while paused
-    // (network blip, laptop woke from sleep) gets a "hello" resend
-    // with no idea what to load, and shows nothing.
-    send({ kind: 'video', action: videoPlaying ? 'resume' : 'pause', ...pendingVideo });
+    // No blob needed here — the projector already has the video
+    // loaded locally, a pause/resume is just an instruction, not new
+    // content to hand over.
+    send({ kind: 'video', action: videoPlaying ? 'resume' : 'pause', source: pendingVideo.source, videoId: pendingVideo.videoId });
   });
 
   // --- Schedule ---
-  // Plan a service's items in advance (via each tab's "+ Add to
-  // Schedule" button) with a resolved payload, not just a reference —
-  // running one during the live service doesn't need to re-fetch
-  // anything. Clicking an item both loads it into its own tab (so
-  // Next/Previous/the slide grid keep working normally afterward — see
-  // runScheduleItem) and sends it live immediately, same "live on
-  // click" philosophy as the rest of this panel. One schedule per
-  // calendar date (sql/077); nothing is saved to the DB until the
-  // first item is actually added, so just browsing dates doesn't
-  // litter the table with empty rows.
+  // Plan a service's Bible verses/songs in advance (via each tab's "+
+  // Add to Schedule" button), then during the live service just click
+  // down the list. Image/Video aren't schedulable — a local file only
+  // exists in this tab's memory at the moment it's picked, so there's
+  // no stable link to store days ahead the way a verse reference or a
+  // song id is. One schedule per calendar date (sql/077); nothing is
+  // saved to the DB until the first item is actually added, so just
+  // browsing dates doesn't litter the table with empty rows.
 
   let currentScheduleId = null;
   let scheduleItems = []; // [{id, position, kind, label, payload}], ordered
@@ -959,7 +834,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     renderScheduleList();
   }
 
-  const SCHEDULE_ICONS = { bible: '📖', song: '🎵', image: '🖼️', video: '🎬' };
+  const SCHEDULE_ICONS = { bible: '📖', song: '🎵' };
 
   function renderScheduleList() {
     if (scheduleItems.length === 0) {
@@ -1006,21 +881,6 @@ export function renderProjectionControl(container, { supabase, canManage }) {
       setMode('song');
       await selectSong(item.payload.songId, item.label);
       if (songSlides.length > 0) projectSlideAt(0);
-    } else if (item.kind === 'image') {
-      setMode('image');
-      selectImage(item.payload.url);
-      send({ kind: 'image', url: item.payload.url });
-    } else if (item.kind === 'video') {
-      setMode('video');
-      pendingVideo = { ...item.payload };
-      videoSelectedEl.textContent = t('projection.videoReady');
-      projectVideoBtn.disabled = false;
-      scheduleVideoBtn.disabled = false;
-      videoLoaded = true;
-      videoPlaying = true;
-      toggleVideoBtn.disabled = false;
-      toggleVideoBtn.textContent = t('projection.pause');
-      send({ kind: 'video', action: 'play', ...pendingVideo });
     }
 
     // send() (called above, synchronously, however we got here)
@@ -1049,30 +909,16 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     await addToSchedule('song', songTitle, { songId: selectedSongId });
   });
 
-  scheduleImageBtn.addEventListener('click', async () => {
-    if (!pendingImageUrl) return;
-    const label = decodeURIComponent(pendingImageUrl.split('/').pop() || 'Image').replace(/^image-\d+-/, '');
-    await addToSchedule('image', label, { url: pendingImageUrl });
-  });
-
-  scheduleVideoBtn.addEventListener('click', async () => {
-    if (!pendingVideo) return;
-    const label = pendingVideo.source === 'youtube'
-      ? `YouTube: ${pendingVideo.videoId}`
-      : decodeURIComponent(pendingVideo.url.split('/').pop() || 'Video').replace(/^video-\d+-/, '');
-    await addToSchedule('video', label, { ...pendingVideo });
-  });
-
   loadBooks().then(loadBook);
-  loadBackdropSetting();
   loadSongList();
-  loadMediaLibrary();
   loadSchedule(scheduleDateEl.value);
 
   return {
     destroy() {
-      supabase.removeChannel(channel);
+      channel.close();
       document.removeEventListener('click', closeSuggestionsOnOutsideClick);
+      if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
+      if (currentBackdropObjectUrl) URL.revokeObjectURL(currentBackdropObjectUrl);
     },
     // "Live" for the leave-guard means either actual content is on
     // screen, or the projector window itself is still open — an
@@ -1131,15 +977,4 @@ function escapeAttr(str) {
 
 function stripAccents(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-
-// Supabase Storage rejects object keys with spaces, curly quotes, or
-// other punctuation beyond a small safe set \u2014 a filename like "LA
-// CHAIR CONTRE L'ESPRIT.PNG" fails outright. Strip accents, then
-// collapse everything that isn't alphanumeric/dot/dash/underscore into
-// a single dash, before it ever becomes part of a storage path.
-function sanitizeFilename(name) {
-  return stripAccents(name)
-    .replace(/[^a-zA-Z0-9.\-_]+/g, '-')
-    .replace(/-+/g, '-');
 }

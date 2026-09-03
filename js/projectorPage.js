@@ -1,12 +1,12 @@
 // Standalone projection display (projector.html) — meant to be opened
 // in its own window/tab and dragged onto whichever screen is
 // connected to the physical projector, while the operator keeps
-// working from the main app on their own screen. Pure Realtime
-// broadcast listener: no auth, no DB reads, just whatever the operator
-// panel (js/components/projectionControl.js) last sent. See
-// js/utils/projection.js for the shared channel name/payload shape.
-import { supabase } from './supabaseClient.js';
-import { PROJECTION_CHANNEL } from './utils/projection.js';
+// working from the main app on their own screen. Pure BroadcastChannel
+// listener — no auth, no DB reads, no network at all, just whatever
+// the operator panel (js/components/projectionControl.js) last sent
+// to this same browser. See js/utils/projection.js for the shared
+// channel name/message shapes.
+import { createProjectionChannel } from './utils/projection.js';
 import { loadYouTubeIframeAPI } from './utils/youtube.js';
 
 const backdropEl = document.getElementById('backdrop');
@@ -75,8 +75,11 @@ document.addEventListener('mousemove', showControlsBriefly);
 showControlsBriefly();
 
 let youtubePlayer = null; // current YT.Player instance, if a YouTube video is loaded
-let fileVideoEl = null; // current <video> element, if an uploaded file is loaded
+let fileVideoEl = null; // current <video> element, if a local file video is loaded
 let currentVideoKind = null; // 'youtube' | 'file' | null — which of the two is active
+let currentVideoObjectUrl = null; // revoked whenever replaced, so a long service doesn't leak memory
+let currentImageObjectUrl = null; // same idea, for image slides
+let currentBackdropObjectUrl = null; // same idea, for the background
 
 // Deliberately NOT content-dependent — an earlier version auto-shrank
 // long lines/many-line stanzas, which meant the "same" size setting
@@ -100,6 +103,7 @@ function stopVideo() {
   fileVideoEl?.pause();
   fileVideoEl = null;
   currentVideoKind = null;
+  if (currentVideoObjectUrl) { URL.revokeObjectURL(currentVideoObjectUrl); currentVideoObjectUrl = null; }
   videoContainerEl.innerHTML = '';
 }
 
@@ -107,19 +111,24 @@ function hideAllContent() {
   linesEl.innerHTML = '';
   referenceEl.textContent = '';
   imageEl.style.display = 'none';
+  if (currentImageObjectUrl) { URL.revokeObjectURL(currentImageObjectUrl); currentImageObjectUrl = null; }
   imageEl.src = '';
   videoContainerEl.style.display = 'none';
   stopVideo();
 }
 
-function setBackdrop(url) {
-  backdropEl.style.backgroundImage = url ? `url("${url}")` : '';
+// The background persists across many different verses/songs until
+// explicitly changed — it's its own broadcast event (see below), not
+// part of each individual 'show' payload.
+function setBackdrop(blob) {
+  if (currentBackdropObjectUrl) { URL.revokeObjectURL(currentBackdropObjectUrl); currentBackdropObjectUrl = null; }
+  currentBackdropObjectUrl = blob ? URL.createObjectURL(blob) : null;
+  backdropEl.style.backgroundImage = currentBackdropObjectUrl ? `url("${currentBackdropObjectUrl}")` : '';
 }
 
 function showText(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
-  setBackdrop(payload.backdrop);
   const fontSize = fontSizeFor(payload.fontScale);
   linesEl.style.fontSize = fontSize;
   linesEl.innerHTML = payload.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
@@ -129,16 +138,18 @@ function showText(payload) {
 function showImage(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
-  setBackdrop(null);
-  imageEl.src = payload.url;
+  currentImageObjectUrl = URL.createObjectURL(payload.blob);
+  imageEl.src = currentImageObjectUrl;
   imageEl.style.display = 'block';
 }
 
 async function handleVideo(payload) {
   // A pause/resume with nothing actually loaded means this page just
-  // (re)connected — e.g. mid-video network blip — with no player to
-  // pause/resume. Load it fresh instead of silently doing nothing;
-  // falling through to the 'play' branch below.
+  // (re)connected with no player to pause/resume — a fresh reconnect
+  // can't recover local-file video (the file itself only ever lived in
+  // the operator's memory, and pause/resume messages don't carry it),
+  // so this just goes idle instead of erroring; YouTube can still
+  // reload itself from the videoId alone.
   const nothingLoaded = currentVideoKind === null;
 
   if (payload.action === 'pause' && !nothingLoaded) {
@@ -151,11 +162,14 @@ async function handleVideo(payload) {
     else if (currentVideoKind === 'file') fileVideoEl?.play();
     return;
   }
+  if ((payload.action === 'pause' || payload.action === 'resume') && nothingLoaded) {
+    if (payload.source === 'youtube') payload = { ...payload, action: 'play' };
+    else return; // nothing we can do for a local file with no blob attached
+  }
 
   // action === 'play' — load fresh.
   hideAllContent();
   idleEl.style.display = 'none';
-  setBackdrop(null);
   videoContainerEl.style.display = 'block';
   videoContainerEl.innerHTML = '';
   youtubePlayer = null;
@@ -174,31 +188,18 @@ async function handleVideo(payload) {
     });
   } else {
     currentVideoKind = 'file';
+    currentVideoObjectUrl = URL.createObjectURL(payload.blob);
     fileVideoEl = document.createElement('video');
-    fileVideoEl.src = payload.url;
+    fileVideoEl.src = currentVideoObjectUrl;
     fileVideoEl.autoplay = true;
     fileVideoEl.controls = false;
     videoContainerEl.appendChild(fileVideoEl);
   }
 }
 
-let lastShownKey = null;
-
 function show(payload) {
-  // A "hello" resend (this page reconnecting after a network blip,
-  // sleep, etc.) re-delivers whatever's currently live even when
-  // nothing actually changed — without this, that would still tear
-  // down and rebuild the DOM (a visible flash) for identical content.
-  // Video pause/resume/play actions are exempt: those are deliberate
-  // operator actions and must always go through, even if the rest of
-  // the payload looks unchanged.
-  const key = JSON.stringify(payload || { kind: 'blank' });
-  if (key === lastShownKey && payload?.kind !== 'video') return;
-  lastShownKey = key;
-
   if (!payload || payload.kind === 'blank') {
     hideAllContent();
-    setBackdrop(null);
     idleEl.style.display = 'block';
     return;
   }
@@ -210,15 +211,17 @@ function show(payload) {
 
 show(null);
 
-const channel = supabase.channel(PROJECTION_CHANNEL);
-channel
-  .on('broadcast', { event: 'show' }, ({ payload }) => show(payload))
-  .subscribe((status) => {
-    // Ask whoever's operating the panel to resend whatever's currently
-    // live — this page may have just opened, or reconnected after the
-    // laptop went to sleep mid-service.
-    if (status === 'SUBSCRIBED') channel.send({ type: 'broadcast', event: 'hello', payload: {} });
-  });
+const channel = createProjectionChannel();
+channel.onmessage = (e) => {
+  const data = e.data;
+  if (!data) return;
+  if (data.event === 'show') show(data.payload);
+  else if (data.event === 'backdrop') setBackdrop(data.blob);
+};
+// Ask whoever's operating the panel to resend whatever's currently
+// live (and the current backdrop) — this page may have just opened,
+// or reconnected after the laptop went to sleep mid-service.
+channel.postMessage({ event: 'hello' });
 
 function escapeHtml(str) {
   const div = document.createElement('div');
