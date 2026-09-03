@@ -162,8 +162,28 @@ export function createLessonEditorModal({ supabase, onSaved }) {
       });
       if (urlError || urlData?.error) { videoStatusEl.textContent = t('courses.saveFailed', { message: urlData?.error || urlError.message }); return; }
 
-      const putResponse = await fetch(urlData.upload_url, { method: 'PUT', headers: { 'Content-Type': urlData.content_type }, body: file });
-      if (!putResponse.ok) { videoStatusEl.textContent = t('courses.saveFailed', { message: `Upload failed (HTTP ${putResponse.status})` }); return; }
+      // fetch() has no upload-progress event, so a multi-GB file would
+      // sit at a static "Uploading…" with no feedback for a long time —
+      // XMLHttpRequest still supports the progress event fetch lacks.
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', urlData.upload_url);
+          xhr.setRequestHeader('Content-Type', urlData.content_type);
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) videoStatusEl.textContent = `${t('courses.uploading')} ${Math.round((e.loaded / e.total) * 100)}%`;
+          });
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(`Upload failed (HTTP ${xhr.status})`));
+          });
+          xhr.addEventListener('error', () => reject(new Error('Upload failed (network error)')));
+          xhr.send(file);
+        });
+      } catch (uploadErr) {
+        videoStatusEl.textContent = t('courses.saveFailed', { message: uploadErr.message });
+        return;
+      }
 
       const { error } = await supabase.from('lessons').update({ video_source: 'upload', video_storage_path: urlData.object_key, video_provider: 'r2', video_url: null }).eq('id', lesson.id);
       if (error) { videoStatusEl.textContent = t('courses.saveFailed', { message: error.message }); return; }
