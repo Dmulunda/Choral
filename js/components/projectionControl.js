@@ -426,7 +426,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     backdropInputEl.addEventListener('change', async () => {
       const file = backdropInputEl.files[0];
       if (!file) return;
-      const path = `backdrop-${Date.now()}-${file.name}`;
+      const path = `backdrop-${Date.now()}-${sanitizeFilename(file.name)}`;
       const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file);
       if (uploadError) { window.alert(t('projection.uploadFailed', { message: uploadError.message })); return; }
 
@@ -807,7 +807,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
     imageInputEl.addEventListener('change', async () => {
       const file = imageInputEl.files[0];
       if (!file) return;
-      const path = `image-${Date.now()}-${file.name}`;
+      const path = `image-${Date.now()}-${sanitizeFilename(file.name)}`;
       const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file);
       if (uploadError) { window.alert(t('projection.uploadFailed', { message: uploadError.message })); return; }
 
@@ -839,7 +839,7 @@ export function renderProjectionControl(container, { supabase, canManage }) {
       const file = videoInputEl.files[0];
       if (!file) return;
       videoSelectedEl.textContent = t('projection.uploadingVideo');
-      const path = `video-${Date.now()}-${file.name}`;
+      const path = `video-${Date.now()}-${sanitizeFilename(file.name)}`;
       const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file);
       if (uploadError) { window.alert(t('projection.uploadFailed', { message: uploadError.message })); videoSelectedEl.textContent = ''; return; }
 
@@ -1131,4 +1131,15 @@ function escapeAttr(str) {
 
 function stripAccents(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// Supabase Storage rejects object keys with spaces, curly quotes, or
+// other punctuation beyond a small safe set \u2014 a filename like "LA
+// CHAIR CONTRE L'ESPRIT.PNG" fails outright. Strip accents, then
+// collapse everything that isn't alphanumeric/dot/dash/underscore into
+// a single dash, before it ever becomes part of a storage path.
+function sanitizeFilename(name) {
+  return stripAccents(name)
+    .replace(/[^a-zA-Z0-9.\-_]+/g, '-')
+    .replace(/-+/g, '-');
 }
