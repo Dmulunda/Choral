@@ -7,6 +7,15 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (event) => {
+  // Only take over same-origin requests. Calling respondWith() on a
+  // cross-origin request (e.g. the direct-to-R2 video PUT) routes it
+  // through this SW's own fetch() instead of the page's XHR, which
+  // silently breaks XHR upload-progress events on the page — leaving
+  // it stuck at a static percentage with no visible cause. Letting the
+  // browser handle cross-origin requests natively (no respondWith at
+  // all) keeps this SW installable-only, as intended, without that
+  // side effect.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(fetch(event.request));
 });
 
