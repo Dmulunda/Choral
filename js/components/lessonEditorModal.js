@@ -262,8 +262,16 @@ export function createLessonEditorModal({ supabase, onSaved }) {
 
     genBtn.disabled = false;
     if (error || data?.error) {
+      // supabase-js's error.message is always the same generic "non-2xx
+      // status code" text — the actual error this function returned is
+      // JSON in error.context (the raw Response), which has to be read
+      // separately or it's lost entirely.
+      let message = data?.error || error.message;
+      if (!data?.error && error?.context?.json) {
+        try { message = (await error.context.json())?.error || message; } catch { /* body wasn't JSON — keep the generic message */ }
+      }
       genStatusEl.className = 'text-sm text-rose-600';
-      genStatusEl.textContent = t('courses.generateFailed', { message: data?.error || error.message });
+      genStatusEl.textContent = t('courses.generateFailed', { message });
       return;
     }
 
