@@ -171,7 +171,10 @@ export function createLessonEditorModal({ supabase, onSaved }) {
           xhr.open('PUT', urlData.upload_url);
           xhr.setRequestHeader('Content-Type', urlData.content_type);
           xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) videoStatusEl.textContent = `${t('courses.uploading')} ${Math.round((e.loaded / e.total) * 100)}%`;
+            // Use file.size rather than e.total: e.lengthComputable can
+            // be false in some browser/proxy combinations even though
+            // the size is already known client-side.
+            videoStatusEl.textContent = `${t('courses.uploading')} ${Math.round((e.loaded / file.size) * 100)}%`;
           });
           xhr.addEventListener('load', () => {
             if (xhr.status >= 200 && xhr.status < 300) resolve();
