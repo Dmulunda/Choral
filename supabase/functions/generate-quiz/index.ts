@@ -95,6 +95,7 @@ Deno.serve(async (req) => {
 
     if (!anthropicRes.ok) {
       const errBody = await anthropicRes.text();
+      console.error(`Anthropic API error (HTTP ${anthropicRes.status}): ${errBody}`);
       return json({ error: `Quiz generation failed: ${errBody}` }, 502);
     }
 
@@ -117,6 +118,7 @@ Deno.serve(async (req) => {
 
     return json({ questions: parsed.questions });
   } catch (err) {
+    console.error('generate-quiz unexpected error:', err);
     return json({ error: err instanceof Error ? err.message : 'Unexpected error' }, 500);
   }
 });
