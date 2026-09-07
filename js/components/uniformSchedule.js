@@ -112,11 +112,14 @@ export function renderUniformSchedule(container, { supabase, departmentId, canAd
   async function load() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data, error } = await supabase
+    // Past entries are hidden once they're gone by, except for Super
+    // Admin, who still needs to find and correct an already-past one.
+    let listQuery = supabase
       .from('department_uniforms')
       .select('id, date, description, image_path')
-      .eq('department_id', departmentId)
-      .order('date', { ascending: true });
+      .eq('department_id', departmentId);
+    if (getGlobalRole() !== 'super_admin') listQuery = listQuery.gte('date', todayLocal());
+    const { data, error } = await listQuery.order('date', { ascending: true });
 
     if (error) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('uniform.loadFailed', { message: error.message })}</p>`;

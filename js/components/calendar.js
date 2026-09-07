@@ -31,8 +31,6 @@ const STATUS_STYLES = {
   undefined: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
 };
 
-const MAX_TEAMMATE_CHIPS = 4;
-
 export function renderAvailabilityCalendar(container, { supabase, userId, departmentId }) {
   let viewDate = new Date(); // any date within the currently viewed month
   viewDate.setDate(1);
@@ -199,26 +197,24 @@ export function renderAvailabilityCalendar(container, { supabase, userId, depart
       cell.appendChild(buildAddChip(dateStr));
     }
 
+    // Every teammate with a status set that day is shown — no cap —
+    // so nobody's availability is hidden from the rest of the team.
     const teammates = teammatesByDate.get(dateStr) || [];
-    for (const { full_name, status } of teammates.slice(0, MAX_TEAMMATE_CHIPS)) {
+    for (const { full_name, status } of teammates) {
       cell.appendChild(buildChip({ name: full_name, status, clickable: false }));
-    }
-    if (teammates.length > MAX_TEAMMATE_CHIPS) {
-      const moreEl = document.createElement('div');
-      moreEl.className = 'text-[11px] text-slate-400 px-1';
-      moreEl.textContent = t('calendar.moreCount', { count: teammates.length - MAX_TEAMMATE_CHIPS });
-      cell.appendChild(moreEl);
     }
 
     return cell;
   }
 
+  // Just the name, colored — the red/green background alone says
+  // available/unavailable, so no separate status line is needed
+  // (keeps each row compact enough to fit everyone in the cell).
   function buildChip({ name, status, clickable, onClick }) {
     const chip = document.createElement(clickable ? 'button' : 'div');
     if (clickable) chip.type = 'button';
-    const statusLabel = status === 'available' ? t('calendar.available') : t('calendar.unavailable');
-    chip.className = `text-left rounded px-1.5 py-1 leading-tight transition-colors ${STATUS_STYLES[status]} ${clickable ? 'cursor-pointer' : ''}`;
-    chip.innerHTML = `<div class="text-[11px] font-semibold truncate">${escapeHtml(name)}</div><div class="text-[10px] opacity-90">${escapeHtml(statusLabel)}</div>`;
+    chip.className = `text-left rounded px-1.5 py-0.5 text-[11px] font-semibold truncate transition-colors ${STATUS_STYLES[status]} ${clickable ? 'cursor-pointer' : ''}`;
+    chip.textContent = name;
     if (clickable) chip.addEventListener('click', onClick);
     return chip;
   }

@@ -270,10 +270,13 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
   async function load() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data, error } = await supabase
+    // Past entries are hidden once they're gone by, except for Super
+    // Admin, who still needs to find and correct an already-past one.
+    let query = supabase
       .from('preaching_schedule')
-      .select('id, date, moderator_id, preacher_id, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name ), working_department:departments!moderator_working_department_id ( key )')
-      .order('date', { ascending: true });
+      .select('id, date, moderator_id, preacher_id, preacher_name, guest_name, sermon_theme, bible_verse, moderator_status, moderator_reason, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name ), working_department:departments!moderator_working_department_id ( key )');
+    if (getGlobalRole() !== 'super_admin') query = query.gte('date', todayLocal());
+    const { data, error } = await query.order('date', { ascending: true });
 
     if (error) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('preaching.loadFailed', { message: error.message })}</p>`;

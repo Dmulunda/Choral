@@ -188,11 +188,16 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
   async function load() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data, error } = await supabase
+    // Past shifts are hidden once they're gone by (the same "upcoming"
+    // list otherwise only grows forever) — except for Super Admin, who
+    // still needs to find and correct an already-past one (see the
+    // dateMinAttr comment above).
+    let query = supabase
       .from('department_shifts')
       .select('id, date, title, notes, department_shift_assignments ( status, reason, assignee:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )')
-      .eq('department_id', departmentId)
-      .order('date', { ascending: true });
+      .eq('department_id', departmentId);
+    if (getGlobalRole() !== 'super_admin') query = query.gte('date', todayLocal());
+    const { data, error } = await query.order('date', { ascending: true });
 
     if (error) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('deptScheduling.loadFailed', { message: error.message })}</p>`;

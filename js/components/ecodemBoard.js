@@ -281,10 +281,13 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
   async function load() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data, error } = await supabase
+    // Past entries are hidden once they're gone by, except for Super
+    // Admin, who still needs to find and correct an already-past one.
+    let listQuery = supabase
       .from('ecodem_sessions')
-      .select('date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )')
-      .order('date', { ascending: true });
+      .select('date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )');
+    if (getGlobalRole() !== 'super_admin') listQuery = listQuery.gte('date', todayLocal());
+    const { data, error } = await listQuery.order('date', { ascending: true });
 
     if (error) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('ecodem.loadFailed', { message: error.message })}</p>`;
