@@ -7,6 +7,7 @@ import { renderServiceRequestAdmin } from './components/serviceRequestAdmin.js';
 import { renderServiceRequestSinger } from './components/serviceRequestSinger.js';
 import { renderReplacementRequests } from './components/replacementRequests.js';
 import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
+import { renderUpcomingChurchEvents } from './components/upcomingChurchEvents.js';
 import { t } from './i18n.js';
 
 export async function renderSchedulingTab() {
@@ -49,13 +50,15 @@ export async function renderSchedulingTab() {
 
   container.innerHTML = '';
   const deptSwitchEl = document.createElement('div');
+  const churchEventsEl = document.createElement('div');
   const requestsEl = document.createElement('div');
   const replacementEl = document.createElement('div');
   const plannerEl = document.createElement('div');
   plannerEl.className = 'bg-white rounded-xl shadow p-4 sm:p-6';
 
-  container.append(deptSwitchEl);
+  container.append(deptSwitchEl, churchEventsEl);
   renderDepartmentSwitchShortcut(deptSwitchEl, { activeKey: 'choir' });
+  renderUpcomingChurchEvents(churchEventsEl, { supabase });
 
   if (isChoirAdmin) {
     // An admin can also be scheduled as a singer for a service, so they
@@ -70,6 +73,6 @@ export async function renderSchedulingTab() {
     container.append(requestsEl, replacementEl, plannerEl);
     renderServiceRequestSinger(requestsEl, { supabase, userId });
     renderReplacementRequests(replacementEl, { supabase, userId, myVoiceParts: profile.voice_parts });
-    renderAvailabilityCalendar(plannerEl, { supabase, userId });
+    renderAvailabilityCalendar(plannerEl, { supabase, userId, departmentId: activeDept?.id });
   }
 }

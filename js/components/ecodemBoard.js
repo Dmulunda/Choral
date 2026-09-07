@@ -11,6 +11,7 @@ import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
+import { checkAndConfirmBatchAssignment } from '../utils/schedulingConflicts.js';
 
 const AGE_GROUPS = ['group_1', 'group_2', 'group_3'];
 
@@ -201,7 +202,16 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
         return;
       }
 
-      groupsToSave.push({ group, topic: topic || null, workers: [worker1, worker2] });
+      const worker1Label = container.querySelector(`[data-group-worker="${group}-1"]`).selectedOptions[0]?.textContent || worker1;
+      const worker2Label = container.querySelector(`[data-group-worker="${group}-2"]`).selectedOptions[0]?.textContent || worker2;
+      groupsToSave.push({ group, topic: topic || null, workers: [worker1, worker2], workerLabels: [worker1Label, worker2Label] });
+    }
+
+    const allWorkerAssignments = groupsToSave.flatMap(({ workers, workerLabels }) =>
+      workers.map((userId, i) => ({ userId, userLabel: workerLabels[i], date })));
+    if (allWorkerAssignments.length > 0) {
+      const proceed = await checkAndConfirmBatchAssignment({ supabase, departmentId, assignments: allWorkerAssignments });
+      if (!proceed) return;
     }
 
     formStatusEl.className = 'text-sm text-slate-500';

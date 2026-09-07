@@ -7,6 +7,7 @@ import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
+import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -22,6 +23,7 @@ export async function renderDashboardTab() {
   }
 
   const active = getActiveDepartment();
+  if (active) await ensureAgreementsSigned({ supabase, userId: user.id, departmentId: active.id });
 
   container.innerHTML = '';
 

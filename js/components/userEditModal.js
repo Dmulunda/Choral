@@ -7,10 +7,13 @@
 // the roster.
 import { getMyDepartments, getGlobalRole } from '../departments.js';
 import { confirmDialog } from './confirmDialog.js';
+import { renderMemberIdCard } from './memberIdCard.js';
+import { createSignaturePad } from './signaturePad.js';
 import { t, roleLabel } from '../i18n.js';
 
 const DEPARTMENT_ROLES = ['member', 'secretary', 'admin'];
 const ACCESS_LEVELS = ['super_admin', 'super_viewer', 'pastor_admin', 'church_secretary'];
+const MEMBER_TITLES = ['pastor_principal', 'department_head', 'member'];
 const CUSTOM_POWERS = [
   'can_view_all_departments',
   'can_manage_pastoral_cases',
@@ -44,6 +47,57 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('userEdit.phone')}</label>
             <input type="tel" name="phone" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('userEdit.address')}</label>
+            <input type="text" name="address" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('userEdit.photo')}</label>
+            <input type="file" accept="image/*" data-el="photo-input" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
+          </div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('memberCard.function')}</label>
+            <select name="member_title" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+              <option value="">—</option>
+              ${MEMBER_TITLES.map((k) => `<option value="${k}">${t(`memberCard.function.${k}`)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('memberCard.parish')}</label>
+            <input type="text" name="parish" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('memberCard.sex')}</label>
+            <select name="sex" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+              <option value="">—</option>
+              <option value="M">${t('memberCard.male')}</option>
+              <option value="F">${t('memberCard.female')}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthCountry')}</label>
+            <input type="text" name="birth_country" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthCity')}</label>
+            <input type="text" name="birth_city" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.signature')}</label>
+          <p class="text-xs text-slate-400 mb-1">${t('userEdit.signatureHint')}</p>
+          <canvas data-el="signature-pad" width="360" height="120" class="w-full border border-slate-300 rounded-lg bg-white touch-none" style="max-width:360px;height:120px;"></canvas>
+          <button type="button" data-action="clear-signature" class="mt-1 text-xs text-slate-500 hover:text-slate-700 underline">${t('myProfile.clearSignature')}</button>
+        </div>
+        <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+          <span data-el="revoke-status" class="text-sm font-medium"></span>
+          <button type="button" data-action="toggle-revoke" class="px-3 py-1.5 rounded-lg text-sm font-medium"></button>
         </div>
         <div data-el="access-level-wrap" class="hidden">
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('userEdit.accessLevel')}</label>
@@ -81,6 +135,11 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
         </div>
       </form>
 
+      <div class="pt-4 border-b border-slate-200 pb-4 mb-4">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">${t('userEdit.idCardTitle')}</h3>
+        <div data-el="id-card-container"></div>
+      </div>
+
       <div class="pt-4">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">${t('userEdit.departmentsTitle')}</h3>
         <div data-el="memberships" class="space-y-2 mb-3"></div>
@@ -106,12 +165,18 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
   const formStatusEl = root.querySelector('[data-el="form-status"]');
   const saveBtn = root.querySelector('[data-el="save-btn"]');
   const membershipsEl = root.querySelector('[data-el="memberships"]');
+  const idCardContainerEl = root.querySelector('[data-el="id-card-container"]');
   const addDeptSelectEl = root.querySelector('[data-el="add-dept-select"]');
   const addDeptRoleEl = root.querySelector('[data-el="add-dept-role"]');
+  const revokeStatusEl = root.querySelector('[data-el="revoke-status"]');
+  const toggleRevokeBtn = root.querySelector('[data-action="toggle-revoke"]');
+  const signaturePad = createSignaturePad(root.querySelector('[data-el="signature-pad"]'));
 
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
   root.querySelector('[data-action="add-dept"]').addEventListener('click', addDepartment);
+  root.querySelector('[data-action="clear-signature"]').addEventListener('click', () => signaturePad.clear());
+  toggleRevokeBtn.addEventListener('click', toggleRevoke);
   // Fills in the checkboxes only — still needs Save, same as manually
   // checking each box, so nothing changes until the admin reviews and
   // confirms it like any other edit here.
@@ -125,6 +190,7 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
   let targetUser = null;
   let allDepartments = [];
   let memberships = [];
+  let cardRevokedAt = null;
 
   // getGlobalRole() reads the real, unfiltered role directly — unlike
   // getMyDepartments(), it isn't affected by Standard User Mode or
@@ -255,6 +321,47 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     addDeptRoleEl.value = 'member';
   }
 
+  // Reinstating resets card_issued_at to today — a clean fresh 2-year
+  // clock, same as a physical card actually being reissued, rather
+  // than a revoked-then-reinstated card silently keeping its old
+  // (possibly already-expired) issue date.
+  async function toggleRevoke() {
+    const revoking = !cardRevokedAt;
+    const confirmed = await confirmDialog({
+      message: t(revoking ? 'userEdit.confirmRevoke' : 'userEdit.confirmReinstate', { name: targetUser.full_name }),
+      danger: revoking,
+    });
+    if (!confirmed) return;
+
+    const update = revoking
+      ? { card_revoked_at: new Date().toISOString() }
+      : { card_revoked_at: null, card_issued_at: new Date().toISOString().slice(0, 10) };
+
+    const { error } = await supabase.from('profiles').update(update).eq('id', targetUser.id);
+    if (error) {
+      window.alert(t('userEdit.saveFailed', { message: error.message }));
+      return;
+    }
+
+    cardRevokedAt = update.card_revoked_at;
+    renderRevokeUi();
+    renderMemberIdCard(idCardContainerEl, { supabase, userId: targetUser.id });
+  }
+
+  function renderRevokeUi() {
+    if (cardRevokedAt) {
+      revokeStatusEl.className = 'text-sm font-medium text-rose-600';
+      revokeStatusEl.textContent = t('userEdit.cardRevoked');
+      toggleRevokeBtn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700';
+      toggleRevokeBtn.textContent = t('userEdit.reinstateCard');
+    } else {
+      revokeStatusEl.className = 'text-sm font-medium text-emerald-600';
+      revokeStatusEl.textContent = t('userEdit.cardActive');
+      toggleRevokeBtn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-rose-600 text-white hover:bg-rose-700';
+      toggleRevokeBtn.textContent = t('userEdit.revokeCard');
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
 
@@ -268,10 +375,33 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     formStatusEl.className = 'text-sm text-slate-500';
     formStatusEl.textContent = t('userEdit.saving');
 
-    const update = { full_name: fullName, phone };
+    const update = {
+      full_name: fullName,
+      phone,
+      address: form.elements.address.value.trim() || null,
+      member_title: form.elements.member_title.value || null,
+      parish: form.elements.parish.value.trim() || null,
+      sex: form.elements.sex.value || null,
+      birth_country: form.elements.birth_country.value.trim() || null,
+      birth_city: form.elements.birth_city.value.trim() || null,
+      signature_data: signaturePad.isEmpty() ? null : signaturePad.toDataUrl(),
+    };
     if (globalRole !== undefined) update.global_role = globalRole;
     if (form.elements[CUSTOM_POWERS[0]]) {
       CUSTOM_POWERS.forEach((key) => { update[key] = form.elements[key].checked; });
+    }
+
+    const photoFile = form.elements['photo-input']?.files?.[0];
+    if (photoFile) {
+      const path = `${targetUser.id}/${Date.now()}-${photoFile.name}`;
+      const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, photoFile);
+      if (uploadError) {
+        saveBtn.disabled = false;
+        formStatusEl.className = 'text-sm text-rose-600';
+        formStatusEl.textContent = t('userEdit.saveFailed', { message: uploadError.message });
+        return;
+      }
+      update.photo_path = path;
     }
 
     const { error } = await supabase.from('profiles').update(update).eq('id', targetUser.id);
@@ -285,6 +415,8 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
 
     formStatusEl.className = 'text-sm text-emerald-600';
     formStatusEl.textContent = t('userEdit.saved');
+    form.querySelector('[data-el="photo-input"]').value = '';
+    renderMemberIdCard(idCardContainerEl, { supabase, userId: targetUser.id });
     onSaved?.();
   }
 
@@ -293,7 +425,18 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     titleEl.textContent = t('userEdit.title', { name: user.full_name });
     form.elements.full_name.value = user.full_name || '';
     form.elements.phone.value = user.phone || '';
+    form.elements.address.value = user.address || '';
+    form.elements.member_title.value = user.member_title || '';
+    form.elements.parish.value = user.parish || '';
+    form.elements.sex.value = user.sex || '';
+    form.elements.birth_country.value = user.birth_country || '';
+    form.elements.birth_city.value = user.birth_city || '';
+    signaturePad.clear();
+    signaturePad.loadFromDataUrl(user.signature_data);
+    cardRevokedAt = user.card_revoked_at || null;
+    renderRevokeUi();
     emailEl.value = user.profile_emails?.email || t('users.emailUnknown');
+    renderMemberIdCard(idCardContainerEl, { supabase, userId: user.id });
     if (form.elements.global_role) form.elements.global_role.value = user.global_role || '';
     const isSuperAdmin = getGlobalRole() === 'super_admin';
     accessLevelWrapEl.classList.toggle('hidden', !isSuperAdmin);

@@ -6,6 +6,7 @@
 // before video/PDF can be uploaded, since the storage path is keyed by
 // lesson id — see courseBuilder.js, which creates the lesson row first.
 import { t } from '../i18n.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../supabaseClient.js';
 
 const MC_COUNT = 7;
 const TF_COUNT = 3;
@@ -256,26 +257,94 @@ export function createLessonEditorModal({ supabase, onSaved }) {
 
     genBtn.disabled = true;
     genStatusEl.className = 'text-sm text-slate-500';
-    genStatusEl.textContent = t('courses.generating');
+    genStatusEl.textContent = `${t('courses.generating')} 0%`;
 
-    const { data, error } = await supabase.functions.invoke('generate-quiz', { body: { source_text: sourceText } });
-
-    genBtn.disabled = false;
-    if (error || data?.error) {
-      // supabase-js's error.message is always the same generic "non-2xx
-      // status code" text — the actual error this function returned is
-      // JSON in error.context (the raw Response), which has to be read
-      // separately or it's lost entirely.
-      let message = data?.error || error.message;
-      if (!data?.error && error?.context?.json) {
-        try { message = (await error.context.json())?.error || message; } catch { /* body wasn't JSON — keep the generic message */ }
-      }
+    function fail(message) {
+      genBtn.disabled = false;
       genStatusEl.className = 'text-sm text-rose-600';
       genStatusEl.textContent = t('courses.generateFailed', { message });
+    }
+
+    // A plain request/response has no way to show real progress for
+    // something that takes many seconds — so this reads the AI's
+    // response as it streams in (supabase.functions.invoke() can't
+    // expose a streaming body, hence the raw fetch), counting how many
+    // of the 10 questions have appeared so far to show real progress
+    // rather than a fake animated bar.
+    let response;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      response = await fetch(`${SUPABASE_URL}/functions/v1/generate-quiz`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source_text: sourceText }),
+      });
+    } catch (err) {
+      fail(err.message);
       return;
     }
 
-    fillGeneratedQuestions(container, data.questions);
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try { message = (await response.json())?.error || message; } catch { /* body wasn't JSON */ }
+      fail(message);
+      return;
+    }
+
+    let rawText = '';
+    let streamError = null;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // last line may be incomplete — carried into the next chunk
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          rawText += event.delta.text;
+          const questionCount = (rawText.match(/"question_text"/g) || []).length;
+          const percent = Math.min(100, Math.round((questionCount / (MC_COUNT + TF_COUNT)) * 100));
+          genStatusEl.textContent = `${t('courses.generating')} ${percent}%`;
+        } else if (event.type === 'error') {
+          streamError = event.error?.message || 'Unknown streaming error';
+        }
+      }
+    }
+
+    genBtn.disabled = false;
+    if (streamError) { fail(streamError); return; }
+
+    let parsed;
+    try {
+      // Strip an accidental ```json fence, and any preamble/trailing
+      // text outside the { }, in case the model adds either despite
+      // the "no markdown, no commentary" instruction.
+      let cleaned = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1) cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      parsed = JSON.parse(cleaned);
+    } catch {
+      fail('Could not parse the generated quiz. Try again.');
+      return;
+    }
+
+    if (!Array.isArray(parsed.questions) || parsed.questions.length !== MC_COUNT + TF_COUNT) {
+      fail('Generated quiz did not match the expected shape. Try again.');
+      return;
+    }
+
+    fillGeneratedQuestions(container, parsed.questions);
     genStatusEl.className = 'text-sm text-emerald-600';
     genStatusEl.textContent = t('courses.generateDone');
   }

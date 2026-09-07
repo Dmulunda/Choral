@@ -1,8 +1,10 @@
-// Rules & Regulations viewer/manager — one PDF for the whole church
-// (Super Admin managed) or one per department (that department's
-// admins managed). Uploading a replacement deletes the previous
-// file/row first rather than keeping version history, since there's
-// only ever meant to be one "current" document per scope.
+// Rules & Regulations viewer/manager — one CURRENT PDF for the whole
+// church (Super Admin managed) or one per department (that
+// department's admins managed). Uploading a replacement keeps the
+// previous version around (flagged is_current = false, sql/085)
+// rather than deleting it — a worker's signature (rules_signatures)
+// stays tied to the exact version they actually signed, so an old
+// version can't just vanish out from under it.
 // scope: { type: 'church', canAdminister } | { type: 'department', departmentId, departmentKey, canAdminister }
 import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
@@ -37,8 +39,8 @@ export function createRulesModal({ supabase, scope, currentUserId, title }) {
 
     let query = supabase
       .from('rules_documents')
-      .select('id, title, storage_path, file_name, uploaded_at, uploaded_by, uploader:profiles!uploaded_by ( full_name )')
-      .order('uploaded_at', { ascending: false })
+      .select('id, title, storage_path, file_name, uploaded_at, uploaded_by, version, uploader:profiles!uploaded_by ( full_name )')
+      .eq('is_current', true)
       .limit(1);
     query = scope.type === 'church' ? query.is('department_id', null) : query.eq('department_id', scope.departmentId);
 
@@ -129,9 +131,17 @@ export function createRulesModal({ supabase, scope, currentUserId, title }) {
     statusEl.className = 'text-sm text-slate-500 mb-2';
     statusEl.textContent = t('rules.uploading');
 
+    // The old version is kept (not deleted) — a signature already
+    // recorded against it (rules_signatures) must still be able to
+    // point at a real, viewable document.
     if (existingDoc) {
-      await supabase.storage.from('rules').remove([existingDoc.storage_path]);
-      await supabase.from('rules_documents').delete().eq('id', existingDoc.id);
+      const { error: markOldError } = await supabase.from('rules_documents').update({ is_current: false }).eq('id', existingDoc.id);
+      if (markOldError) {
+        button.disabled = false;
+        statusEl.className = 'text-sm text-rose-600 mb-2';
+        statusEl.textContent = t('rules.uploadFailed', { message: markOldError.message });
+        return;
+      }
     }
 
     const path = `${folderPath()}/${Date.now()}-${file.name}`;
@@ -149,6 +159,8 @@ export function createRulesModal({ supabase, scope, currentUserId, title }) {
       storage_path: path,
       file_name: file.name,
       uploaded_by: currentUserId,
+      version: (existingDoc?.version || 0) + 1,
+      is_current: true,
     });
 
     button.disabled = false;

@@ -11,6 +11,7 @@ import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
+import { checkAndConfirmBatchAssignment } from '../utils/schedulingConflicts.js';
 
 const ROLES = ['stream_operator', 'sound_operator', 'media_inventory', 'camera_operator', 'slides_operator', 'video_content_creator', 'photo_editor'];
 
@@ -234,7 +235,7 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
 
     const desired = ROLES.flatMap((role) => {
       const select = container.querySelector(`[data-role-select="${role}"]`);
-      return Array.from(select.selectedOptions).map((opt) => ({ role, user_id: opt.value }));
+      return Array.from(select.selectedOptions).map((opt) => ({ role, user_id: opt.value, user_label: opt.textContent }));
     });
     const desiredKeys = new Set(desired.map((d) => `${d.role}:${d.user_id}`));
 
@@ -254,7 +255,20 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
     // only rows that actually change need to move.
     const existingKeys = new Set((existing || []).map((r) => `${r.role}:${r.user_id}`));
     const toDeleteIds = (existing || []).filter((r) => !desiredKeys.has(`${r.role}:${r.user_id}`)).map((r) => r.id);
-    const toInsert = desired.filter((d) => !existingKeys.has(`${d.role}:${d.user_id}`)).map((d) => ({ ...d, date, created_by: user.id }));
+    const toInsertDesired = desired.filter((d) => !existingKeys.has(`${d.role}:${d.user_id}`));
+    const toInsert = toInsertDesired.map((d) => ({ role: d.role, user_id: d.user_id, date, created_by: user.id }));
+
+    if (toInsertDesired.length > 0) {
+      const proceed = await checkAndConfirmBatchAssignment({
+        supabase,
+        departmentId,
+        assignments: toInsertDesired.map((d) => ({ userId: d.user_id, userLabel: d.user_label, date })),
+      });
+      if (!proceed) {
+        formStatusEl.textContent = '';
+        return;
+      }
+    }
 
     if (toDeleteIds.length > 0) {
       const { error: deleteError } = await supabase.from('media_tech_assignments').delete().in('id', toDeleteIds);

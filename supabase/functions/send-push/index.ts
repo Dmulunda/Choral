@@ -13,6 +13,14 @@
 //   the client sends, so this can't be used to push arbitrary text to
 //   an arbitrary department the way the announcement path could.
 //
+//   Admin-triggered: { kind: 'disciplinary_letter', letter_id } — only
+//   a Pastor Admin/Super Admin can trigger this, and only for a letter
+//   that actually exists and is already 'sent' (sql/087's trigger has
+//   already created the in-app notification by the time this runs —
+//   this only adds the Web Push half, since a DB trigger can't call an
+//   edge function directly). Title/body are derived server-side, never
+//   client-supplied.
+//
 // Both paths re-derive the recipient list and re-check permission
 // server-side — never trust a client-supplied user list — same
 // pattern as every other sensitive action in this app.
@@ -126,6 +134,31 @@ Deno.serve(async (req) => {
         totalFailed += failed;
       }
       return json({ sent: totalSent, failed: totalFailed });
+    }
+
+    if (requestBody.kind === 'disciplinary_letter') {
+      const letterId = requestBody.letter_id;
+      if (!letterId) return json({ error: 'letter_id is required' }, 400);
+
+      const { data: callerProfile } = await admin
+        .from('profiles')
+        .select('global_role')
+        .eq('id', caller.id)
+        .single();
+      const isPastorOrSuperAdmin = callerProfile?.global_role === 'pastor_admin' || callerProfile?.global_role === 'super_admin';
+      if (!isPastorOrSuperAdmin) return json({ error: 'Only a Pastor Admin can send this notification' }, 403);
+
+      const { data: letter } = await admin
+        .from('disciplinary_letters')
+        .select('member_id, type, status')
+        .eq('id', letterId)
+        .single();
+      if (!letter || letter.status !== 'sent') return json({ error: 'Letter not found or not sent' }, 404);
+
+      const title = 'You have a new letter';
+      const body = `You've been sent a ${letter.type} letter. Please review and sign it in the app.`;
+      const { sent, failed } = await sendToUsers(admin, [letter.member_id], title, body);
+      return json({ sent, failed });
     }
 
     const { department_id, global: isGlobal, title, body } = requestBody;

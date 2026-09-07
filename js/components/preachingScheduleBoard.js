@@ -17,6 +17,7 @@ import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
+import { checkAndConfirmAssignment } from '../utils/schedulingConflicts.js';
 
 export function renderPreachingSchedule(container, { supabase, departmentId, canAdminister, userId }) {
   // Super Admin keeps the ability to correct an already-past entry;
@@ -224,6 +225,14 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     // whoever is scheduled now. A brand new entry is always "changed"
     // (nothing to carry over from).
     const moderatorChanged = !editingRow || (editingRow.moderator_id || null) !== newModeratorId;
+
+    if (moderatorChanged && newModeratorId) {
+      const moderatorLabel = moderatorSelect.selectedOptions[0]?.textContent || newModeratorId;
+      const proceed = await checkAndConfirmAssignment({
+        supabase, userId: newModeratorId, userLabel: moderatorLabel, date, departmentId,
+      });
+      if (!proceed) { formStatusEl.textContent = ''; return; }
+    }
 
     const payload = {
       date,

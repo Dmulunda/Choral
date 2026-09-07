@@ -4,6 +4,7 @@
 // that pool, and let the admin override any slot before saving.
 import { t, tn, voicePartLabel } from '../i18n.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
+import { checkAndConfirmBatchAssignment } from '../utils/schedulingConflicts.js';
 
 const VOICE_PARTS = ['Leader', 'Soprano', 'Alto', 'Tenor', 'Pianist', 'Bassist', 'Guitarist', 'Drummer'];
 
@@ -286,17 +287,32 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
         planId = newPlan.id;
       }
 
-      const { error: deleteError } = await supabase
-        .from('service_plan_singers')
-        .delete()
-        .eq('service_plan_id', planId);
-      if (deleteError) throw deleteError;
-
       const rows = roster.flatMap((part) =>
         part.slots
           .filter(Boolean)
           .map((singerId) => ({ service_plan_id: planId, singer_id: singerId, voice_part: part.voice_part }))
       );
+
+      const { data: choirDept } = await supabase.from('departments').select('id').eq('key', 'choir').single();
+
+      // Checked (and cancellable) before anything is deleted — otherwise
+      // cancelling here would leave the plan with the old roster wiped
+      // out and nothing saved in its place.
+      if (rows.length > 0 && choirDept) {
+        const singersById = new Map(availableSingers.map((s) => [s.id, s.full_name]));
+        const proceed = await checkAndConfirmBatchAssignment({
+          supabase,
+          departmentId: choirDept.id,
+          assignments: rows.map((r) => ({ userId: r.singer_id, userLabel: singersById.get(r.singer_id) || r.singer_id, date: dateStr })),
+        });
+        if (!proceed) { statusEl.textContent = ''; return; }
+      }
+
+      const { error: deleteError } = await supabase
+        .from('service_plan_singers')
+        .delete()
+        .eq('service_plan_id', planId);
+      if (deleteError) throw deleteError;
 
       if (rows.length > 0) {
         const { error: insertRowsError } = await supabase.from('service_plan_singers').insert(rows);
@@ -304,9 +320,8 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
       }
 
       statusEl.textContent = tn('planner.rosterSaved', rows.length, { date: dateStr });
-      if (rows.length > 0) {
-        const { data: choirDept } = await supabase.from('departments').select('id').eq('key', 'choir').single();
-        if (choirDept) notifyDepartment(supabase, choirDept.id, t('notifications.newSchedule'), t('notifications.newScheduleBodyDate', { date: dateStr }));
+      if (rows.length > 0 && choirDept) {
+        notifyDepartment(supabase, choirDept.id, t('notifications.newSchedule'), t('notifications.newScheduleBodyDate', { date: dateStr }));
       }
     } catch (error) {
       statusEl.textContent = t('planner.saveFailed', { message: error.message });

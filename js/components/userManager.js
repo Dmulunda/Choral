@@ -104,7 +104,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     if (scope.type === 'department') {
       const { data, error } = await supabase
         .from('department_memberships')
-        .select('id, role, status, user_id, member:profiles!user_id ( id, full_name, phone, voice_parts, media_tech_skills, profile_emails ( email ) )')
+        .select('id, role, status, user_id, member:profiles!user_id ( id, full_name, phone, address, photo_path, member_title, parish, sex, birth_country, birth_city, card_revoked_at, signature_data, voice_parts, media_tech_skills, profile_emails ( email ) )')
         .eq('department_id', scope.departmentId)
         .eq('status', 'approved');
 
@@ -120,6 +120,15 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
           id: r.member.id,
           full_name: r.member.full_name,
           phone: r.member.phone,
+          address: r.member.address,
+          photo_path: r.member.photo_path,
+          member_title: r.member.member_title,
+          parish: r.member.parish,
+          sex: r.member.sex,
+          birth_country: r.member.birth_country,
+          birth_city: r.member.birth_city,
+          card_revoked_at: r.member.card_revoked_at,
+          signature_data: r.member.signature_data,
           email: r.member.profile_emails?.email,
           voice_parts: r.member.voice_parts,
           media_tech_skills: r.member.media_tech_skills,
@@ -129,7 +138,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, can_view_all_departments, can_manage_pastoral_cases, can_post_global_announcements, can_message_any_member, can_approve_any_membership, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, address, photo_path, member_title, parish, sex, birth_country, birth_city, card_revoked_at, signature_data, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, can_view_all_departments, can_manage_pastoral_cases, can_post_global_announcements, can_message_any_member, can_approve_any_membership, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 
@@ -152,6 +161,15 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         id: p.id,
         full_name: p.full_name,
         phone: p.phone,
+        address: p.address,
+        photo_path: p.photo_path,
+        member_title: p.member_title,
+        parish: p.parish,
+        sex: p.sex,
+        birth_country: p.birth_country,
+        birth_city: p.birth_city,
+        card_revoked_at: p.card_revoked_at,
+        signature_data: p.signature_data,
         email: p.profile_emails?.email,
         globalRole: p.global_role,
         removedAt: p.removed_at,
@@ -237,6 +255,15 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         id: row.id,
         full_name: row.full_name,
         phone: row.phone,
+        address: row.address,
+        photo_path: row.photo_path,
+        member_title: row.member_title,
+        parish: row.parish,
+        sex: row.sex,
+        birth_country: row.birth_country,
+        birth_city: row.birth_city,
+        card_revoked_at: row.card_revoked_at,
+        signature_data: row.signature_data,
         profile_emails: { email: row.email },
         global_role: row.globalRole,
         can_view_all_departments: row.can_view_all_departments,

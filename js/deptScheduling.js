@@ -13,6 +13,7 @@ import { renderMediaTechBoard } from './components/mediaTechBoard.js';
 import { renderEcodemBoard } from './components/ecodemBoard.js';
 import { renderAvailabilityCalendar } from './components/calendar.js';
 import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
+import { renderUpcomingChurchEvents } from './components/upcomingChurchEvents.js';
 import { t } from './i18n.js';
 
 const BESPOKE_BOARDS = {
@@ -35,6 +36,7 @@ export async function renderDeptSchedulingTab() {
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
   container.innerHTML = `
     <div data-el="dept-switch"></div>
+    <div data-el="church-events"></div>
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">${t('calendar.myAvailability')}</h2>
       <div data-el="availability"></div>
@@ -43,12 +45,15 @@ export async function renderDeptSchedulingTab() {
   `;
 
   renderDepartmentSwitchShortcut(container.querySelector('[data-el="dept-switch"]'), { activeKey: active.key });
+  renderUpcomingChurchEvents(container.querySelector('[data-el="church-events"]'), { supabase });
 
   if (userId) {
     // availability is a personal, department-agnostic calendar (same
     // table Choir's has always used) — one place to mark yourself
-    // unavailable that every department's admin can plan around.
-    renderAvailabilityCalendar(container.querySelector('[data-el="availability"]'), { supabase, userId });
+    // unavailable that every department's admin can plan around. The
+    // active department is passed through so the calendar can also
+    // show teammates' status (sql/080).
+    renderAvailabilityCalendar(container.querySelector('[data-el="availability"]'), { supabase, userId, departmentId: active.id });
   }
 
   const renderBoard = BESPOKE_BOARDS[active.key] || renderShiftBoard;

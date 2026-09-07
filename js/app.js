@@ -29,6 +29,8 @@ import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { createPastorMeetingRequestModal } from './components/pastorMeetingRequests.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { createChangePasswordModal } from './components/changePasswordModal.js';
+import { createMyProfileModal } from './components/myProfileModal.js';
+import { createMyLettersModal, createDisciplinaryLettersAdminModal } from './components/disciplinaryLetters.js';
 import { createNotificationSettingsModal } from './components/notificationSettingsModal.js';
 import { checkSpecialProgramPopup } from './components/specialProgramPopup.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t, loadLabelOverrides } from './i18n.js';
@@ -448,6 +450,11 @@ function updateSidebarToolsSelect() {
 
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
   if (!isViewingAs()) options.push({ value: 'change-password', label: t('sidebar.changePassword') });
+  if (!isViewingAs()) options.push({ value: 'my-profile', label: t('sidebar.myProfile') });
+  if (!isViewingAs()) options.push({ value: 'my-letters', label: t('sidebar.myLetters') });
+  if (getGlobalRole() === 'pastor_admin' || getGlobalRole() === 'super_admin') {
+    options.push({ value: 'disciplinary-letters', label: t('sidebar.disciplinaryLetters') });
+  }
   if (!isViewingAs()) options.push({ value: 'notifications', label: t('sidebar.notifications') });
   options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
@@ -491,6 +498,12 @@ function runSidebarTool(value) {
 
   if (value === 'change-password') {
     createChangePasswordModal({ supabase: effectiveSupabase }).open();
+  } else if (value === 'my-profile') {
+    createMyProfileModal({ supabase: effectiveSupabase, userId: currentUserId }).open();
+  } else if (value === 'my-letters') {
+    createMyLettersModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'disciplinary-letters') {
+    createDisciplinaryLettersAdminModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'notifications') {
     createNotificationSettingsModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'church-rules') {

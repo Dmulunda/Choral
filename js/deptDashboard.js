@@ -15,6 +15,7 @@ import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
 import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderHeadcountBoard } from './components/headcountBoard.js';
+import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
 import { t, departmentLabel } from './i18n.js';
@@ -39,6 +40,8 @@ export async function renderDeptDashboardTab() {
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
   const { data: { user } } = await supabase.auth.getUser();
+  await ensureAgreementsSigned({ supabase, userId: user.id, departmentId: active.id });
+
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
   // Broader than canAdminister — a department secretary manages
   // day-to-day things (prayer requests, headcounts) without needing

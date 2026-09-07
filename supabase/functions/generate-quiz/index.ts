@@ -3,6 +3,12 @@
 // source text, via the Claude API. Must run server-side: the
 // Anthropic API key is a secret that can never ship to the browser.
 //
+// Streams Anthropic's response straight through to the browser
+// (rather than buffering the whole thing and returning JSON at the
+// end) so lessonEditorModal.js can show real generation progress —
+// this function does no parsing/validation of the output itself
+// anymore, that all happens client-side once the stream ends.
+//
 // Deploy: Supabase Dashboard -> Edge Functions -> deploy this file as
 // "generate-quiz" (or `supabase functions deploy generate-quiz`).
 // Needs two secrets set manually — Dashboard -> Edge Functions ->
@@ -87,9 +93,10 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: source_text.slice(0, 20000) }],
+        stream: true,
       }),
     });
 
@@ -99,24 +106,13 @@ Deno.serve(async (req) => {
       return json({ error: `Quiz generation failed: ${errBody}` }, 502);
     }
 
-    const anthropicData = await anthropicRes.json();
-    const rawText = anthropicData.content?.[0]?.text ?? '';
-
-    let parsed;
-    try {
-      // Strip an accidental ```json fence in case the model adds one
-      // despite the "no markdown" instruction.
-      const cleaned = rawText.trim().replace(/^```json\s*/i, '').replace(/```$/, '');
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return json({ error: 'Could not parse the generated quiz. Try again.' }, 502);
-    }
-
-    if (!Array.isArray(parsed.questions) || parsed.questions.length !== MC_COUNT + TF_COUNT) {
-      return json({ error: 'Generated quiz did not match the expected shape. Try again.' }, 502);
-    }
-
-    return json({ questions: parsed.questions });
+    // anthropicRes.ok only confirms the stream started, not that
+    // Anthropic won't send an error event partway through — the
+    // client is responsible for handling that once it's reading the
+    // stream (see lessonEditorModal.js).
+    return new Response(anthropicRes.body, {
+      headers: { ...CORS_HEADERS, 'Content-Type': 'text/event-stream' },
+    });
   } catch (err) {
     console.error('generate-quiz unexpected error:', err);
     return json({ error: err instanceof Error ? err.message : 'Unexpected error' }, 500);

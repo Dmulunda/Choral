@@ -11,6 +11,7 @@ import { renderAssigneeBadge } from './assignmentStatusBadge.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
+import { checkAndConfirmBatchAssignment } from '../utils/schedulingConflicts.js';
 
 export function renderShiftBoard(container, { supabase, departmentId, canAdminister, userId }) {
   // Super Admin keeps the ability to correct an already-past shift; every
@@ -140,6 +141,16 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
     const memberIds = Array.from(membersSelect.selectedOptions).map((opt) => opt.value);
 
     if (!date || !title) return;
+
+    if (memberIds.length > 0) {
+      const membersById = new Map(allMembers.map((m) => [m.user_id, m.member.full_name]));
+      const proceed = await checkAndConfirmBatchAssignment({
+        supabase,
+        departmentId,
+        assignments: memberIds.map((id) => ({ userId: id, userLabel: membersById.get(id) || id, date })),
+      });
+      if (!proceed) return;
+    }
 
     formStatusEl.className = 'text-sm text-slate-500';
     formStatusEl.textContent = t('common.saving');

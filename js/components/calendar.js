@@ -1,5 +1,8 @@
-// Singer availability calendar.
-// Renders a monthly grid; clicking a day cycles it through
+// Availability calendar — personal (mark your own days) merged with a
+// read-only view of the rest of the active department's status, so
+// there's one calendar to check instead of two: "let team members see
+// at a glance who is off and who is available." Renders a monthly
+// grid; clicking a day cycles YOUR OWN status through
 // unset -> available -> unavailable -> unset. Changes are staged
 // locally and written to Supabase in a single batch on "Save" —
 // except marking a day unavailable, which needs a reason: that
@@ -9,6 +12,12 @@
 // skipped. Confirming reloads the month once Report Absence succeeds,
 // picking up the real status from the server rather than guessing it
 // locally.
+//
+// Teammates' status comes from the same `availability` table (sql/080
+// widened its read policy so any approved member of a shared
+// department can see it) — only the plain available/unavailable flag,
+// never an absence's reason, which stays exactly as private as it
+// already was.
 import { formatDateLocal } from '../utils/date.js';
 import { t, tn, monthName } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
@@ -22,13 +31,16 @@ const STATUS_STYLES = {
   undefined: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
 };
 
-export function renderAvailabilityCalendar(container, { supabase, userId }) {
+const MAX_TEAMMATE_CHIPS = 4;
+
+export function renderAvailabilityCalendar(container, { supabase, userId, departmentId }) {
   let viewDate = new Date(); // any date within the currently viewed month
   viewDate.setDate(1);
 
   let savedStatus = new Map(); // dateStr -> status, as last loaded from Supabase
   let localStatus = new Map(); // dateStr -> status, including unsaved edits
   let dirty = new Set(); // dateStrs changed since last load/save
+  let teammatesByDate = new Map(); // dateStr -> [{ full_name, status }, ...], excludes the current user
 
   container.innerHTML = `
     <div class="flex items-center justify-between mb-4">
@@ -39,7 +51,7 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
               class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">${t('calendar.next')}</button>
     </div>
 
-    <div class="flex items-center gap-4 text-sm text-slate-500 mb-3">
+    <div class="flex items-center gap-4 text-sm text-slate-500 mb-3 flex-wrap">
       <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span> ${t('calendar.available')}</span>
       <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-rose-500 inline-block"></span> ${t('calendar.unavailable')}</span>
       <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-slate-100 border border-slate-300 inline-block"></span> ${t('calendar.notSet')}</span>
@@ -84,13 +96,18 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
 
     const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
     const lastDay = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    const fromDate = formatDateLocal(firstDay);
+    const toDate = formatDateLocal(lastDay);
 
-    const { data, error } = await supabase
-      .from('availability')
-      .select('date, status')
-      .eq('user_id', userId)
-      .gte('date', formatDateLocal(firstDay))
-      .lte('date', formatDateLocal(lastDay));
+    const [{ data, error }, teammateRows] = await Promise.all([
+      supabase
+        .from('availability')
+        .select('date, status')
+        .eq('user_id', userId)
+        .gte('date', fromDate)
+        .lte('date', toDate),
+      loadTeammates(fromDate, toDate),
+    ]);
 
     if (error) {
       statusEl.textContent = t('calendar.failedToLoad', { message: error.message });
@@ -99,12 +116,47 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
 
     savedStatus = new Map(data.map((row) => [row.date, row.status]));
     localStatus = new Map(savedStatus);
+    teammatesByDate = teammateRows;
     statusEl.textContent = '';
-    renderGrid(firstDay, lastDay);
+    renderGrid();
   }
 
-  function renderGrid(firstDay, lastDay) {
+  // Skipped entirely when there's no department context (departmentId
+  // not passed) — the calendar still works as a plain personal one.
+  async function loadTeammates(fromDate, toDate) {
+    const byDate = new Map();
+    if (!departmentId) return byDate;
+
+    const { data: members } = await supabase
+      .from('department_memberships')
+      .select('user_id, member:profiles!user_id ( full_name )')
+      .eq('department_id', departmentId)
+      .eq('status', 'approved')
+      .neq('user_id', userId);
+    const namesById = new Map((members || []).filter((m) => m.member).map((m) => [m.user_id, m.member.full_name]));
+    if (namesById.size === 0) return byDate;
+
+    const { data: rows } = await supabase
+      .from('availability')
+      .select('user_id, date, status')
+      .in('user_id', Array.from(namesById.keys()))
+      .gte('date', fromDate)
+      .lte('date', toDate);
+
+    for (const row of rows || []) {
+      const fullName = namesById.get(row.user_id);
+      if (!fullName) continue;
+      if (!byDate.has(row.date)) byDate.set(row.date, []);
+      byDate.get(row.date).push({ full_name: fullName, status: row.status });
+    }
+    return byDate;
+  }
+
+  function renderGrid() {
     grid.innerHTML = '';
+
+    const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const lastDay = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
 
     // Leading blanks so day 1 lands in the correct weekday column.
     for (let i = 0; i < firstDay.getDay(); i++) {
@@ -116,25 +168,74 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const cellDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
       const dateStr = formatDateLocal(cellDate);
-      const isPast = dateStr < todayStr;
-
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.dataset.date = dateStr;
-      cell.textContent = String(day);
-      if (isPast) {
-        cell.disabled = true;
-        cell.className = 'h-12 rounded-lg font-medium bg-slate-50 text-slate-300 cursor-not-allowed';
-      } else {
-        cell.className = `h-12 rounded-lg font-medium transition-colors ${STATUS_STYLES[localStatus.get(dateStr)]}`;
-        cell.addEventListener('click', () => toggleDate(dateStr, cell));
-      }
-
-      grid.appendChild(cell);
+      grid.appendChild(buildDayCell(dateStr, day, dateStr < todayStr));
     }
   }
 
-  function toggleDate(dateStr, cell) {
+  // A whole-cell "everyone's status, named" view rather than a single
+  // clickable square — matches the shared-calendar layout requested:
+  // one colored row per person who has a status set that day, name and
+  // status both visible at a glance, not just a color. Your own row
+  // stays the clickable one (same unset -> available -> unavailable ->
+  // unset cycle as before); teammates' rows are read-only.
+  function buildDayCell(dateStr, day, isPast) {
+    const cell = document.createElement('div');
+    cell.className = 'border border-slate-200 rounded-lg p-1 flex flex-col gap-1 min-h-[3.25rem]';
+
+    const dayNumEl = document.createElement('div');
+    dayNumEl.className = `text-xs font-semibold px-0.5 ${isPast ? 'text-slate-300' : 'text-slate-500'}`;
+    dayNumEl.textContent = String(day);
+    cell.appendChild(dayNumEl);
+
+    const selfStatus = localStatus.get(dateStr);
+    if (selfStatus) {
+      cell.appendChild(buildChip({
+        name: t('calendar.you'),
+        status: selfStatus,
+        clickable: !isPast,
+        onClick: () => toggleDate(dateStr),
+      }));
+    } else if (!isPast) {
+      cell.appendChild(buildAddChip(dateStr));
+    }
+
+    const teammates = teammatesByDate.get(dateStr) || [];
+    for (const { full_name, status } of teammates.slice(0, MAX_TEAMMATE_CHIPS)) {
+      cell.appendChild(buildChip({ name: full_name, status, clickable: false }));
+    }
+    if (teammates.length > MAX_TEAMMATE_CHIPS) {
+      const moreEl = document.createElement('div');
+      moreEl.className = 'text-[11px] text-slate-400 px-1';
+      moreEl.textContent = t('calendar.moreCount', { count: teammates.length - MAX_TEAMMATE_CHIPS });
+      cell.appendChild(moreEl);
+    }
+
+    return cell;
+  }
+
+  function buildChip({ name, status, clickable, onClick }) {
+    const chip = document.createElement(clickable ? 'button' : 'div');
+    if (clickable) chip.type = 'button';
+    const statusLabel = status === 'available' ? t('calendar.available') : t('calendar.unavailable');
+    chip.className = `text-left rounded px-1.5 py-1 leading-tight transition-colors ${STATUS_STYLES[status]} ${clickable ? 'cursor-pointer' : ''}`;
+    chip.innerHTML = `<div class="text-[11px] font-semibold truncate">${escapeHtml(name)}</div><div class="text-[10px] opacity-90">${escapeHtml(statusLabel)}</div>`;
+    if (clickable) chip.addEventListener('click', onClick);
+    return chip;
+  }
+
+  // A faint, dashed placeholder shown only for today/future days you
+  // haven't set a status for yet — keeps the click-to-set interaction
+  // discoverable now that there's no longer one big clickable square.
+  function buildAddChip(dateStr) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'text-left rounded px-1.5 py-1 text-[11px] leading-tight border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50 hover:text-slate-500 transition-colors';
+    chip.textContent = t('calendar.setYours');
+    chip.addEventListener('click', () => toggleDate(dateStr));
+    return chip;
+  }
+
+  function toggleDate(dateStr) {
     const current = localStatus.get(dateStr);
     const nextIndex = (STATUS_CYCLE.indexOf(current) + 1) % STATUS_CYCLE.length;
     const next = STATUS_CYCLE[nextIndex];
@@ -158,7 +259,7 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
       dirty.add(dateStr);
     }
 
-    cell.className = `h-12 rounded-lg font-medium transition-colors ${STATUS_STYLES[localStatus.get(dateStr)]}`;
+    renderGrid();
     statusEl.textContent = dirty.size > 0 ? tn('calendar.unsavedChanges', dirty.size) : '';
   }
 
@@ -209,4 +310,10 @@ export function renderAvailabilityCalendar(container, { supabase, userId }) {
     statusEl.textContent = t('calendar.saved');
     saveBtn.disabled = false;
   }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }

@@ -20,6 +20,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="VPD Church" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Member ID Card (js/components/memberIdCard.js) export support —
+       html2canvas/jsPDF to save it as an actual PNG/PDF file rather
+       than only a browser print-to-PDF. The QR code itself is loaded
+       as an ES module import directly in memberIdCard.js instead (the
+       `qrcode` package ships no browser <script> bundle, only a
+       bundler-ready one — same jsdelivr "+esm" convention already used
+       for @supabase/supabase-js in js/supabaseClient.js). -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
     @keyframes login-splash-logo-in {
       0% { opacity: 0; transform: scale(0.55); }
