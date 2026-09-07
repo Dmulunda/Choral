@@ -1,18 +1,28 @@
 // Super-Admin-only, one-time "Import Bible Data" tool (sql/074) —
 // populates bible_verses with the World English Bible (English) and
 // Louis Segond 1910 (French), both public domain, from
-// api.getbible.net, via the import-bible edge function. Runs in
-// 10-book chunks per call (7 chunks per translation) so no single
-// request has to move the whole ~31,000-verse Bible at once, and so
-// progress is visible — this is a slow, one-time action, not
-// something an admin needs to repeat.
+// api.getbible.net, via the import-bible edge function. Runs in book
+// chunks per call so no single request has to move the whole
+// ~31,000-verse Bible at once, and so progress is visible — this is a
+// slow, one-time action, not something an admin needs to repeat.
+//
+// Chunk size was originally 10 books, which silently produced
+// incomplete imports: books vary enormously in size (Obadiah is 21
+// verses; Psalms alone is ~2,461), so a fixed book-count chunk can
+// still be verse-heavy depending on which books land in it — chunk
+// 11-20 pulled in Job AND Psalms together (~3,500 verses on top of six
+// other books), likely running past the edge function's execution
+// limit mid-upsert and leaving some of Psalms' chapters missing
+// without ever surfacing as a visible error. Shrunk to 3 books per
+// chunk so no single call is anywhere near that heavy, regardless of
+// which specific books happen to group together.
 import { t } from '../i18n.js';
 
 const TRANSLATIONS = [
   { value: 'web', label: 'World English Bible (English)' },
   { value: 'lsg', label: 'Louis Segond 1910 (Français)' },
 ];
-const CHUNK_SIZE = 10;
+const CHUNK_SIZE = 3;
 const LAST_BOOK = 66;
 
 export function createBibleImportModal({ supabase }) {

@@ -47,12 +47,13 @@ const TRANSLATIONS = {
 
     'sidebar.signedInAs': 'Signed in as',
     'sidebar.guest': 'Guest',
+    'sidebar.account': 'Account',
     'sidebar.signOut': 'Sign out',
     'sidebar.language': 'Language',
     'sidebar.theme': 'Theme',
     'sidebar.themeLight': 'Light',
     'sidebar.themeDark': 'Dark',
-    'sidebar.more': 'Other',
+    'sidebar.more': 'Tools',
     'sidebar.department': 'Department',
     'sidebar.viewAs': 'View As…',
 
@@ -1395,12 +1396,13 @@ const TRANSLATIONS = {
 
     'sidebar.signedInAs': 'Connecté en tant que',
     'sidebar.guest': 'Invité',
+    'sidebar.account': 'Compte',
     'sidebar.signOut': 'Déconnexion',
     'sidebar.language': 'Langue',
     'sidebar.theme': 'Thème',
     'sidebar.themeLight': 'Clair',
     'sidebar.themeDark': 'Sombre',
-    'sidebar.more': 'Autre',
+    'sidebar.more': 'Outils',
     'sidebar.department': 'Département',
     'sidebar.viewAs': 'Voir en tant que…',
 

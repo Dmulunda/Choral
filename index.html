@@ -181,23 +181,157 @@
           </svg>
         </button>
 
-        <button type="button" id="inbox-btn" class="hidden relative p-2 rounded-lg hover:bg-slate-800">
+        <!-- Messages (internal inbox — direct messages/announcements),
+             a proper envelope icon so it's visually distinct from the
+             bell (Notifications, push permission) beside it. -->
+        <button type="button" id="inbox-btn" data-i18n-aria-label="inbox.title" aria-label="Messages" class="hidden relative p-2 rounded-lg hover:bg-slate-800">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
           <span id="inbox-badge" class="hidden absolute top-0.5 right-0.5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold leading-none"></span>
         </button>
+
+        <!-- Notifications (push permission on/off) — was a text option
+             buried in the Tools dropdown; now its own icon beside
+             Messages, on every screen size. -->
+        <button type="button" id="notifications-btn" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="p-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        </button>
       </div>
     </header>
+
+    <!-- Desktop-only top navigation (md and up) — mobile keeps the
+         existing off-canvas sidebar drawer untouched above; this is a
+         separate, parallel set of controls for wider screens, in 3
+         groups: Sections (Home / Department / VPD Academy), the active
+         department's own tabs, and Tools. Visibility/content is kept
+         in sync with the sidebar via shared data-nav-group attributes
+         (see app.js's forEachNavGroup helper) rather than duplicating
+         logic per element. -->
+    <div id="desktop-topnav" class="hidden md:flex items-center justify-center gap-4 bg-slate-900 text-slate-300 px-6 py-2 border-b border-slate-800 overflow-x-auto">
+
+      <!-- Group 1: Sections -->
+      <div class="flex items-center gap-2 shrink-0">
+        <div data-nav-group="global" class="hidden">
+          <button data-tab-target="super-home" data-i18n="nav.home"
+                  class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">
+            Home
+          </button>
+        </div>
+        <div id="department-switcher-wrap-desktop" class="hidden ml-[5cm]">
+          <select id="department-switcher-desktop" data-i18n-aria-label="sidebar.department" aria-label="Department"
+                  class="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2 py-1.5"></select>
+        </div>
+        <button data-tab-target="training" data-i18n="nav.training"
+                class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">
+          VPD Academy
+        </button>
+      </div>
+
+      <div class="w-px self-stretch bg-slate-800 shrink-0"></div>
+
+      <!-- Group 2: the active department's own tabs -->
+      <div class="flex items-center gap-1 shrink min-w-0 overflow-x-auto">
+        <div data-nav-group="choir" class="hidden">
+          <div class="flex items-center gap-1">
+            <button data-tab-target="dashboard" data-i18n="nav.dashboard" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Dashboard</button>
+            <button data-tab-target="scheduling" data-i18n="nav.scheduling" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Scheduling</button>
+            <button data-tab-target="songbook" data-i18n="nav.songbook" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Songbook</button>
+            <button data-tab-target="voice-exercises" data-i18n="nav.voiceExercises" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Voice Exercises</button>
+            <button data-tab-target="uniform" data-i18n="nav.uniform" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Uniform</button>
+            <button data-tab-target="members" data-i18n="nav.members" data-nav-group="members-nav" class="hidden px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Members</button>
+          </div>
+        </div>
+        <div data-nav-group="lightweight" class="hidden">
+          <div class="flex items-center gap-1">
+            <button data-tab-target="dept-dashboard" data-i18n="nav.dashboard" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Dashboard</button>
+            <button data-tab-target="dept-scheduling" data-i18n="nav.scheduling" data-nav-group="dept-scheduling-nav" class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Scheduling</button>
+            <button data-tab-target="uniform" data-i18n="nav.uniform" data-nav-group="uniform-nav" class="hidden px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Uniform</button>
+            <button data-tab-target="dept-projection" data-i18n="nav.projection" data-nav-group="dept-projection-nav" class="hidden px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors hover:bg-slate-800">Projection</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="w-px self-stretch bg-slate-800 shrink-0"></div>
+
+      <!-- Group 3: Tools -->
+      <div class="flex items-center gap-2 shrink-0">
+        <select id="sidebar-tools-select-desktop" data-i18n-aria-label="sidebar.more" aria-label="Tools"
+                class="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2 py-1.5">
+          <option value=""></option>
+        </select>
+        <div data-nav-group="preview-as-member-wrap" class="hidden">
+          <button type="button" id="preview-as-member-btn-desktop" data-i18n="sidebar.previewAsMember"
+                  class="px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap text-amber-400 transition-colors hover:bg-slate-800">
+            Preview as Member
+          </button>
+        </div>
+
+        <!-- Account menu trigger — a circular initials avatar. Opens
+             #account-menu-dialog below (a real centered dialog, same
+             pattern as every other modal in this app, not a small
+             anchored dropdown — easier to read clearly). -->
+        <button type="button" id="account-menu-btn"
+                class="ml-[5cm] w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold flex items-center justify-center transition-colors">
+          <span data-nav-group="current-user-initials">?</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Account dialog (desktop only, opened by #account-menu-btn) —
+         Profile/Change Password/View As/Role mode/Sign out, all in one
+         clear, centered box instead of scattered across the bar. -->
+    <div id="account-menu-dialog" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-xl font-bold text-slate-800" data-i18n="sidebar.account">Account</h2>
+          <button type="button" data-action="close-account-menu" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
+        <p class="text-sm text-slate-500 mb-4 truncate">
+          <span data-i18n="sidebar.signedInAs">Signed in as</span> <span data-nav-group="current-user-name" class="font-medium text-slate-700">Guest</span>
+        </p>
+
+        <div class="space-y-1">
+          <button type="button" data-account-action="my-profile" data-i18n="sidebar.myProfile"
+                  class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100">My Profile</button>
+          <button type="button" data-account-action="change-password" data-i18n="sidebar.changePassword"
+                  class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100">Change Password</button>
+          <div data-nav-group="view-as-wrap" class="hidden">
+            <button type="button" data-account-action="view-as" data-i18n="sidebar.viewAs"
+                    class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-amber-600 hover:bg-amber-50">View As…</button>
+          </div>
+        </div>
+
+        <div data-nav-group="role-switcher-wrap" class="hidden border-t border-slate-200 mt-3 pt-3">
+          <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="sidebar.roleSwitcher">Mode</label>
+          <div class="flex bg-slate-100 rounded-lg p-1">
+            <button type="button" data-nav-group="role-switcher-admin-btn"
+                    class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors" data-i18n="sidebar.superAdminMode">
+              Super Admin
+            </button>
+            <button type="button" data-nav-group="role-switcher-standard-btn"
+                    class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors" data-i18n="sidebar.standardUserMode">
+              Standard User
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="sign-out-btn-desktop" data-i18n="sidebar.signOut"
+                class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-rose-600 hover:bg-rose-50 border-t border-slate-200 mt-3 pt-3">Sign out</button>
+      </div>
+    </div>
 
     <div class="flex flex-1 flex-col md:flex-row min-h-0">
 
     <!-- Backdrop (mobile only, shown while the drawer is open) -->
     <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/50 z-30 md:hidden"></div>
 
-    <!-- Sidebar -->
+    <!-- Sidebar — mobile only now (the off-canvas drawer, unchanged);
+         desktop navigation lives in #desktop-topnav below instead. -->
     <aside id="sidebar"
-           class="fixed md:static inset-y-0 left-0 z-40 w-64 shrink-0 bg-slate-900 text-slate-300 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
+           class="fixed md:hidden inset-y-0 left-0 z-40 w-64 shrink-0 bg-slate-900 text-slate-300 flex flex-col transform -translate-x-full transition-transform duration-200 ease-in-out">
       <div class="px-6 py-5 flex items-center justify-between border-b border-slate-800">
         <span class="text-xl font-semibold text-white" data-i18n="app.brand">VPD Church Organisation</span>
         <button type="button" id="menu-close-btn" data-i18n-aria-label="menu.close" aria-label="Close menu" class="md:hidden p-1 text-slate-400 hover:text-white">
@@ -210,14 +344,14 @@
       <!-- Global-role holders only: switch between the full cross-
            department Super Admin experience and previewing their own
            literal (usually much narrower) department memberships. -->
-      <div id="role-switcher-wrap" class="hidden px-6 py-3 border-b border-slate-800">
+      <div id="role-switcher-wrap" data-nav-group="role-switcher-wrap" class="hidden px-6 py-3 border-b border-slate-800">
         <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="sidebar.roleSwitcher">Mode</label>
         <div class="flex bg-slate-800 rounded-lg p-1">
-          <button type="button" id="role-switcher-admin-btn"
+          <button type="button" id="role-switcher-admin-btn" data-nav-group="role-switcher-admin-btn"
                   class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.superAdminMode">
             Super Admin
           </button>
-          <button type="button" id="role-switcher-standard-btn"
+          <button type="button" id="role-switcher-standard-btn" data-nav-group="role-switcher-standard-btn"
                   class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.standardUserMode">
             Standard User
           </button>
@@ -234,7 +368,7 @@
         <!-- Always-available for Super Admin/Super Viewer/Pastor Admin/
              Church Secretary, independent of whichever department is
              active — a cross-department view, not a per-department one. -->
-        <div id="global-nav-group" class="hidden space-y-1 mb-2 pb-2 border-b border-slate-800">
+        <div id="global-nav-group" data-nav-group="global" class="hidden space-y-1 mb-2 pb-2 border-b border-slate-800">
           <button data-tab-target="super-home" data-i18n="nav.home"
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Home
@@ -253,7 +387,7 @@
         <!-- Choir-specific tabs — shown only while the Choir department is active.
              Other departments get their own nav in a later phase; for now they
              just show a placeholder in the main content area. -->
-        <div id="choir-nav-group" class="space-y-1">
+        <div id="choir-nav-group" data-nav-group="choir" class="space-y-1">
           <button data-tab-target="dashboard" data-i18n="nav.dashboard"
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Dashboard
@@ -274,7 +408,7 @@
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Uniform
           </button>
-          <button data-tab-target="members" data-i18n="nav.members" id="members-nav-btn"
+          <button data-tab-target="members" data-i18n="nav.members" id="members-nav-btn" data-nav-group="members-nav"
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Members
           </button>
@@ -286,18 +420,18 @@
              (Preaching, Media & Tech, Ecodem) depending on which
              department is active. Finance hides just the Scheduling
              button (see applyActiveDepartment() in app.js). -->
-        <div id="lightweight-nav-group" class="hidden space-y-1">
+        <div id="lightweight-nav-group" data-nav-group="lightweight" class="hidden space-y-1">
           <button data-tab-target="dept-dashboard" data-i18n="nav.dashboard"
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Dashboard
           </button>
-          <button data-tab-target="dept-scheduling" data-i18n="nav.scheduling" id="dept-scheduling-nav-btn"
+          <button data-tab-target="dept-scheduling" data-i18n="nav.scheduling" id="dept-scheduling-nav-btn" data-nav-group="dept-scheduling-nav"
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Scheduling
           </button>
           <!-- Only Ushers gets this one, alongside Choir — see
                applyActiveDepartment() in app.js. -->
-          <button data-tab-target="uniform" data-i18n="nav.uniform" id="uniform-nav-btn"
+          <button data-tab-target="uniform" data-i18n="nav.uniform" id="uniform-nav-btn" data-nav-group="uniform-nav"
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Uniform
           </button>
@@ -305,7 +439,7 @@
                being buried inside Dashboard, since it's what that
                department actually lives in during a service. See
                applyActiveDepartment() in app.js. -->
-          <button data-tab-target="dept-projection" data-i18n="nav.projection" id="dept-projection-nav-btn"
+          <button data-tab-target="dept-projection" data-i18n="nav.projection" id="dept-projection-nav-btn" data-nav-group="dept-projection-nav"
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Projection
           </button>
@@ -328,7 +462,7 @@
         </select>
       </div>
 
-      <div id="view-as-wrap" class="hidden px-6 py-3 border-t border-slate-800">
+      <div id="view-as-wrap" data-nav-group="view-as-wrap" class="hidden px-6 py-3 border-t border-slate-800">
         <button type="button" id="view-as-btn" data-i18n="sidebar.viewAs"
                 class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">
           View As…
@@ -338,7 +472,7 @@
       <!-- A literal (non-global) department admin's lighter counterpart
            to View-As — no picker, just previews their own active
            department as a plain member would see it. -->
-      <div id="preview-as-member-wrap" class="hidden px-6 py-3 border-t border-slate-800">
+      <div id="preview-as-member-wrap" data-nav-group="preview-as-member-wrap" class="hidden px-6 py-3 border-t border-slate-800">
         <button type="button" id="preview-as-member-btn" data-i18n="sidebar.previewAsMember"
                 class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">
           Preview as Member
@@ -346,7 +480,7 @@
       </div>
 
       <div class="px-6 py-4 border-t border-slate-800 text-sm text-slate-500 flex items-center justify-between gap-2">
-        <span class="truncate"><span data-i18n="sidebar.signedInAs">Signed in as</span> <span id="current-user-name">Guest</span></span>
+        <span class="truncate"><span data-i18n="sidebar.signedInAs">Signed in as</span> <span id="current-user-name" data-nav-group="current-user-name">Guest</span></span>
         <button type="button" id="sign-out-btn" data-i18n="sidebar.signOut" class="text-slate-400 hover:text-white shrink-0">Sign out</button>
       </div>
     </aside>

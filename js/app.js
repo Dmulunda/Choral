@@ -48,35 +48,31 @@ registerServiceWorker();
 
 const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
-const membersNavBtn = document.querySelector('#members-nav-btn');
-const choirNavGroupEl = document.querySelector('#choir-nav-group');
-const lightweightNavGroupEl = document.querySelector('#lightweight-nav-group');
 const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wrap');
 const departmentSwitcherEl = document.querySelector('#department-switcher');
+const departmentSwitcherWrapDesktopEl = document.querySelector('#department-switcher-wrap-desktop');
+const departmentSwitcherDesktopEl = document.querySelector('#department-switcher-desktop');
 const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-name"]');
 const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
-const deptSchedulingNavBtn = document.querySelector('#dept-scheduling-nav-btn');
-const uniformNavBtn = document.querySelector('#uniform-nav-btn');
-const deptProjectionNavBtn = document.querySelector('#dept-projection-nav-btn');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
 const comingSoonDeptNameEl = comingSoonPanelEl.querySelector('[data-el="dept-name"]');
 const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-approvals');
 const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
-const globalNavGroupEl = document.querySelector('#global-nav-group');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
 const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
-const viewAsWrapEl = document.querySelector('#view-as-wrap');
+const sidebarToolsSelectDesktop = document.querySelector('#sidebar-tools-select-desktop');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
 const viewAsBannerTextEl = viewAsBannerEl.querySelector('[data-el="text"]');
 const viewAsExitBtn = document.querySelector('#view-as-exit-btn');
-const previewAsMemberWrapEl = document.querySelector('#preview-as-member-wrap');
 const previewAsMemberBtn = document.querySelector('#preview-as-member-btn');
-const roleSwitcherWrapEl = document.querySelector('#role-switcher-wrap');
-const roleSwitcherAdminBtn = document.querySelector('#role-switcher-admin-btn');
-const roleSwitcherStandardBtn = document.querySelector('#role-switcher-standard-btn');
+const previewAsMemberBtnDesktop = document.querySelector('#preview-as-member-btn-desktop');
+const signOutBtnDesktop = document.querySelector('#sign-out-btn-desktop');
+const accountMenuBtn = document.querySelector('#account-menu-btn');
+const accountMenuDialog = document.querySelector('#account-menu-dialog');
+const notificationsBtn = document.querySelector('#notifications-btn');
 const loginSplashEl = document.querySelector('#login-splash');
 
 // Tabs whose content is fetched from Supabase on first visit rather than
@@ -151,6 +147,15 @@ function resolveLandingTab(previousTabName, active, isChoir) {
   return target;
 }
 
+// Keeps the desktop top nav (index.html's #desktop-topnav, shown only
+// at the md breakpoint) in sync with the mobile sidebar without
+// duplicating every visibility/state rule — a sidebar element and its
+// desktop counterpart share the same data-nav-group value, so one call
+// updates both instead of needing a second line at every call site.
+function forEachNavGroup(name, fn) {
+  document.querySelectorAll(`[data-nav-group="${name}"]`).forEach(fn);
+}
+
 // ---- Department switcher ----
 // Only Choir has real screens today — other departments show a
 // placeholder until their own phase ships. The switcher itself only
@@ -168,6 +173,15 @@ function populateDepartmentSwitcher() {
 
   const active = getActiveDepartment();
   departmentSwitcherEl.value = active ? active.key : (isHomeActive() ? HOME_KEY : '');
+
+  // Desktop's version has no Home option — Home is its own separate
+  // button there (data-nav-group="global"), so its own "anything to
+  // show" condition doesn't need showHomeOption folded in.
+  departmentSwitcherWrapDesktopEl.classList.toggle('hidden', departments.length === 0);
+  departmentSwitcherDesktopEl.innerHTML = departments
+    .map((d) => `<option value="${d.key}">${departmentLabel(d.key)}</option>`)
+    .join('');
+  departmentSwitcherDesktopEl.value = active ? active.key : '';
 }
 
 function applyActiveDepartment() {
@@ -189,15 +203,15 @@ function applyActiveDepartment() {
   // hasGlobalReach() (not the active department's role) drives this,
   // since active is intentionally null while on the Home console —
   // Home itself lives inside this same nav group.
-  globalNavGroupEl.classList.toggle('hidden', !hasGlobalReach());
+  forEachNavGroup('global', (el) => el.classList.toggle('hidden', !hasGlobalReach()));
   updateSidebarToolsSelect();
 
   if (!active) {
     if (isHomeActive()) {
       noAccessPanelEl.classList.add('hidden');
-      choirNavGroupEl.classList.add('hidden');
-      lightweightNavGroupEl.classList.add('hidden');
-      membersNavBtn.classList.add('hidden');
+      forEachNavGroup('choir', (el) => el.classList.add('hidden'));
+      forEachNavGroup('lightweight', (el) => el.classList.add('hidden'));
+      forEachNavGroup('members-nav', (el) => el.classList.add('hidden'));
       comingSoonPanelEl.classList.add('hidden');
       loadedTabs.delete('super-home');
       activateTab('super-home');
@@ -205,8 +219,8 @@ function applyActiveDepartment() {
     }
 
     noAccessPanelEl.classList.remove('hidden');
-    choirNavGroupEl.classList.add('hidden');
-    lightweightNavGroupEl.classList.add('hidden');
+    forEachNavGroup('choir', (el) => el.classList.add('hidden'));
+    forEachNavGroup('lightweight', (el) => el.classList.add('hidden'));
     panels.forEach((panel) => panel.classList.add('hidden'));
     comingSoonPanelEl.classList.add('hidden');
     return;
@@ -224,15 +238,15 @@ function applyActiveDepartment() {
   // concept to schedule), which explicitly hide just that one tab below.
   const isDeptDashboardKind = active.kind === 'lightweight' || active.kind === 'custom';
   const hasNoScheduling = active.key === 'finance' || active.key === 'church_program';
-  choirNavGroupEl.classList.toggle('hidden', !isChoir);
-  lightweightNavGroupEl.classList.toggle('hidden', !isDeptDashboardKind);
-  membersNavBtn.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin'));
-  deptSchedulingNavBtn.classList.toggle('hidden', isDeptDashboardKind && hasNoScheduling);
+  forEachNavGroup('choir', (el) => el.classList.toggle('hidden', !isChoir));
+  forEachNavGroup('lightweight', (el) => el.classList.toggle('hidden', !isDeptDashboardKind));
+  forEachNavGroup('members-nav', (el) => el.classList.toggle('hidden', !isChoir || !(active.role === 'admin' || active.role === 'super_admin')));
+  forEachNavGroup('dept-scheduling-nav', (el) => el.classList.toggle('hidden', isDeptDashboardKind && hasNoScheduling));
   // Uniform: Choir always has its own button in choir-nav-group: this
   // one (in the shared lightweight nav) is only for Ushers.
-  uniformNavBtn.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers'));
+  forEachNavGroup('uniform-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers')));
   // Projection: its own page, Media & Tech only.
-  deptProjectionNavBtn.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech'));
+  forEachNavGroup('dept-projection-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
@@ -271,33 +285,46 @@ function applyActiveDepartment() {
   }
 }
 
-departmentSwitcherEl.addEventListener('change', async () => {
+// Shared by both the mobile sidebar select and the desktop one —
+// `selectEl` is whichever one the person actually touched, so a
+// cancelled switch (confirmLeaveIfProjecting) reverts just that one;
+// populateDepartmentSwitcher() at the end re-syncs both to the real
+// active department either way.
+async function handleDepartmentSwitcherChange(selectEl) {
   const active = getActiveDepartment();
   const previousKey = active ? active.key : (isHomeActive() ? HOME_KEY : '');
-  const nextKey = departmentSwitcherEl.value;
+  const nextKey = selectEl.value;
 
   if (nextKey !== previousKey && !(await confirmLeaveIfProjecting())) {
-    departmentSwitcherEl.value = previousKey;
+    selectEl.value = previousKey;
     return;
   }
 
   setActiveDepartmentKey(nextKey);
   applyActiveDepartment();
+  populateDepartmentSwitcher();
   updatePreviewAsMemberUI();
   closeSidebar();
-});
+}
+
+departmentSwitcherEl.addEventListener('change', () => handleDepartmentSwitcherChange(departmentSwitcherEl));
+departmentSwitcherDesktopEl.addEventListener('change', () => handleDepartmentSwitcherChange(departmentSwitcherDesktopEl));
 
 // ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
 function updateRoleSwitcherUI() {
-  roleSwitcherWrapEl.classList.toggle('hidden', !getGlobalRole() || isViewingAs());
+  forEachNavGroup('role-switcher-wrap', (el) => el.classList.toggle('hidden', !getGlobalRole() || isViewingAs()));
 
   const standard = isActingAsStandardUser();
-  roleSwitcherAdminBtn.classList.toggle('bg-indigo-600', !standard);
-  roleSwitcherAdminBtn.classList.toggle('text-white', !standard);
-  roleSwitcherAdminBtn.classList.toggle('text-slate-400', standard);
-  roleSwitcherStandardBtn.classList.toggle('bg-indigo-600', standard);
-  roleSwitcherStandardBtn.classList.toggle('text-white', standard);
-  roleSwitcherStandardBtn.classList.toggle('text-slate-400', !standard);
+  forEachNavGroup('role-switcher-admin-btn', (el) => {
+    el.classList.toggle('bg-indigo-600', !standard);
+    el.classList.toggle('text-white', !standard);
+    el.classList.toggle('text-slate-400', standard);
+  });
+  forEachNavGroup('role-switcher-standard-btn', (el) => {
+    el.classList.toggle('bg-indigo-600', standard);
+    el.classList.toggle('text-white', standard);
+    el.classList.toggle('text-slate-400', !standard);
+  });
 }
 
 function refreshAfterRoleModeChange() {
@@ -312,15 +339,15 @@ function refreshAfterRoleModeChange() {
   closeSidebar();
 }
 
-roleSwitcherAdminBtn.addEventListener('click', () => {
+forEachNavGroup('role-switcher-admin-btn', (el) => el.addEventListener('click', () => {
   setActingAsStandardUser(false);
   refreshAfterRoleModeChange();
-});
+}));
 
-roleSwitcherStandardBtn.addEventListener('click', () => {
+forEachNavGroup('role-switcher-standard-btn', (el) => el.addEventListener('click', () => {
   setActingAsStandardUser(true);
   refreshAfterRoleModeChange();
-});
+}));
 
 // ---- Shared banner for View-As / Preview-as-Member ----
 // The two are mutually exclusive in practice — View-As is Super-Admin-
@@ -351,7 +378,7 @@ function updateIdentityBanner() {
 // active, or Standard User Mode has stepped out of Super Admin reach.
 function updateViewAsUI() {
   const canViewAs = getGlobalRole() === 'super_admin' && !isActingAsStandardUser();
-  viewAsWrapEl.classList.toggle('hidden', !canViewAs || isViewingAs());
+  forEachNavGroup('view-as-wrap', (el) => el.classList.toggle('hidden', !canViewAs || isViewingAs()));
   updateIdentityBanner();
 }
 
@@ -369,7 +396,7 @@ function refreshAfterViewAsChange() {
   closeSidebar();
 }
 
-viewAsBtn.addEventListener('click', () => {
+function openViewAsPicker() {
   const modal = createViewAsPickerModal({
     supabase,
     currentUserId,
@@ -379,7 +406,9 @@ viewAsBtn.addEventListener('click', () => {
     },
   });
   modal.open();
-});
+}
+
+viewAsBtn.addEventListener('click', openViewAsPicker);
 
 viewAsExitBtn.addEventListener('click', () => {
   if (isViewingAs()) stopViewAs();
@@ -394,14 +423,49 @@ viewAsExitBtn.addEventListener('click', () => {
 function updatePreviewAsMemberUI() {
   const active = getActiveDepartment();
   const canPreview = !isPreviewingAsMember() && !isViewingAs() && active?.role === 'admin';
-  previewAsMemberWrapEl.classList.toggle('hidden', !canPreview);
+  forEachNavGroup('preview-as-member-wrap', (el) => el.classList.toggle('hidden', !canPreview));
   updateIdentityBanner();
 }
 
-previewAsMemberBtn.addEventListener('click', () => {
+function activatePreviewAsMember() {
   startPreviewAsMember();
   refreshAfterViewAsChange();
+}
+
+previewAsMemberBtn.addEventListener('click', activatePreviewAsMember);
+previewAsMemberBtnDesktop.addEventListener('click', activatePreviewAsMember);
+
+// ---- Desktop account menu (avatar) ----
+// Profile/Change Password/View As/Role mode/Sign out, all in one clear
+// centered dialog (same pattern as every other modal in this app, not
+// a small anchored dropdown) — reuses runSidebarTool()/
+// openViewAsPicker() rather than duplicating what those already do;
+// Role Switcher's rows are wired for free by the existing
+// forEachNavGroup('role-switcher-admin-btn'/'-standard-btn', ...) calls
+// elsewhere, since they share those same data-nav-group values.
+function openAccountMenu() {
+  accountMenuDialog.classList.remove('hidden');
+  accountMenuDialog.classList.add('flex');
+}
+
+function closeAccountMenu() {
+  accountMenuDialog.classList.add('hidden');
+  accountMenuDialog.classList.remove('flex');
+}
+
+accountMenuBtn.addEventListener('click', openAccountMenu);
+accountMenuDialog.querySelector('[data-action="close-account-menu"]').addEventListener('click', closeAccountMenu);
+accountMenuDialog.addEventListener('click', (e) => { if (e.target === accountMenuDialog) closeAccountMenu(); });
+
+accountMenuDialog.addEventListener('click', (e) => {
+  const actionBtn = e.target.closest('[data-account-action]');
+  if (actionBtn?.dataset.accountAction === 'my-profile') runSidebarTool('my-profile');
+  else if (actionBtn?.dataset.accountAction === 'change-password') runSidebarTool('change-password');
+  else if (actionBtn?.dataset.accountAction === 'view-as') openViewAsPicker();
+  if (actionBtn) closeAccountMenu();
 });
+
+notificationsBtn.addEventListener('click', () => runSidebarTool('notifications'));
 
 // ---- Report Absence / Inbox ----
 // Available to anyone with at least one department, independent of
@@ -419,6 +483,10 @@ const SUGGESTION_GLOBAL_ROLES = ['super_admin', 'pastor_admin', 'church_secretar
 function updateMemberActionsUI() {
   const hasAccess = getMyDepartments().length > 0;
   inboxBtn.classList.toggle('hidden', !hasAccess);
+  // Unlike Messages, Notifications never needed department access — it
+  // only ever depended on not being mid-View-As (matches the option's
+  // old condition in updateSidebarToolsSelect()).
+  notificationsBtn.classList.toggle('hidden', isViewingAs());
 }
 
 // ---- Sidebar tools dropdown ----
@@ -455,7 +523,6 @@ function updateSidebarToolsSelect() {
   if (getGlobalRole() === 'pastor_admin' || getGlobalRole() === 'super_admin') {
     options.push({ value: 'disciplinary-letters', label: t('sidebar.disciplinaryLetters') });
   }
-  if (!isViewingAs()) options.push({ value: 'notifications', label: t('sidebar.notifications') });
   options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
   options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
@@ -476,8 +543,13 @@ function updateSidebarToolsSelect() {
     }
   }
 
-  sidebarToolsSelect.innerHTML = `<option value="">${t('sidebar.more')}</option>`
-    + options.map((o) => `<option value="${o.value}">${escapeHtmlText(o.label)}</option>`).join('');
+  const buildOptionsHtml = (opts) => `<option value="">${t('sidebar.more')}</option>`
+    + opts.map((o) => `<option value="${o.value}">${escapeHtmlText(o.label)}</option>`).join('');
+  sidebarToolsSelect.innerHTML = buildOptionsHtml(options);
+  // My Profile/Change Password live in the desktop account menu
+  // (avatar dropdown) instead — no need for them here too.
+  const desktopOptions = options.filter((o) => o.value !== 'my-profile' && o.value !== 'change-password');
+  sidebarToolsSelectDesktop.innerHTML = buildOptionsHtml(desktopOptions);
 }
 
 function escapeHtmlText(str) {
@@ -486,11 +558,22 @@ function escapeHtmlText(str) {
   return div.innerHTML;
 }
 
-sidebarToolsSelect.addEventListener('change', () => {
-  const value = sidebarToolsSelect.value;
-  sidebarToolsSelect.value = '';
+// First letter of up to the first two words — "Jane Doe" -> "JD",
+// "Jane" -> "J", an email address (no space) -> its first letter.
+function getInitials(name) {
+  if (!name) return '?';
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('');
+  return initials.toUpperCase() || '?';
+}
+
+function handleToolsSelectChange(selectEl) {
+  const value = selectEl.value;
+  selectEl.value = '';
   if (value) runSidebarTool(value);
-});
+}
+
+sidebarToolsSelect.addEventListener('change', () => handleToolsSelectChange(sidebarToolsSelect));
+sidebarToolsSelectDesktop.addEventListener('change', () => handleToolsSelectChange(sidebarToolsSelectDesktop));
 
 function runSidebarTool(value) {
   const active = getActiveDepartment();
@@ -672,7 +755,6 @@ sidebarBackdrop.addEventListener('click', closeSidebar);
 const authScreenEl = document.querySelector('#auth-screen');
 const appShellEl = document.querySelector('#app-shell');
 const passwordRecoveryEl = document.querySelector('#password-recovery-screen');
-const currentUserNameEl = document.querySelector('#current-user-name');
 const signOutBtn = document.querySelector('#sign-out-btn');
 
 renderAuthScreen(authScreenEl, { supabase });
@@ -793,7 +875,9 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
     return;
   }
 
-  currentUserNameEl.textContent = profile?.full_name || session.user.email;
+  const displayName = profile?.full_name || session.user.email;
+  forEachNavGroup('current-user-name', (el) => { el.textContent = displayName; });
+  forEachNavGroup('current-user-initials', (el) => { el.textContent = getInitials(displayName); });
 
   // Loaded before anything that renders a nav/department label, so
   // renames from menuCustomizer.js are in effect on first paint, not
@@ -861,15 +945,17 @@ function showAuth() {
   passwordRecoveryEl.classList.add('hidden');
   appShellEl.classList.add('hidden');
   authScreenEl.classList.remove('hidden');
-  membersNavBtn.classList.add('hidden');
+  forEachNavGroup('members-nav', (el) => el.classList.add('hidden'));
   departmentSwitcherWrapEl.classList.add('hidden');
-  viewAsWrapEl.classList.add('hidden');
+  departmentSwitcherWrapDesktopEl.classList.add('hidden');
+  forEachNavGroup('view-as-wrap', (el) => el.classList.add('hidden'));
   viewAsBannerEl.classList.add('hidden');
-  previewAsMemberWrapEl.classList.add('hidden');
-  roleSwitcherWrapEl.classList.add('hidden');
+  forEachNavGroup('preview-as-member-wrap', (el) => el.classList.add('hidden'));
+  forEachNavGroup('role-switcher-wrap', (el) => el.classList.add('hidden'));
   inboxBtn.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
   sidebarToolsSelect.innerHTML = '<option value=""></option>';
+  sidebarToolsSelectDesktop.innerHTML = '<option value=""></option>';
   setAppBadgeCount(0);
 }
 
@@ -897,3 +983,4 @@ supabase.auth.onAuthStateChange((event, session) => {
 });
 
 signOutBtn.addEventListener('click', () => supabase.auth.signOut());
+signOutBtnDesktop.addEventListener('click', () => supabase.auth.signOut());
