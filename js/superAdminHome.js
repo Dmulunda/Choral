@@ -18,6 +18,7 @@ import { createMessageModerationModal } from './components/messageModeration.js'
 import { createLoginActivityModal } from './components/loginActivity.js';
 import { createDepartmentModal } from './components/createDepartmentModal.js';
 import { createBibleImportModal } from './components/bibleImportTool.js';
+import { createPeopleImportModal } from './components/peopleImportModal.js';
 import { createPastorMeetingQueueModal } from './components/pastorMeetingRequests.js';
 import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderDateHeader } from './components/dateHeader.js';
@@ -34,8 +35,18 @@ let currentMessageModerationModal = null;
 let currentLoginActivityModal = null;
 let currentCreateDepartmentModal = null;
 let currentBibleImportModal = null;
+let currentPeopleImportModal = null;
 let currentPastorMeetingQueueModal = null;
 let currentPrayerRequestQueueModal = null;
+
+// Lets the header's global "New member" button reach the Guest
+// Onboarding Hub without duplicating it — the modal only exists once
+// this tab has rendered at least once (pastoral-team roles only), so
+// this renders it first if needed instead of assuming it's already there.
+export async function openGuestOnboardingHub() {
+  if (!currentGuestHubModal) await renderSuperAdminHomeTab();
+  currentGuestHubModal?.open();
+}
 
 export async function renderSuperAdminHomeTab() {
   const supabase = getEffectiveSupabase();
@@ -48,55 +59,56 @@ export async function renderSuperAdminHomeTab() {
     return;
   }
 
+  const navItemClass = 'text-left px-3 py-2 rounded-lg hover:bg-white/10 whitespace-nowrap';
+  const navGroupLabelClass = 'px-3 pb-1 text-[11px] uppercase tracking-wide text-white/40 whitespace-nowrap';
+  const isPastoralTeam = PASTORAL_TEAM_ROLES.includes(getGlobalRole());
+  const canSeeMeetings = ['super_admin', 'church_secretary'].includes(getGlobalRole());
+  const isSuperAdmin = getGlobalRole() === 'super_admin';
+
   container.innerHTML = `
     <div data-el="date-header"></div>
-    <div data-el="metrics"></div>
 
-    <div id="super-home-pending" class="bg-white rounded-xl shadow p-4 sm:p-6 mt-6">
-      <h2 class="text-lg font-semibold mb-4">${t('superHome.pendingTitle')}</h2>
-      <div data-el="pending"></div>
-    </div>
+    <div class="flex flex-col md:flex-row gap-4 mt-4">
+      <nav class="w-full md:w-56 shrink-0 bg-black text-white rounded-xl p-3 flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible">
+        <div class="px-3 py-2 rounded-lg bg-white/10 font-medium whitespace-nowrap">${t('superHome.navHome')}</div>
+        <button type="button" data-action="open-directory" class="${navItemClass}">${t('directory.title')}</button>
+        ${isPastoralTeam ? `<button type="button" data-action="open-member-cases" class="${navItemClass}">${t('memberCase.title')}</button>` : ''}
 
-    <div class="flex flex-wrap gap-3 mt-6">
-      <button type="button" data-action="open-reports" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-        ${t('superHome.reportsTitle')}
-      </button>
-      <button type="button" data-action="open-directory" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-        ${t('directory.title')}
-      </button>
-      ${PASTORAL_TEAM_ROLES.includes(getGlobalRole()) ? `
-        <button type="button" data-action="open-guest-hub" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('guestHub.title')}
-        </button>
-        <button type="button" data-action="open-member-cases" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('memberCase.title')}
-        </button>
-        <button type="button" data-action="open-prayer-requests" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('prayerRequest.queueTitle')}
-        </button>
-      ` : ''}
-      ${['super_admin', 'church_secretary'].includes(getGlobalRole()) ? `
-        <button type="button" data-action="open-pastor-meetings" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('pastorMeeting.queueTitle')}
-        </button>
-      ` : ''}
-      ${getGlobalRole() === 'super_admin' ? `
-        <button type="button" data-action="open-create-department" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('superHome.createDepartmentTitle')}
-        </button>
-        <button type="button" data-action="open-menu-customizer" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('menuCustomizer.title')}
-        </button>
-        <button type="button" data-action="open-message-moderation" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('messageModeration.title')}
-        </button>
-        <button type="button" data-action="open-login-activity" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('loginActivity.title')}
-        </button>
-        <button type="button" data-action="open-bible-import" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${t('bibleImport.title')}
-        </button>
-      ` : ''}
+        ${isPastoralTeam || canSeeMeetings ? `
+          <div class="mt-3 pt-3 border-t border-white/10 ${navGroupLabelClass}">${t('superHome.groupRequests')}</div>
+          ${isPastoralTeam ? `
+            <button type="button" data-action="open-guest-hub" class="${navItemClass}">${t('guestHub.title')}</button>
+            <button type="button" data-action="open-prayer-requests" class="${navItemClass}">${t('prayerRequest.queueTitle')}</button>
+          ` : ''}
+          ${canSeeMeetings ? `<button type="button" data-action="open-pastor-meetings" class="${navItemClass}">${t('pastorMeeting.queueTitle')}</button>` : ''}
+        ` : ''}
+
+        <div class="mt-3 pt-3 border-t border-white/10 ${navGroupLabelClass}">${t('superHome.groupReports')}</div>
+        <button type="button" data-action="open-reports" class="${navItemClass}">${t('superHome.reportsTitle')}</button>
+        ${isSuperAdmin ? `<button type="button" data-action="open-login-activity" class="${navItemClass}">${t('loginActivity.title')}</button>` : ''}
+
+        ${isSuperAdmin ? `
+          <details class="mt-3 pt-3 border-t border-white/10">
+            <summary class="cursor-pointer select-none ${navGroupLabelClass}">${t('superHome.groupSystemTools')}</summary>
+            <div class="flex flex-col gap-1 mt-1">
+              <button type="button" data-action="open-create-department" class="${navItemClass}">${t('superHome.createDepartmentTitle')}</button>
+              <button type="button" data-action="open-menu-customizer" class="${navItemClass}">${t('menuCustomizer.title')}</button>
+              <button type="button" data-action="open-message-moderation" class="${navItemClass}">${t('messageModeration.title')}</button>
+              <button type="button" data-action="open-bible-import" class="${navItemClass}">${t('bibleImport.title')}</button>
+              <button type="button" data-action="open-people-import" class="${navItemClass}">${t('peopleImport.title')}</button>
+            </div>
+          </details>
+        ` : ''}
+      </nav>
+
+      <div class="flex-1 min-w-0">
+        <div data-el="metrics"></div>
+
+        <div id="super-home-pending" class="bg-black text-white rounded-xl p-4 sm:p-6 mt-6">
+          <h2 class="text-lg font-semibold mb-4">${t('superHome.pendingTitle')}</h2>
+          <div data-el="pending"></div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -118,6 +130,7 @@ export async function renderSuperAdminHomeTab() {
   currentLoginActivityModal?.root.remove();
   currentCreateDepartmentModal?.root.remove();
   currentBibleImportModal?.root.remove();
+  currentPeopleImportModal?.root.remove();
   currentPastorMeetingQueueModal?.root.remove();
   currentPrayerRequestQueueModal?.root.remove();
 
@@ -189,6 +202,12 @@ export async function renderSuperAdminHomeTab() {
     currentBibleImportModal = createBibleImportModal({ supabase });
     bibleImportBtn.addEventListener('click', () => currentBibleImportModal.open());
   }
+
+  const peopleImportBtn = container.querySelector('[data-action="open-people-import"]');
+  if (peopleImportBtn) {
+    currentPeopleImportModal = createPeopleImportModal({ supabase, currentUserId: user.id });
+    peopleImportBtn.addEventListener('click', () => currentPeopleImportModal.open());
+  }
 }
 
 async function renderMetrics(container, supabase) {
@@ -223,12 +242,12 @@ function metricCardHtml(action, value, label, highlight = false) {
   const tag = clickable ? 'button' : 'div';
   const typeAttr = clickable ? 'type="button"' : '';
   const actionAttr = clickable ? `data-action="${action}"` : '';
-  const clickableClasses = clickable ? 'hover:shadow-md transition-shadow cursor-pointer' : '';
+  const clickableClasses = clickable ? 'hover:bg-white/10 transition-colors cursor-pointer' : '';
   return `
     <${tag} ${typeAttr} ${actionAttr}
-        class="bg-white rounded-xl shadow p-4 sm:p-6 text-center w-full ${highlight ? 'ring-2 ring-amber-400' : ''} ${clickableClasses}">
-      <div class="text-2xl sm:text-3xl font-bold text-[#0B1F3A]">${value}</div>
-      <div class="text-xs sm:text-sm text-slate-500 mt-1">${label}</div>
+        class="bg-black rounded-xl p-4 sm:p-6 text-center w-full ${highlight ? 'ring-2 ring-amber-400' : ''} ${clickableClasses}">
+      <div class="text-2xl sm:text-3xl font-bold text-white">${value}</div>
+      <div class="text-xs sm:text-sm text-white/60 mt-1">${label}</div>
     </${tag}>
   `;
 }

@@ -5,8 +5,9 @@
 // instead" (sql/049) — same option every other department's scheduling
 // board now has too.
 import { t } from '../i18n.js';
-import { getMyDepartments } from '../departments.js';
+import { getMyDepartments, getGlobalRole } from '../departments.js';
 import { departmentLabel } from '../i18n.js';
+import { todayLocal } from '../utils/date.js';
 
 export function renderServiceRequestSinger(container, { supabase, userId }) {
   container.innerHTML = `
@@ -34,7 +35,12 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
       return;
     }
 
-    render(data.filter((rsvp) => rsvp.service_plans));
+    // Filtered client-side rather than with .gte() on the embedded
+    // service_plans.date — this is a to-one embed via service_plan_id,
+    // and PostgREST embed-level filters don't reliably drop the parent
+    // row when the embedded row fails the filter.
+    const showPast = getGlobalRole() === 'super_admin';
+    render(data.filter((rsvp) => rsvp.service_plans && (showPast || rsvp.service_plans.date >= todayLocal())));
   }
 
   function render(rsvps) {

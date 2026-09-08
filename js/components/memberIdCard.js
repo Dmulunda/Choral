@@ -1,18 +1,16 @@
 // Digital Member ID Card — a two-sided official-style card (front:
-// photo, name, sex, member_code, function, department/status, parish,
-// issue/expiration dates, QR; back: birth info, join date, address,
-// signatures) in this app's own navy/gold branding — modeled on a
-// reference design the user provided, with our own colors/logo rather
-// than copying its color scheme.
+// photo, name, sex, member_code, function, parish, issue/expiration
+// dates, QR; back: birth info, join date, address, signatures) in this
+// app's own navy/gold branding — modeled on a reference design the
+// user provided, with our own colors/logo rather than copying its
+// color scheme.
 //
 // member_code (sql/083) is used instead of the raw profile UUID since
 // this gets printed/shared. sex/parish/member_title/card_issued_at/
 // card_revoked_at/signature_data/birth_country/birth_city are sql/084.
 //
 // member_title is one of exactly three functions: pastor_principal,
-// department_head, member. "Statut/Dép." is always computed from
-// whatever department membership/global role is actually on file, not
-// a separately stored field that could drift from it.
+// department_head, member.
 //
 // Expiration is never stored — it's always computed as card_issued_at
 // + 2 years, so the "2 years from issue" rule can't drift from what's
@@ -30,7 +28,7 @@
 // Renders as live DOM (not a popup window like certificate.js) so
 // html2canvas/jsPDF — loaded via CDN in index.html — can rasterize it
 // into an actual PNG/PDF file, not just a browser print-to-PDF.
-import { t, roleLabel } from '../i18n.js';
+import { t } from '../i18n.js';
 // The `qrcode` npm package ships no browser <script> bundle (only
 // bundler-ready CommonJS source) — jsdelivr's "+esm" endpoint converts
 // it on the fly, same convention already used for @supabase/supabase-js
@@ -50,7 +48,7 @@ function functionLabel(memberTitle) {
 export async function renderMemberIdCard(container, { supabase, userId }) {
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-  const [{ data: profile, error }, { data: memberships }, { data: pastorRow }] = await Promise.all([
+  const [{ data: profile, error }, { data: pastorRow }] = await Promise.all([
     supabase
       .from('profiles')
       .select(`
@@ -60,12 +58,6 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
       `)
       .eq('id', userId)
       .single(),
-    supabase
-      .from('department_memberships')
-      .select('role, departments ( name )')
-      .eq('user_id', userId)
-      .eq('status', 'approved')
-      .limit(1),
     supabase.from('profiles').select('signature_data').eq('member_title', 'pastor_principal').limit(1).maybeSingle(),
   ]);
 
@@ -81,12 +73,6 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   }
 
   const isRevoked = !!profile.card_revoked_at;
-  const primaryMembership = (memberships || [])[0];
-  // fieldRow() escapes its value itself — this stays plain text, not
-  // pre-escaped, or it would be double-escaped.
-  const statusLine = (primaryMembership ? `${primaryMembership.departments.name} — ${roleLabel(primaryMembership.role)}` : null)
-    || (profile.global_role ? roleLabel(profile.global_role) : null)
-    || '—';
 
   const dateFmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
   const issuedDate = profile.card_issued_at || new Date().toISOString().slice(0, 10);
@@ -113,7 +99,6 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
             ${fieldRow(t('memberCard.sex'), sexLabel)}
             ${fieldRow(t('memberCard.matricule'), profile.member_code)}
             ${fieldRow(t('memberCard.function'), functionLabel(profile.member_title))}
-            ${fieldRow(t('memberCard.statusDept'), statusLine)}
             ${fieldRow(t('memberCard.parish'), profile.parish || '—')}
             ${fieldRow(t('memberCard.issuedOn'), dateFmt(issuedDate))}
             ${fieldRow(t('memberCard.expiresOn'), dateFmt(expirationDate))}

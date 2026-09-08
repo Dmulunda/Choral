@@ -12,7 +12,7 @@ import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
-import { renderSuperAdminHomeTab } from './superAdminHome.js';
+import { renderSuperAdminHomeTab, openGuestOnboardingHub } from './superAdminHome.js';
 import { renderTrainingTab } from './training.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
@@ -50,8 +50,6 @@ const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
 const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wrap');
 const departmentSwitcherEl = document.querySelector('#department-switcher');
-const departmentSwitcherWrapDesktopEl = document.querySelector('#department-switcher-wrap-desktop');
-const departmentSwitcherDesktopEl = document.querySelector('#department-switcher-desktop');
 const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-name"]');
 const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
@@ -62,17 +60,16 @@ const noAccessPanelEl = document.querySelector('#no-department-access');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
 const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
-const sidebarToolsSelectDesktop = document.querySelector('#sidebar-tools-select-desktop');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
 const viewAsBannerTextEl = viewAsBannerEl.querySelector('[data-el="text"]');
 const viewAsExitBtn = document.querySelector('#view-as-exit-btn');
 const previewAsMemberBtn = document.querySelector('#preview-as-member-btn');
-const previewAsMemberBtnDesktop = document.querySelector('#preview-as-member-btn-desktop');
 const signOutBtnDesktop = document.querySelector('#sign-out-btn-desktop');
 const accountMenuBtn = document.querySelector('#account-menu-btn');
 const accountMenuDialog = document.querySelector('#account-menu-dialog');
 const notificationsBtn = document.querySelector('#notifications-btn');
+const headerNewMemberBtn = document.querySelector('#header-new-member-btn');
 const loginSplashEl = document.querySelector('#login-splash');
 
 // Tabs whose content is fetched from Supabase on first visit rather than
@@ -147,11 +144,12 @@ function resolveLandingTab(previousTabName, active, isChoir) {
   return target;
 }
 
-// Keeps the desktop top nav (index.html's #desktop-topnav, shown only
-// at the md breakpoint) in sync with the mobile sidebar without
-// duplicating every visibility/state rule — a sidebar element and its
-// desktop counterpart share the same data-nav-group value, so one call
-// updates both instead of needing a second line at every call site.
+// Applies a visibility/state rule to every element sharing a given
+// data-nav-group value. Most groups now live on a single sidebar
+// element (mobile drawer and permanent desktop column are the same
+// <aside>), but a few (role-switcher-*, view-as-wrap, current-user-*)
+// also have a counterpart inside #account-menu-dialog — this keeps
+// both in sync from one call instead of a line per surface.
 function forEachNavGroup(name, fn) {
   document.querySelectorAll(`[data-nav-group="${name}"]`).forEach(fn);
 }
@@ -173,15 +171,6 @@ function populateDepartmentSwitcher() {
 
   const active = getActiveDepartment();
   departmentSwitcherEl.value = active ? active.key : (isHomeActive() ? HOME_KEY : '');
-
-  // Desktop's version has no Home option — Home is its own separate
-  // button there (data-nav-group="global"), so its own "anything to
-  // show" condition doesn't need showHomeOption folded in.
-  departmentSwitcherWrapDesktopEl.classList.toggle('hidden', departments.length === 0);
-  departmentSwitcherDesktopEl.innerHTML = departments
-    .map((d) => `<option value="${d.key}">${departmentLabel(d.key)}</option>`)
-    .join('');
-  departmentSwitcherDesktopEl.value = active ? active.key : '';
 }
 
 function applyActiveDepartment() {
@@ -308,7 +297,6 @@ async function handleDepartmentSwitcherChange(selectEl) {
 }
 
 departmentSwitcherEl.addEventListener('change', () => handleDepartmentSwitcherChange(departmentSwitcherEl));
-departmentSwitcherDesktopEl.addEventListener('change', () => handleDepartmentSwitcherChange(departmentSwitcherDesktopEl));
 
 // ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
 function updateRoleSwitcherUI() {
@@ -433,7 +421,6 @@ function activatePreviewAsMember() {
 }
 
 previewAsMemberBtn.addEventListener('click', activatePreviewAsMember);
-previewAsMemberBtnDesktop.addEventListener('click', activatePreviewAsMember);
 
 // ---- Desktop account menu (avatar) ----
 // Profile/Change Password/View As/Role mode/Sign out, all in one clear
@@ -467,6 +454,11 @@ accountMenuDialog.addEventListener('click', (e) => {
 
 notificationsBtn.addEventListener('click', () => runSidebarTool('notifications'));
 
+headerNewMemberBtn.addEventListener('click', () => {
+  activateTab('super-home');
+  openGuestOnboardingHub();
+});
+
 // ---- Report Absence / Inbox ----
 // Available to anyone with at least one department, independent of
 // which one is currently active. Report Absence is hidden during
@@ -479,6 +471,8 @@ notificationsBtn.addEventListener('click', () => runSidebarTool('notifications')
 // other identity-sensitive spot in this file.
 const USHER_ATTENDANCE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 const SUGGESTION_GLOBAL_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+// Same set superAdminHome.js gates its Guest Onboarding button on.
+const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 
 function updateMemberActionsUI() {
   const hasAccess = getMyDepartments().length > 0;
@@ -487,6 +481,10 @@ function updateMemberActionsUI() {
   // only ever depended on not being mid-View-As (matches the option's
   // old condition in updateSidebarToolsSelect()).
   notificationsBtn.classList.toggle('hidden', isViewingAs());
+
+  const canOpenGuestHub = PASTORAL_TEAM_ROLES.includes(getGlobalRole());
+  headerNewMemberBtn.classList.toggle('hidden', !canOpenGuestHub);
+  headerNewMemberBtn.classList.toggle('flex', canOpenGuestHub);
 }
 
 // ---- Sidebar tools dropdown ----
@@ -546,10 +544,6 @@ function updateSidebarToolsSelect() {
   const buildOptionsHtml = (opts) => `<option value="">${t('sidebar.more')}</option>`
     + opts.map((o) => `<option value="${o.value}">${escapeHtmlText(o.label)}</option>`).join('');
   sidebarToolsSelect.innerHTML = buildOptionsHtml(options);
-  // My Profile/Change Password live in the desktop account menu
-  // (avatar dropdown) instead — no need for them here too.
-  const desktopOptions = options.filter((o) => o.value !== 'my-profile' && o.value !== 'change-password');
-  sidebarToolsSelectDesktop.innerHTML = buildOptionsHtml(desktopOptions);
 }
 
 function escapeHtmlText(str) {
@@ -573,7 +567,6 @@ function handleToolsSelectChange(selectEl) {
 }
 
 sidebarToolsSelect.addEventListener('change', () => handleToolsSelectChange(sidebarToolsSelect));
-sidebarToolsSelectDesktop.addEventListener('change', () => handleToolsSelectChange(sidebarToolsSelectDesktop));
 
 function runSidebarTool(value) {
   const active = getActiveDepartment();
@@ -947,7 +940,6 @@ function showAuth() {
   authScreenEl.classList.remove('hidden');
   forEachNavGroup('members-nav', (el) => el.classList.add('hidden'));
   departmentSwitcherWrapEl.classList.add('hidden');
-  departmentSwitcherWrapDesktopEl.classList.add('hidden');
   forEachNavGroup('view-as-wrap', (el) => el.classList.add('hidden'));
   viewAsBannerEl.classList.add('hidden');
   forEachNavGroup('preview-as-member-wrap', (el) => el.classList.add('hidden'));
@@ -955,7 +947,8 @@ function showAuth() {
   inboxBtn.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
   sidebarToolsSelect.innerHTML = '<option value=""></option>';
-  sidebarToolsSelectDesktop.innerHTML = '<option value=""></option>';
+  headerNewMemberBtn.classList.add('hidden');
+  headerNewMemberBtn.classList.remove('flex');
   setAppBadgeCount(0);
 }
 

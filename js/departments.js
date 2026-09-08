@@ -25,7 +25,7 @@ export const DEPARTMENT_KEYS = [
   'welcoming_socialisation', 'grand_jeunes_couples', 'finance',
 ];
 
-let myDepartments = null; // [{ id, key, name, kind, role }] — synthesized: role is the global role string for a global-role holder, else their real department_role
+let myDepartments = null; // [{ id, key, name, kind, meeting_link, role }] — synthesized: role is the global role string for a global-role holder, else their real department_role
 let literalDepartments = null; // the same shape, but always from their real department_memberships rows, ignoring any global role — what "Standard User Mode" below shows
 let globalRole = null;
 let actingAsStandardUser = false;
@@ -35,7 +35,7 @@ export async function loadMyDepartments(userId) {
     supabase.from('profiles').select('global_role').eq('id', userId).single(),
     supabase
       .from('department_memberships')
-      .select('role, departments ( id, key, name, kind )')
+      .select('role, departments ( id, key, name, kind, meeting_link )')
       .eq('user_id', userId)
       .eq('status', 'approved'),
   ]);
@@ -47,7 +47,7 @@ export async function loadMyDepartments(userId) {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (globalRole) {
-    const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind').order('name');
+    const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind, meeting_link').order('name');
     myDepartments = (allDepartments || []).map((d) => ({ ...d, role: globalRole }));
   } else {
     myDepartments = literalDepartments;
@@ -155,12 +155,12 @@ export async function startViewAs(targetUserId, targetFullName) {
   const targetGlobalRole = profile?.global_role || null;
 
   if (targetGlobalRole) {
-    const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind').order('name');
+    const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind, meeting_link').order('name');
     viewAsDepartments = (allDepartments || []).map((d) => ({ ...d, role: targetGlobalRole }));
   } else {
     const { data: memberships } = await supabase
       .from('department_memberships')
-      .select('role, departments ( id, key, name, kind )')
+      .select('role, departments ( id, key, name, kind, meeting_link )')
       .eq('user_id', targetUserId)
       .eq('status', 'approved');
     viewAsDepartments = (memberships || [])

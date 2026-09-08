@@ -268,11 +268,12 @@ export function renderServiceRequestAdmin(container, { supabase, adminUserId }) 
   async function loadRequests() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data: plans, error: plansError } = await supabase
+    let plansQuery = supabase
       .from('service_plans')
       .select('id, date, title')
-      .not('title', 'is', null)
-      .order('date', { ascending: false });
+      .not('title', 'is', null);
+    if (getGlobalRole() !== 'super_admin') plansQuery = plansQuery.gte('date', todayLocal());
+    const { data: plans, error: plansError } = await plansQuery.order('date', { ascending: false });
 
     if (plansError) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('requests.failedToLoad', { message: plansError.message })}</p>`;

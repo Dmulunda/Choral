@@ -6,7 +6,7 @@ import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderDateHeader } from './components/dateHeader.js';
-import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
+import { renderMeetingControls } from './components/videoMeeting.js';
 import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { t } from './i18n.js';
 
@@ -31,15 +31,12 @@ export async function renderDashboardTab() {
   container.appendChild(dateHeaderEl);
   renderDateHeader(dateHeaderEl);
 
-  const meetingBtn = document.createElement('button');
-  meetingBtn.type = 'button';
-  meetingBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
-  meetingBtn.textContent = t('meeting.start');
-  container.appendChild(meetingBtn);
-  meetingBtn.addEventListener('click', async () => {
-    const win = openMeetingWindow();
-    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    navigateMeetingWindow(win, { roomName: `choir-app-dept-${active.id}`, displayName: profile?.full_name || '' });
+  renderMeetingControls(container, {
+    supabase,
+    active,
+    canAdminister: active.role === 'admin' || active.role === 'super_admin',
+    getDisplayName: async () => (await supabase.from('profiles').select('full_name').eq('id', user.id).single()).data?.full_name || '',
+    onLinkChanged: () => renderDashboardTab(),
   });
 
   const myPreachingEl = document.createElement('div');

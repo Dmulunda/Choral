@@ -17,7 +17,7 @@ import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderHeadcountBoard } from './components/headcountBoard.js';
 import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { renderDateHeader } from './components/dateHeader.js';
-import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
+import { renderMeetingControls } from './components/videoMeeting.js';
 import { t, departmentLabel } from './i18n.js';
 
 const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
@@ -55,15 +55,12 @@ export async function renderDeptDashboardTab() {
   renderDateHeader(dateHeaderEl);
 
   if (!NO_MEETING_DEPARTMENT_NAMES.includes(departmentLabel(active.key)) && !NO_MEETING_DEPARTMENT_NAMES.includes(active.name)) {
-    const meetingBtn = document.createElement('button');
-    meetingBtn.type = 'button';
-    meetingBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
-    meetingBtn.textContent = t('meeting.start');
-    container.appendChild(meetingBtn);
-    meetingBtn.addEventListener('click', async () => {
-      const win = openMeetingWindow();
-      const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-      navigateMeetingWindow(win, { roomName: `choir-app-dept-${active.id}`, displayName: profile?.full_name || '' });
+    renderMeetingControls(container, {
+      supabase,
+      active,
+      canAdminister,
+      getDisplayName: async () => (await supabase.from('profiles').select('full_name').eq('id', user.id).single()).data?.full_name || '',
+      onLinkChanged: () => renderDeptDashboardTab(),
     });
   }
 

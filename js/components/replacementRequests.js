@@ -75,11 +75,12 @@ export function renderReplacementRequests(container, { supabase, userId, myVoice
       myAssignments = assignmentsRes.data
         .filter((row) => row.service_plans && row.service_plans.date >= todayStr);
 
-      myOpenRequests = myOpenRes.data.filter((row) => row.service_plans);
+      myOpenRequests = myOpenRes.data.filter((row) => row.service_plans && row.service_plans.date >= todayStr);
 
       const myOpenKeys = new Set(myOpenRequests.map((r) => r.id));
       coverableRequests = openRes.data.filter((row) =>
         row.service_plans
+        && row.service_plans.date >= todayStr
         && row.requested_by !== userId
         && !myOpenKeys.has(row.id)
         && (myVoiceParts || []).includes(row.voice_part)
