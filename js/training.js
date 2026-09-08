@@ -6,6 +6,7 @@ import { getIsSchoolAdmin } from './schoolAdmin.js';
 import { renderCourseBuilder } from './components/courseBuilder.js';
 import { renderCourseCatalog } from './components/courseCatalog.js';
 import { renderCourseApprovalQueue } from './components/courseApprovalQueue.js';
+import { renderCourseAccessReport } from './components/courseAccessReport.js';
 import { t } from './i18n.js';
 
 export async function renderTrainingTab() {
@@ -26,6 +27,7 @@ export async function renderTrainingTab() {
       <button type="button" data-el="tab-catalog" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('courses.myCourses')}</button>
       <button type="button" data-el="tab-manage" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('courses.manageTitle')}</button>
       <button type="button" data-el="tab-approvals" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('courses.approvalsTab')}</button>
+      <button type="button" data-el="tab-access" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('courses.accessTab')}</button>
     </div>
     <div data-el="body"></div>
   ` : `<div data-el="body"></div>`;
@@ -40,6 +42,7 @@ export async function renderTrainingTab() {
   const tabCatalogBtn = container.querySelector('[data-el="tab-catalog"]');
   const tabManageBtn = container.querySelector('[data-el="tab-manage"]');
   const tabApprovalsBtn = container.querySelector('[data-el="tab-approvals"]');
+  const tabAccessBtn = container.querySelector('[data-el="tab-access"]');
 
   function setTabStyle(btn, active) {
     btn.classList.toggle('bg-indigo-600', active);
@@ -52,13 +55,16 @@ export async function renderTrainingTab() {
     setTabStyle(tabCatalogBtn, tab === 'catalog');
     setTabStyle(tabManageBtn, tab === 'manage');
     setTabStyle(tabApprovalsBtn, tab === 'approvals');
+    setTabStyle(tabAccessBtn, tab === 'access');
     if (tab === 'catalog') renderCourseCatalog(bodyEl, { supabase, currentUserId: user.id });
     else if (tab === 'manage') renderCourseBuilder(bodyEl, { supabase, currentUserId: user.id });
-    else renderCourseApprovalQueue(bodyEl, { supabase });
+    else if (tab === 'approvals') renderCourseApprovalQueue(bodyEl, { supabase });
+    else renderCourseAccessReport(bodyEl, { supabase });
   }
 
   tabCatalogBtn.addEventListener('click', () => activate('catalog'));
   tabManageBtn.addEventListener('click', () => activate('manage'));
   tabApprovalsBtn.addEventListener('click', () => activate('approvals'));
+  tabAccessBtn.addEventListener('click', () => activate('access'));
   activate('catalog');
 }

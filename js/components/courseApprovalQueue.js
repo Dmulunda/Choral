@@ -187,6 +187,15 @@ export function renderCourseApprovalQueue(container, { supabase }) {
       ? await supabase.from('lesson_progress').select('lesson_id, quiz_score, quiz_attempts, completed').eq('user_id', row.user_id).in('lesson_id', lessonIds)
       : { data: [] };
     const progressByLesson = new Map((progress || []).map((p) => [p.lesson_id, p]));
+    // lessons.position resets to 0 within each module, so ordering by
+    // it alone (as the query above does) interleaves modules for any
+    // course with more than one — rank by each lesson's module's
+    // position first, then its own position within that module.
+    const modulePositionById = new Map((modules || []).map((m, idx) => [m.id, idx]));
+    const orderedLessons = [...(lessons || [])].sort((a, b) => {
+      const moduleDiff = (modulePositionById.get(a.module_id) ?? 0) - (modulePositionById.get(b.module_id) ?? 0);
+      return moduleDiff !== 0 ? moduleDiff : a.position - b.position;
+    });
 
     el.innerHTML = `
       <div data-el="lesson-scores" class="mb-3"></div>
@@ -198,7 +207,7 @@ export function renderCourseApprovalQueue(container, { supabase }) {
     `;
 
     const scoresEl = el.querySelector('[data-el="lesson-scores"]');
-    (lessons || []).forEach((l) => {
+    orderedLessons.forEach((l) => {
       const p = progressByLesson.get(l.id);
       const scoreText = p?.quiz_score != null ? t('courses.scoreOutOf10', { score: p.quiz_score }) : t('courses.noQuiz');
       const lessonRow = document.createElement('div');

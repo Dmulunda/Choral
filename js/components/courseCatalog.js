@@ -32,7 +32,7 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
     }
 
     const [{ data: approvals }, { data: profile }, { data: enrollments }] = await Promise.all([
-      supabase.from('course_approvals').select('course_id, status, approved_at').eq('user_id', currentUserId),
+      supabase.from('course_approvals').select('id, course_id, status, approved_at').eq('user_id', currentUserId),
       supabase.from('profiles').select('full_name').eq('id', currentUserId).single(),
       supabase.from('course_enrollments').select('course_id, status').eq('user_id', currentUserId),
     ]);
@@ -143,7 +143,7 @@ export function renderCourseCatalog(container, { supabase, currentUserId }) {
       `;
       el.querySelector('[data-action="open"]').addEventListener('click', () => openCourse(course));
       el.querySelector('[data-action="certificate"]')?.addEventListener('click', () => {
-        openCertificate({ studentName: profile?.full_name || '', courseTitle: course.title, approvedAt: approval.approved_at });
+        openCertificate({ studentName: profile?.full_name || '', courseTitle: course.title, approvedAt: approval.approved_at, approvalId: approval.id });
       });
       return el;
     }
