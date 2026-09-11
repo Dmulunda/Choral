@@ -120,7 +120,7 @@ export function createMyProfileModal({ supabase, userId }) {
       signature_data: signaturePad.isEmpty() ? null : signaturePad.toDataUrl(),
     };
 
-    const file = form.elements['photo-input']?.files?.[0];
+    const file = form.querySelector('[data-el="photo-input"]')?.files?.[0];
     if (file) {
       const path = `${userId}/${Date.now()}-${file.name}`;
       const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, file);
