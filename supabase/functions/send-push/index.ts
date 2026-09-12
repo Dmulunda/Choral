@@ -105,20 +105,34 @@ Deno.serve(async (req) => {
     const { data: { user: caller }, error: callerError } = await admin.auth.getUser(jwt);
     if (callerError || !caller) return json({ error: 'Invalid session' }, 401);
 
+    // Fetched once up front -- this client is the service-role key,
+    // which bypasses RLS entirely, so every branch below must re-scope
+    // its own queries to the caller's own tenant explicitly. Missing
+    // this anywhere lets an admin from one church notify/read another
+    // church's members.
+    const { data: callerProfile, error: callerProfileError } = await admin
+      .from('profiles')
+      .select('tenant_id, full_name, global_role, can_post_global_announcements')
+      .eq('id', caller.id)
+      .single();
+    if (callerProfileError || !callerProfile) return json({ error: 'Profile not found' }, 404);
+    const callerTenantId = callerProfile.tenant_id;
+
     const requestBody = await req.json();
 
     if (requestBody.kind === 'absence_report') {
       const dates = Array.isArray(requestBody.dates) ? requestBody.dates : [];
       if (dates.length === 0) return json({ error: 'dates is required' }, 400);
 
-      const [{ data: callerProfile }, { data: memberships }] = await Promise.all([
-        admin.from('profiles').select('full_name').eq('id', caller.id).single(),
-        admin.from('department_memberships').select('department_id').eq('user_id', caller.id).eq('status', 'approved'),
-      ]);
+      const { data: memberships } = await admin
+        .from('department_memberships')
+        .select('department_id')
+        .eq('user_id', caller.id)
+        .eq('status', 'approved');
 
       const title = 'Absence Reported';
       const dateList = dates.length <= 3 ? dates.join(', ') : `${dates.slice(0, 3).join(', ')} +${dates.length - 3} more`;
-      const body = `${callerProfile?.full_name ?? 'A member'} won't be available: ${dateList}`;
+      const body = `${callerProfile.full_name ?? 'A member'} won't be available: ${dateList}`;
 
       let totalSent = 0;
       let totalFailed = 0;
@@ -128,6 +142,7 @@ Deno.serve(async (req) => {
           .select('user_id')
           .eq('department_id', m.department_id)
           .eq('status', 'approved')
+          .eq('tenant_id', callerTenantId)
           .neq('user_id', caller.id); // no need to notify yourself of your own report
         const { sent, failed } = await sendToUsers(admin, (deptMembers ?? []).map((r) => r.user_id), title, body);
         totalSent += sent;
@@ -140,18 +155,14 @@ Deno.serve(async (req) => {
       const letterId = requestBody.letter_id;
       if (!letterId) return json({ error: 'letter_id is required' }, 400);
 
-      const { data: callerProfile } = await admin
-        .from('profiles')
-        .select('global_role')
-        .eq('id', caller.id)
-        .single();
-      const isPastorOrSuperAdmin = callerProfile?.global_role === 'pastor_admin' || callerProfile?.global_role === 'super_admin';
+      const isPastorOrSuperAdmin = callerProfile.global_role === 'pastor_admin' || callerProfile.global_role === 'super_admin';
       if (!isPastorOrSuperAdmin) return json({ error: 'Only a Pastor Admin can send this notification' }, 403);
 
       const { data: letter } = await admin
         .from('disciplinary_letters')
         .select('member_id, type, status')
         .eq('id', letterId)
+        .eq('tenant_id', callerTenantId)
         .single();
       if (!letter || letter.status !== 'sent') return json({ error: 'Letter not found or not sent' }, 404);
 
@@ -164,16 +175,19 @@ Deno.serve(async (req) => {
     const { department_id, global: isGlobal, title, body } = requestBody;
     if (!title) return json({ error: 'title is required' }, 400);
 
-    const { data: callerProfile } = await admin
-      .from('profiles')
-      .select('global_role, can_post_global_announcements')
-      .eq('id', caller.id)
-      .single();
-    const hasGlobalReach = GLOBAL_REACH_ROLES.includes(callerProfile?.global_role) || !!callerProfile?.can_post_global_announcements;
+    const hasGlobalReach = GLOBAL_REACH_ROLES.includes(callerProfile.global_role) || !!callerProfile.can_post_global_announcements;
 
     let targetUserIds = [];
 
     if (department_id) {
+      const { data: department } = await admin
+        .from('departments')
+        .select('id')
+        .eq('id', department_id)
+        .eq('tenant_id', callerTenantId)
+        .maybeSingle();
+      if (!department) return json({ error: 'Not allowed to notify this department' }, 403);
+
       const { data: callerMembership } = await admin
         .from('department_memberships')
         .select('role')
@@ -188,11 +202,16 @@ Deno.serve(async (req) => {
         .from('department_memberships')
         .select('user_id')
         .eq('department_id', department_id)
-        .eq('status', 'approved');
+        .eq('status', 'approved')
+        .eq('tenant_id', callerTenantId);
       targetUserIds = (members ?? []).map((m) => m.user_id);
     } else if (isGlobal) {
       if (!hasGlobalReach) return json({ error: 'Not allowed to send a church-wide notification' }, 403);
-      const { data: everyone } = await admin.from('profiles').select('id').is('removed_at', null);
+      const { data: everyone } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('tenant_id', callerTenantId)
+        .is('removed_at', null);
       targetUserIds = (everyone ?? []).map((p) => p.id);
     } else {
       return json({ error: 'Specify department_id, global, or kind: "absence_report"' }, 400);

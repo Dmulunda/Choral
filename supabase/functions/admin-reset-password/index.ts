@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile, error: profileError } = await admin
       .from('profiles')
-      .select('global_role')
+      .select('tenant_id, global_role')
       .eq('id', caller.id)
       .single();
     if (profileError || callerProfile?.global_role !== 'super_admin') {
@@ -67,6 +67,19 @@ Deno.serve(async (req) => {
 
     const { target_user_id, new_password } = await req.json();
     if (!target_user_id) return json({ error: 'target_user_id is required' }, 400);
+
+    // Multi-tenant: this client is the service-role key, which bypasses
+    // RLS entirely -- without this check a super_admin could reset the
+    // password of any user on the platform just by knowing their id,
+    // not only members of their own church.
+    const { data: targetProfile } = await admin
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', target_user_id)
+      .single();
+    if (!targetProfile || targetProfile.tenant_id !== callerProfile.tenant_id) {
+      return json({ error: 'User not found' }, 404);
+    }
 
     const password = (new_password && new_password.trim()) || generatePassword();
     if (password.length < 6) return json({ error: 'Password must be at least 6 characters' }, 400);

@@ -96,16 +96,34 @@ Deno.serve(async (req) => {
 
     const { action, lesson_id, file_name, content_type, object_key } = await req.json();
 
+    // This client is the service-role key, which bypasses RLS entirely --
+    // every action below that touches a lesson_id (or an object_key,
+    // whose first path segment is a lesson_id) must verify that lesson
+    // belongs to the caller's own tenant, or a School Admin from one
+    // church could read/overwrite/delete another church's course videos.
     const { data: callerProfile } = await admin
       .from('profiles')
-      .select('is_school_admin, global_role')
+      .select('tenant_id, is_school_admin, global_role')
       .eq('id', caller.id)
       .single();
-    const isSchoolAdmin = callerProfile?.is_school_admin || callerProfile?.global_role === 'super_admin';
+    if (!callerProfile) return json({ error: 'Profile not found' }, 404);
+    const callerTenantId = callerProfile.tenant_id;
+    const isSchoolAdmin = callerProfile.is_school_admin || callerProfile.global_role === 'super_admin';
+
+    async function lessonInOwnTenant(id) {
+      const { data } = await admin
+        .from('lessons')
+        .select('video_storage_path, video_provider, module_id, course_modules!module_id ( course_id )')
+        .eq('id', id)
+        .eq('tenant_id', callerTenantId)
+        .single();
+      return data;
+    }
 
     if (action === 'upload_url') {
       if (!isSchoolAdmin) return json({ error: 'Only a School Admin can upload lesson videos' }, 403);
       if (!lesson_id || !file_name) return json({ error: 'lesson_id and file_name are required' }, 400);
+      if (!(await lessonInOwnTenant(lesson_id))) return json({ error: 'Lesson not found' }, 404);
 
       const objectKey = `${lesson_id}/${Date.now()}-${sanitizeFilename(file_name)}`;
       const resolvedContentType = content_type || 'application/octet-stream';
@@ -122,11 +140,7 @@ Deno.serve(async (req) => {
     if (action === 'playback_url') {
       if (!lesson_id) return json({ error: 'lesson_id is required' }, 400);
 
-      const { data: lesson } = await admin
-        .from('lessons')
-        .select('video_storage_path, video_provider, module_id, course_modules!module_id ( course_id )')
-        .eq('id', lesson_id)
-        .single();
+      const lesson = await lessonInOwnTenant(lesson_id);
       if (!lesson || lesson.video_provider !== 'r2' || !lesson.video_storage_path) {
         return json({ error: 'No R2 video found for this lesson' }, 404);
       }
@@ -138,6 +152,7 @@ Deno.serve(async (req) => {
           .eq('user_id', caller.id)
           .eq('course_id', lesson.course_modules.course_id)
           .eq('status', 'approved')
+          .eq('tenant_id', callerTenantId)
           .maybeSingle();
         if (!enrollment) return json({ error: 'Not enrolled in this course' }, 403);
       }
@@ -152,6 +167,16 @@ Deno.serve(async (req) => {
     if (action === 'delete') {
       if (!isSchoolAdmin) return json({ error: 'Only a School Admin can delete lesson videos' }, 403);
       if (!object_key) return json({ error: 'object_key is required' }, 400);
+
+      // object_key is always "<lesson_id>/<timestamp>-<filename>" (see
+      // upload_url above) -- verify that embedded lesson_id is actually
+      // one of the caller's own tenant's lessons before deleting anything
+      // from R2, or a School Admin could delete another tenant's video by
+      // guessing/knowing its key.
+      const embeddedLessonId = object_key.split('/')[0];
+      if (!embeddedLessonId || !(await lessonInOwnTenant(embeddedLessonId))) {
+        return json({ error: 'Lesson not found' }, 404);
+      }
 
       const deleteResponse = await client.fetch(`${endpoint}/${object_key}`, { method: 'DELETE' });
       if (!deleteResponse.ok && deleteResponse.status !== 404) {
