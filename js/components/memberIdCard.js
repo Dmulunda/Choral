@@ -145,6 +145,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   if (qrEl && profile.member_code) {
     try { await qrToCanvas(qrEl, profile.member_code, { width: 60, margin: 0 }); } catch { /* QR is a nice-to-have, not worth failing the whole card over */ }
   }
+  await recolorSignatureImages(container);
 
   container.querySelector('[data-action="download-png"]').addEventListener('click', () => downloadPng(wrapEl, statusEl));
   container.querySelector('[data-action="download-pdf"]').addEventListener('click', () => downloadPdf(container, statusEl));
@@ -176,19 +177,57 @@ function fieldRow(label, value) {
 }
 
 function signatureBlock(label, signatureDataUrl) {
-  // White backing behind the image itself, not just the row around it --
-  // older saved signatures export with a transparent background
-  // (signaturePad.js now fills white for new ones, but this card must
-  // still work for whatever's already saved), and navy ink on this
-  // card's navy background is otherwise invisible.
+  // Rendered navy-on-transparent as drawn (signaturePad.js never fills a
+  // background) -- invisible against this card's own navy background, so
+  // recolorSignatureImages() below repaints it white specifically for
+  // this card, after the initial render. Left as data-src rather than
+  // src so the browser never bothers loading/painting the (currently
+  // invisible) navy version first.
   return `
     <div style="flex:1;">
       <div style="border-bottom:1px solid #93a5c4;height:32px;display:flex;align-items:flex-end;justify-content:center;">
-        ${signatureDataUrl ? `<img src="${signatureDataUrl}" alt="" style="max-height:30px;max-width:100%;background:white;border-radius:2px;padding:1px 3px;" />` : ''}
+        ${signatureDataUrl ? `<img data-el="signature-img" data-src="${signatureDataUrl}" alt="" style="max-height:30px;max-width:100%;" />` : ''}
       </div>
       <div style="font-size:9px;color:#93a5c4;margin-top:3px;">${escapeHtml(label)}</div>
     </div>
   `;
+}
+
+// Repaints a navy-ink-on-transparent signature image as white-ink-on-
+// transparent, so it reads clearly against the card's navy background
+// without touching the underlying signature_data (other contexts, e.g.
+// disciplinary letters, still want the navy ink as actually drawn).
+// source-in composites the fill only where the existing image already
+// has opacity, so the signature's shape/antialiasing survives exactly;
+// only its color changes.
+function recolorSignatureWhite(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const cctx = c.getContext('2d');
+      cctx.drawImage(img, 0, 0);
+      cctx.globalCompositeOperation = 'source-in';
+      cctx.fillStyle = '#ffffff';
+      cctx.fillRect(0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+async function recolorSignatureImages(container) {
+  const imgs = container.querySelectorAll('[data-el="signature-img"]');
+  await Promise.all(Array.from(imgs).map(async (img) => {
+    try {
+      img.src = await recolorSignatureWhite(img.dataset.src);
+    } catch {
+      /* leave unset rather than show the (invisible-on-navy) original */
+    }
+  }));
 }
 
 function revokedStamp() {

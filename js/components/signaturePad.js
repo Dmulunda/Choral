@@ -17,19 +17,6 @@ export function createSignaturePad(canvas) {
   let lastX = 0;
   let lastY = 0;
 
-  // clearRect() leaves the canvas transparent, not white -- toDataUrl()
-  // then exports a PNG whose background is transparent too. That's
-  // invisible on memberIdCard.js's navy card background, since the ink
-  // itself is also navy (#0B1F3A): navy strokes on a see-through
-  // background over a navy card is navy-on-navy. Filling white first
-  // makes every exported signature carry its own opaque background,
-  // regardless of what it's later placed on.
-  function fillWhite() {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-  fillWhite();
-
   function pos(e) {
     const rect = canvas.getBoundingClientRect();
     return {
@@ -68,7 +55,12 @@ export function createSignaturePad(canvas) {
   canvas.addEventListener('pointerleave', end);
 
   function clear() {
-    fillWhite();
+    // Transparent, not filled -- kept that way deliberately so whatever
+    // displays a saved signature can recolor/recompose it against its own
+    // background (e.g. memberIdCard.js recolors the ink to white for its
+    // navy card back; a white-background context like a printed letter
+    // can just use the navy ink as drawn, unmodified).
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasStroke = false;
   }
 
