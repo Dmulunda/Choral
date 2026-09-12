@@ -173,10 +173,42 @@ function openPlansModal() {
     supabase: getEffectiveSupabase(),
     currentPlanId: getTenant()?.plan_id || null,
     tenantName: getTenant()?.name || '',
+    stripeCustomerId: getTenant()?.stripe_customer_id || null,
   }).open();
 }
 
 trialBannerEl.querySelector('[data-action="view-plans"]').addEventListener('click', openPlansModal);
+
+// Landing back here after a Stripe Checkout redirect (stripe-billing's
+// success_url/cancel_url, js/components/plansModal.js). The actual
+// tenants.plan_id/status update happens asynchronously via
+// stripe-webhook, which can lag this redirect by a second or two --
+// the extra delay before re-loading just gives that a moment to land,
+// same tenant.js/entitlements.js loaders showApp() already calls, not
+// a full page reload.
+async function handleCheckoutReturn(userId) {
+  const params = new URLSearchParams(window.location.search);
+  const checkout = params.get('checkout');
+  if (!checkout) return;
+
+  history.replaceState(null, '', window.location.pathname);
+  if (checkout !== 'success') return;
+
+  showToast(t('plans.checkoutSuccess'));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await loadMyTenant(userId);
+  renderTrialBanner();
+  await loadMyEntitlements();
+  renderEntitlementGates();
+}
+
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] bg-slate-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
 
 function renderEntitlementGates() {
   for (const [tabName, featureKey] of Object.entries(GATED_TABS)) {
@@ -1058,6 +1090,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   applyTenantBranding();
   await loadMyEntitlements();
   renderEntitlementGates();
+  await handleCheckoutReturn(session.user.id);
   await loadAppTheme();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);

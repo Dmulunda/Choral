@@ -1,15 +1,14 @@
-// Plans & pricing — read-only for now, since no billing integration
-// exists yet (see sql/saas_platform/README.md "Known gaps"). Shows the
-// catalog, highlights the tenant's current plan, and offers a "Request
-// upgrade" action that just opens a pre-filled email — actually changing
-// tenants.plan_id is deliberately locked to outside the app (see
-// protect_tenant_privileged_columns in 09_tenant_logo.sql), so this can't
-// pretend to be real self-service checkout without being misleading.
+// Plans & pricing — real self-service billing via Stripe Checkout/Billing
+// Portal (sql/saas_platform/15_stripe_billing.sql, supabase/functions/
+// stripe-billing). tenants.plan_id/status are still locked against direct
+// client writes (protect_tenant_privileged_columns in 09_tenant_logo.sql)
+// — the stripe-webhook function is the only thing that ever actually
+// changes them, via sync_tenant_stripe_subscription(), once Stripe
+// confirms a checkout/cancellation. This modal only ever redirects out to
+// Stripe's hosted pages and back; it never writes billing state itself.
 import { t } from '../i18n.js';
 
-const SUPPORT_EMAIL = 'support@example.com'; // TODO: replace once billing/support contact is decided
-
-export function createPlansModal({ supabase, currentPlanId, tenantName }) {
+export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCustomerId }) {
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4 overflow-y-auto';
   root.innerHTML = `
@@ -19,20 +18,28 @@ export function createPlansModal({ supabase, currentPlanId, tenantName }) {
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
       <div data-el="body"></div>
+      <p data-el="status" class="text-sm text-slate-500 mt-3"></p>
+      ${stripeCustomerId ? `
+        <div class="border-t border-slate-200 mt-4 pt-4">
+          <button type="button" data-action="manage-billing" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">${t('plans.manageBilling')}</button>
+        </div>
+      ` : ''}
     </div>
   `;
   document.body.appendChild(root);
 
   const bodyEl = root.querySelector('[data-el="body"]');
+  const statusEl = root.querySelector('[data-el="status"]');
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
+  root.querySelector('[data-action="manage-billing"]')?.addEventListener('click', () => redirectTo('create_portal_session', {}));
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
     const { data: plans, error } = await supabase
       .from('plans')
-      .select('id, key, name, price_cents, billing_interval, plan_features ( features ( key, name ) )')
+      .select('id, key, name, price_cents, billing_interval, stripe_price_id, plan_features ( features ( key, name ) )')
       .order('price_cents');
 
     if (error) {
@@ -71,11 +78,16 @@ export function createPlansModal({ supabase, currentPlanId, tenantName }) {
         </ul>
       `;
 
-      if (!isCurrent) {
-        const btn = document.createElement('a');
-        btn.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(t('plans.requestSubject', { plan: plan.name, tenant: tenantName || '' }))}`;
-        btn.className = 'block text-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-        btn.textContent = t('plans.requestUpgrade');
+      // Only checkout-able plans get a button -- Basic has no
+      // stripe_price_id (it's the "no active subscription" state, not a
+      // real Stripe object), so switching to it happens by canceling an
+      // existing subscription via Manage Billing, not by clicking here.
+      if (!isCurrent && plan.stripe_price_id) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
+        btn.textContent = t('plans.upgrade');
+        btn.addEventListener('click', () => redirectTo('create_checkout_session', { plan_key: plan.key }));
         card.appendChild(btn);
       }
 
@@ -83,11 +95,21 @@ export function createPlansModal({ supabase, currentPlanId, tenantName }) {
     }
 
     bodyEl.appendChild(grid);
+  }
 
-    const note = document.createElement('p');
-    note.className = 'text-xs text-slate-400 mt-4';
-    note.textContent = t('plans.manualNote');
-    bodyEl.appendChild(note);
+  async function redirectTo(action, extraBody) {
+    statusEl.className = 'text-sm text-slate-500 mt-3';
+    statusEl.textContent = t('plans.redirecting');
+
+    const { data, error } = await supabase.functions.invoke('stripe-billing', { body: { action, ...extraBody } });
+
+    if (error || data?.error || !data?.url) {
+      statusEl.className = 'text-sm text-rose-600 mt-3';
+      statusEl.textContent = t('plans.billingActionFailed', { message: data?.error || error?.message || '' });
+      return;
+    }
+
+    window.location.href = data.url;
   }
 
   function open() {

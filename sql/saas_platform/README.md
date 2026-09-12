@@ -110,6 +110,34 @@ which is untouched and stays on its own project). Local-only for now — this
     has no scheduling data yet). New client files: `js/serviceProgram.js`,
     `js/components/serviceProgramBoard.js`; new unconditional sidebar tab
     next to VPD Academy (not plan-gated).
+13. `15_stripe_billing.sql` — real Stripe billing on top of the existing
+    plan/feature model. Adds `plans.stripe_price_id` and
+    `tenants.stripe_customer_id`/`stripe_subscription_id`, plus two
+    `SECURITY DEFINER` functions: `set_tenant_stripe_customer()` (sets
+    the customer id on first checkout) and
+    `sync_tenant_stripe_subscription()` (the only thing that ever writes
+    `status`/`plan_id` after this — wraps the
+    `protect_tenant_privileged_columns` bypass flag from
+    `09_tenant_logo.sql`, `set_config('app.bypass_tenant_column_protection',
+    'on', true)`, so the trigger that blocks a tenant's own super_admin
+    from self-changing those columns doesn't also block this legitimate
+    write). Verified live: a raw `update tenants set status = ...` is
+    correctly rejected by the trigger; the RPC path correctly bypasses
+    it and reverts cleanly. Basic ($0) intentionally has no
+    `stripe_price_id` — a `plan_id = null` tenant already has zero
+    gated features today, so Basic needs no Stripe object at all;
+    "downgrading" is just canceling via the Billing Portal.
+    New Edge Functions: `stripe-billing` (Checkout + Billing Portal
+    session creation, JWT-verified, Super Admin only) and
+    `stripe-webhook` (applies `checkout.session.completed`/
+    `customer.subscription.updated`/`.deleted` — different trust model
+    from every other function here, verified via Stripe's signature
+    header rather than a Supabase JWT, must deploy with
+    `--no-verify-jwt`). `plansModal.js`'s old `mailto:` "Request
+    Upgrade" is now a real Stripe Checkout redirect; a "Manage Billing"
+    button (Billing Portal) appears once a tenant has ever checked out.
+    No Stripe.js/publishable key anywhere client-side — both flows are
+    plain redirects to Stripe's hosted pages and back.
 
 ## Other client-side fixes from this session
 
@@ -167,9 +195,14 @@ which is untouched and stays on its own project). Local-only for now — this
   `passwordRecovery.js`, `index.html`'s splash/watermark/favicon) are all
   pre-login surfaces where no tenant is known yet — left as the generic
   platform logo on purpose, not an oversight.
-- **No billing integration.** `plans`/`plan_id` changes are still a manual
-  SQL/dashboard operation — no Stripe (or other) checkout flow exists to let
-  a tenant actually change their own plan.
+- **Billing integration coded, not deployed.** `15_stripe_billing.sql` +
+  `stripe-billing`/`stripe-webhook` (see above) are ready but need three
+  things none of which exist in-session yet: the Supabase CLI login
+  (same blocker as the other Edge Functions), a real Stripe account
+  (test mode is fine) for `STRIPE_SECRET_KEY` and the two paid plans'
+  Price ids, and — only obtainable after `stripe-webhook` is deployed —
+  registering its URL in the Stripe dashboard to get
+  `STRIPE_WEBHOOK_SECRET`.
 - Globally-unique constraints fixed in `01_schema.sql`: `menu_labels`,
   `app_theme` (old boolean `id` singleton PK dropped for `tenant_id`),
   `departments`, `projection_schedules`, `ecodem_sessions`. `bible_books`/
