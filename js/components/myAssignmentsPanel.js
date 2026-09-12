@@ -10,6 +10,7 @@
 import { t } from '../i18n.js';
 import { getMyDepartments } from '../departments.js';
 import { departmentLabel } from '../i18n.js';
+import { todayLocal } from '../utils/date.js';
 
 export function renderMyAssignmentsPanel(container, { departmentId, fetchMyAssignments, updateAssignment }) {
   container.innerHTML = `
@@ -20,6 +21,11 @@ export function renderMyAssignmentsPanel(container, { departmentId, fetchMyAssig
   `;
 
   const listEl = container.querySelector('[data-el="list"]');
+  // Ids just responded to in this panel instance -- kept visible (with the
+  // decline-reason UI reachable) until the panel next reloads from a fresh
+  // page visit, then dropped. Once-responded items don't linger indefinitely
+  // like before; they just don't vanish out from under you mid-edit.
+  const justResponded = new Set();
 
   load();
 
@@ -36,13 +42,15 @@ export function renderMyAssignmentsPanel(container, { departmentId, fetchMyAssig
   }
 
   function render(rows) {
-    if (rows.length === 0) {
+    const visible = rows.filter((r) => r.date >= todayLocal() && (r.status === 'pending' || justResponded.has(r.id)));
+
+    if (visible.length === 0) {
       listEl.innerHTML = `<p class="text-sm text-slate-500">${t('requests.noRequests')}</p>`;
       return;
     }
 
-    const pending = rows.filter((r) => r.status === 'pending');
-    const responded = rows.filter((r) => r.status !== 'pending');
+    const pending = visible.filter((r) => r.status === 'pending');
+    const responded = visible.filter((r) => r.status !== 'pending');
 
     listEl.innerHTML = '';
 
@@ -169,6 +177,7 @@ export function renderMyAssignmentsPanel(container, { departmentId, fetchMyAssig
       window.alert(t('requests.responseFailed', { message: error?.message || '' }));
       return;
     }
+    justResponded.add(row.id);
     load();
   }
 }
