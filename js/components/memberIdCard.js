@@ -103,24 +103,26 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
             ${fieldRow(t('memberCard.issuedOn'), dateFmt(issuedDate))}
             ${fieldRow(t('memberCard.expiresOn'), dateFmt(expirationDate))}
           </div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
-            ${isRevoked || !profile.member_code
-              ? `<div style="width:60px;height:60px;background:#1e2f4d;border:2px solid #93a5c4;border-radius:4px;display:flex;align-items:center;justify-content:center;text-align:center;"><span style="font-size:8px;color:#93a5c4;">${escapeHtml(t('memberCard.qrUnavailable'))}</span></div>`
-              : `<canvas data-el="qr" width="60" height="60" style="width:60px;height:60px;background:white;border:2px solid ${GOLD};border-radius:4px;"></canvas>`}
-          </div>
         </div>
         ${isRevoked ? revokedStamp() : ''}
       </div>
 
       <div data-el="card-back" style="${cardOuterStyle()}margin-top:14px;position:relative;">
         ${headerBar(logoUrl, false)}
-        <div style="padding:12px 16px;flex:1;font-size:11px;line-height:1.55;">
-          ${fieldRow(t('memberCard.birthInfo'), birthLine)}
-          ${fieldRow(t('memberCard.joinedOn'), joinedDate)}
-          ${fieldRow(t('memberCard.address'), profile.address || '—')}
-          <div style="display:flex;gap:24px;margin-top:12px;">
-            ${signatureBlock(t('memberCard.memberSignature'), profile.signature_data)}
-            ${signatureBlock(t('memberCard.pastorSignature'), pastorRow?.signature_data)}
+        <div style="display:flex;gap:12px;padding:12px 16px;flex:1;">
+          <div style="flex:1;font-size:11px;line-height:1.55;">
+            ${fieldRow(t('memberCard.birthInfo'), birthLine)}
+            ${fieldRow(t('memberCard.joinedOn'), joinedDate)}
+            ${fieldRow(t('memberCard.address'), profile.address || '—')}
+            <div style="display:flex;gap:24px;margin-top:12px;">
+              ${signatureBlock(t('memberCard.memberSignature'), profile.signature_data)}
+              ${signatureBlock(t('memberCard.pastorSignature'), pastorRow?.signature_data)}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
+            ${isRevoked || !profile.member_code
+              ? `<div style="width:60px;height:60px;background:#1e2f4d;border:2px solid #93a5c4;border-radius:4px;display:flex;align-items:center;justify-content:center;text-align:center;"><span style="font-size:8px;color:#93a5c4;">${escapeHtml(t('memberCard.qrUnavailable'))}</span></div>`
+              : `<canvas data-el="qr" width="60" height="60" style="width:60px;height:60px;background:white;border:2px solid ${GOLD};border-radius:4px;"></canvas>`}
           </div>
         </div>
         <div style="background:${GOLD};color:${NAVY};font-size:10px;font-weight:700;text-align:center;padding:5px;letter-spacing:0.5px;">
@@ -174,10 +176,15 @@ function fieldRow(label, value) {
 }
 
 function signatureBlock(label, signatureDataUrl) {
+  // White backing behind the image itself, not just the row around it --
+  // older saved signatures export with a transparent background
+  // (signaturePad.js now fills white for new ones, but this card must
+  // still work for whatever's already saved), and navy ink on this
+  // card's navy background is otherwise invisible.
   return `
     <div style="flex:1;">
       <div style="border-bottom:1px solid #93a5c4;height:32px;display:flex;align-items:flex-end;justify-content:center;">
-        ${signatureDataUrl ? `<img src="${signatureDataUrl}" alt="" style="max-height:30px;max-width:100%;" />` : ''}
+        ${signatureDataUrl ? `<img src="${signatureDataUrl}" alt="" style="max-height:30px;max-width:100%;background:white;border-radius:2px;padding:1px 3px;" />` : ''}
       </div>
       <div style="font-size:9px;color:#93a5c4;margin-top:3px;">${escapeHtml(label)}</div>
     </div>
