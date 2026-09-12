@@ -194,15 +194,37 @@ function revokedStamp() {
   `;
 }
 
+// Tries the native share sheet first (what actually gets an image into
+// Photos/Files on a phone in one tap -- an <a download> click on iOS
+// Safari just opens the image in a new tab instead of saving it, leaving
+// a fiddly long-press-to-save as the only way in). Falls back to the old
+// download-link behavior wherever Web Share (or sharing files specifically)
+// isn't supported, e.g. most desktop browsers.
+async function shareOrDownload(file, statusEl) {
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      statusEl.textContent = '';
+      return;
+    } catch (err) {
+      if (err?.name === 'AbortError') { statusEl.textContent = ''; return; } // user cancelled the share sheet -- not a failure
+      // fall through to the download link on any other share failure
+    }
+  }
+  const link = document.createElement('a');
+  link.download = file.name;
+  link.href = URL.createObjectURL(file);
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  statusEl.textContent = '';
+}
+
 async function downloadPng(wrapEl, statusEl) {
   if (!window.html2canvas) { statusEl.textContent = t('memberCard.exportUnavailable'); return; }
   statusEl.textContent = t('common.loading');
   const canvas = await window.html2canvas(wrapEl, { backgroundColor: '#ffffff', scale: 2 });
-  const link = document.createElement('a');
-  link.download = 'member-id-card.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-  statusEl.textContent = '';
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  await shareOrDownload(new File([blob], 'member-id-card.png', { type: 'image/png' }), statusEl);
 }
 
 async function downloadPdf(container, statusEl) {
@@ -220,8 +242,8 @@ async function downloadPdf(container, statusEl) {
   const backCanvas = await window.html2canvas(backEl, { backgroundColor: '#ffffff', scale: 2 });
   doc.addImage(backCanvas.toDataURL('image/png'), 'PNG', 0, 0, CARD_WIDTH, CARD_HEIGHT);
 
-  doc.save('member-id-card.pdf');
-  statusEl.textContent = '';
+  const blob = doc.output('blob');
+  await shareOrDownload(new File([blob], 'member-id-card.pdf', { type: 'application/pdf' }), statusEl);
 }
 
 function escapeHtml(str) {
