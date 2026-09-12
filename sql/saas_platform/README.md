@@ -146,12 +146,20 @@ which is untouched and stays on its own project). Local-only for now — this
 
 ## Known gaps / next steps
 
-- **Edge Functions not deployed to the new project at all** (confirmed via
-  a 404 on the new project's functions endpoint). `admin-reset-password`,
-  `send-push`, and `course-video-r2` would need both deploying and the same
-  tenant-scoping treatment as the RPCs in `06_rpc_tenant_fixes.sql` before
-  push notifications or course video playback go live. Not urgent — neither
-  feature is in use yet.
+- **Edge Functions patched, still not deployed.** `admin-reset-password`,
+  `send-push`, and `course-video-r2` have now had the same tenant-scoping
+  treatment as the RPCs in `06_rpc_tenant_fixes.sql` (each fetches the
+  caller's `tenant_id` once and verifies every target row against it
+  before acting — `course-video-r2` was the most serious gap: a School
+  Admin could previously overwrite or delete another tenant's course
+  video by id/key alone). Still not deployed to the new project at all
+  (confirmed via a 404 on the functions endpoint) — needs the Supabase
+  CLI (`npx supabase functions deploy <name> --project-ref
+  towlqbxvhftzjfrtepsy`) and a personal access token (`supabase login`
+  or `SUPABASE_ACCESS_TOKEN`), neither available in-session yet. Not
+  urgent to actually deploy — neither push notifications nor course
+  video playback is in use yet — but the code is ready whenever a token
+  is provided.
 - **Logo branding still hardcoded in `certificate.js` and
   `disciplinaryLetters.js`** (both `img/vpd-logo.png`) — `memberIdCard.js`
   and the header are done.
