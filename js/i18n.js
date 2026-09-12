@@ -135,6 +135,14 @@ const TRANSLATIONS = {
     'headcount.none': 'No headcounts recorded yet.',
     'headcount.loadFailed': 'Failed to load: {message}',
 
+    'serviceProgram.title': 'Service Program',
+    'serviceProgram.loadFailed': 'Failed to load: {message}',
+    'serviceProgram.none': 'Nothing scheduled for this date yet.',
+    'serviceProgram.you': 'You',
+    'serviceProgram.choirLead': 'Lead',
+    'serviceProgram.attendanceTitle': 'Attendance',
+    'serviceProgram.noAttendance': 'No headcount recorded for this date yet.',
+
     'meeting.start': 'Start Meeting',
     'meeting.join': 'Join Meeting',
     'meeting.setLink': 'Set meeting link',
@@ -442,6 +450,7 @@ const TRANSLATIONS = {
     'disciplinaryLetter.confirmDispute': 'Mark {name}’s letter as disputed? This records that they haven’t acknowledged it.',
 
     'nav.training': 'VPD Academy',
+    'nav.serviceProgram': 'Service Program',
     'users.setSchoolAdmin': 'Make School Admin',
     'users.removeSchoolAdmin': 'Remove School Admin',
     'users.confirmSetSchoolAdmin': 'Make {name} a School Admin? They’ll be able to create and manage courses, and review completion approvals.',
@@ -1569,6 +1578,14 @@ const TRANSLATIONS = {
     'headcount.none': 'Aucun décompte enregistré pour le moment.',
     'headcount.loadFailed': 'Échec du chargement : {message}',
 
+    'serviceProgram.title': 'Programme du service',
+    'serviceProgram.loadFailed': 'Échec du chargement : {message}',
+    'serviceProgram.none': 'Rien de planifié pour cette date pour le moment.',
+    'serviceProgram.you': 'Vous',
+    'serviceProgram.choirLead': 'Chef de chorale',
+    'serviceProgram.attendanceTitle': 'Fréquentation',
+    'serviceProgram.noAttendance': 'Aucun décompte enregistré pour cette date.',
+
     'meeting.start': 'Démarrer la réunion',
     'meeting.join': 'Rejoindre la réunion',
     'meeting.setLink': 'Définir le lien de réunion',
@@ -1876,6 +1893,7 @@ const TRANSLATIONS = {
     'disciplinaryLetter.confirmDispute': 'Marquer la lettre de {name} comme contestée ? Cela indique qu’elle/il ne l’a pas signée.',
 
     'nav.training': 'VPD Academy',
+    'nav.serviceProgram': 'Programme du service',
     'users.setSchoolAdmin': 'Nommer administrateur de formation',
     'users.removeSchoolAdmin': 'Retirer administrateur de formation',
     'users.confirmSetSchoolAdmin': 'Faire de {name} un administrateur de formation ? Il/elle pourra créer et gérer des cours, et examiner les demandes d’approbation.',

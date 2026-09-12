@@ -14,6 +14,7 @@ import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProje
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab, openGuestOnboardingHub } from './superAdminHome.js';
 import { renderTrainingTab } from './training.js';
+import { renderServiceProgramTab } from './serviceProgram.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
@@ -96,6 +97,7 @@ const lazyTabs = {
   'dept-projection': renderDeptProjectionTab,
   'super-home': renderSuperAdminHomeTab,
   training: renderTrainingTab,
+  'service-program': renderServiceProgramTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
