@@ -18,6 +18,11 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
   `;
 
   const listEl = container.querySelector('[data-el="list"]');
+  // Ids just responded to in this panel instance -- kept visible (with the
+  // decline-reason UI reachable) until the panel next reloads from a fresh
+  // page visit, then dropped. Once-responded items don't linger indefinitely
+  // like before; they just don't vanish out from under you mid-edit.
+  const justResponded = new Set();
 
   load();
 
@@ -44,13 +49,15 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
   }
 
   function render(rsvps) {
-    if (rsvps.length === 0) {
+    const visible = rsvps.filter((r) => r.status === 'pending' || justResponded.has(r.id));
+
+    if (visible.length === 0) {
       listEl.innerHTML = `<p class="text-sm text-slate-500">${t('requests.noRequests')}</p>`;
       return;
     }
 
-    const pending = rsvps.filter((r) => r.status === 'pending');
-    const responded = rsvps.filter((r) => r.status !== 'pending');
+    const pending = visible.filter((r) => r.status === 'pending');
+    const responded = visible.filter((r) => r.status !== 'pending');
 
     listEl.innerHTML = '';
 
@@ -158,6 +165,7 @@ export function renderServiceRequestSinger(container, { supabase, userId }) {
       return;
     }
 
+    justResponded.add(rsvp.id);
     load();
   }
 

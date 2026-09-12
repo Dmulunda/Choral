@@ -13,6 +13,7 @@
 // just predicts it up front so the admin isn't surprised.
 import { createScopedClient } from '../supabaseClient.js';
 import { getMyDepartments, getGlobalRole } from '../departments.js';
+import { getTenantId } from '../tenant.js';
 import { confirmDialog } from './confirmDialog.js';
 import { t, roleLabel } from '../i18n.js';
 
@@ -177,7 +178,14 @@ export function createUserCreatorModal({ supabase, scope, currentUserId, onCreat
     const { data, error } = await scopedClient.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      // tenant_id must travel in here -- handle_new_user() (the trigger
+      // that creates the profiles row) reads it from raw_user_meta_data,
+      // since it has no other way to know which church this account
+      // belongs to. Without it the insert fails outright (tenant_id is
+      // NOT NULL). The creating admin's own tenant is always the right
+      // one here -- there's no path in this modal for a Super Admin to
+      // create an account in a church other than their own.
+      options: { data: { full_name: fullName, tenant_id: getTenantId() } },
     });
 
     // Supabase's anti-enumeration behavior: signing up with an email that's

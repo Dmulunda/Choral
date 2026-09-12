@@ -5,6 +5,16 @@ import { DEPARTMENT_KEYS, requestDepartmentMemberships } from '../departments.js
 
 export function renderAuthScreen(container, { supabase }) {
   let mode = 'login';
+  // Resolved (async, below) from a ?join=<slug> URL param via the
+  // anon-callable get_tenant_by_slug() RPC — the one place a pre-auth
+  // visitor can read anything about a tenant at all, and deliberately
+  // returns only { id, name, slug, allow_self_signup }, nothing sensitive.
+  // The plain "Sign Up" tab stays hidden unless this resolves to a real,
+  // self-signup-enabled church: without a link, there is no way for this
+  // form to know which tenant a new account should join, and guessing
+  // wrong isn't an option (see js/components/userCreatorModal.js's fix
+  // for why a missing tenant_id fails outright, not silently).
+  let inviteTenant = null;
 
   container.innerHTML = `
     <div class="w-full max-w-md">
@@ -23,11 +33,32 @@ export function renderAuthScreen(container, { supabase }) {
             <div class="flex mb-6 rounded-lg bg-slate-100 p-1">
               <button type="button" data-mode="login"
                       class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signIn')}</button>
-              <button type="button" data-mode="signup"
-                      class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signUp')}</button>
+              <button type="button" data-mode="signup" data-el="signup-tab"
+                      class="hidden flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">
+                <span data-el="signup-tab-label">${t('auth.signUp')}</span>
+              </button>
+              <button type="button" data-mode="new-church"
+                      class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.newChurch')}</button>
             </div>
 
+            <!-- Only shown when arriving via a ?join=<slug> link whose
+                 church has turned self-signup off (js/tenant-invite
+                 resolution below). -->
+            <p data-el="signup-disabled-note" class="hidden text-sm text-amber-700 bg-amber-50 rounded-lg p-3 mb-4"></p>
+
             <form data-el="form" class="space-y-4">
+              <div data-el="church-fields" class="hidden space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.churchName')}</label>
+                  <input type="text" name="church_name" autocomplete="organization" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.churchSlug')}</label>
+                  <input type="text" name="church_slug" pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
+                  <p class="text-xs text-slate-400 mt-1">${t('auth.churchSlugHint')}</p>
+                </div>
+              </div>
+
               <div data-el="full-name-field" class="hidden">
                 <label class="block text-sm font-medium text-slate-600 mb-1">${t('auth.fullName')}</label>
                 <input type="text" name="full_name" autocomplete="name" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent" />
@@ -98,6 +129,10 @@ export function renderAuthScreen(container, { supabase }) {
   `;
 
   const modeButtons = container.querySelectorAll('[data-mode]');
+  const signupTabEl = container.querySelector('[data-el="signup-tab"]');
+  const signupTabLabelEl = container.querySelector('[data-el="signup-tab-label"]');
+  const signupDisabledNoteEl = container.querySelector('[data-el="signup-disabled-note"]');
+  const churchFields = container.querySelector('[data-el="church-fields"]');
   const fullNameField = container.querySelector('[data-el="full-name-field"]');
   const departmentsField = container.querySelector('[data-el="departments-field"]');
   const form = container.querySelector('[data-el="form"]');
@@ -119,24 +154,62 @@ export function renderAuthScreen(container, { supabase }) {
       btn.classList.toggle('text-[#0B1F3A]', active);
       btn.classList.toggle('text-slate-500', !active);
     });
-    fullNameField.classList.toggle('hidden', mode !== 'signup');
-    fullNameField.querySelector('input').required = mode === 'signup';
-    departmentsField.classList.toggle('hidden', mode !== 'signup');
-    submitBtn.textContent = mode === 'signup' ? t('auth.createAccount') : t('auth.signIn');
+    const isSignup = mode === 'signup';
+    const isNewChurch = mode === 'new-church';
+    churchFields.classList.toggle('hidden', !isNewChurch);
+    form.elements.church_name.required = isNewChurch;
+    form.elements.church_slug.required = isNewChurch;
+    fullNameField.classList.toggle('hidden', !isSignup && !isNewChurch);
+    fullNameField.querySelector('input').required = isSignup || isNewChurch;
+    departmentsField.classList.toggle('hidden', !isSignup);
+    submitBtn.textContent = isNewChurch ? t('auth.startTrial') : isSignup ? t('auth.createAccount') : t('auth.signIn');
     container.querySelector('[data-el="forgot-link"]').classList.toggle('hidden', mode !== 'login');
-    // The email/password fields are shared between both modes, so the
+    // The email/password fields are shared between all three modes, so the
     // autocomplete hint has to switch too — "current-password" tells a
     // mobile browser's password manager to offer a saved credential,
     // "new-password" tells it to offer generating/saving a fresh one.
     // Getting this wrong is a common reason autofill/"remember me"
     // silently doesn't work on phones even though it works on desktop.
-    form.elements.email.autocomplete = mode === 'signup' ? 'email' : 'username';
-    form.elements.password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+    form.elements.email.autocomplete = isSignup || isNewChurch ? 'email' : 'username';
+    form.elements.password.autocomplete = isSignup || isNewChurch ? 'new-password' : 'current-password';
     statusEl.textContent = '';
   }
 
   modeButtons.forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
   setMode('login');
+
+  const joinSlug = new URLSearchParams(window.location.search).get('join');
+  if (joinSlug) {
+    supabase.rpc('get_tenant_by_slug', { p_slug: joinSlug }).then(({ data, error }) => {
+      const tenant = !error && data?.[0] ? data[0] : null;
+      if (!tenant) return; // unknown slug -- stay on the no-signup-tab default, fail quietly
+      if (!tenant.allow_self_signup) {
+        signupDisabledNoteEl.textContent = t('auth.selfSignupDisabled', { church: tenant.name });
+        signupDisabledNoteEl.classList.remove('hidden');
+        return;
+      }
+      inviteTenant = tenant;
+      signupTabLabelEl.textContent = t('auth.joinChurch', { church: tenant.name });
+      signupTabEl.classList.remove('hidden');
+      setMode('signup');
+    });
+  }
+
+  // Auto-derives the URL slug from the church name as it's typed, but only
+  // until the person edits the slug field directly themselves — matches
+  // the common "title -> auto-slug, but stop clobbering it once they've
+  // customized it" pattern.
+  let slugTouched = false;
+  form.elements.church_slug.addEventListener('input', () => { slugTouched = true; });
+  form.elements.church_name.addEventListener('input', () => {
+    if (slugTouched) return;
+    form.elements.church_slug.value = form.elements.church_name.value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 32);
+  });
 
   container.querySelector('[data-action="show-forgot"]').addEventListener('click', () => {
     mainPanel.classList.add('hidden');
@@ -181,15 +254,68 @@ export function renderAuthScreen(container, { supabase }) {
 
     submitBtn.disabled = true;
     statusEl.className = 'text-sm text-slate-500';
-    statusEl.textContent = mode === 'signup' ? t('auth.creatingAccount') : t('auth.signingIn');
+    statusEl.textContent = mode === 'new-church' ? t('auth.creatingChurch') : mode === 'signup' ? t('auth.creatingAccount') : t('auth.signingIn');
 
-    if (mode === 'signup') {
+    if (mode === 'new-church') {
+      const churchName = form.elements.church_name.value.trim();
+      const churchSlug = form.elements.church_slug.value.trim().toLowerCase();
+      const fullName = form.elements.full_name.value.trim();
+
+      // tenants has no client-facing INSERT policy by design (see
+      // sql/saas_platform/01_schema.sql) -- this RPC is the one controlled
+      // path through that, and it must run *before* signUp() so the new
+      // tenant's id can travel in as signup metadata for handle_new_user()
+      // to pick up (see sql/saas_platform/03_signup_rpcs.sql).
+      const { data: tenantId, error: tenantError } = await supabase.rpc('create_tenant_for_signup', {
+        p_name: churchName,
+        p_slug: churchSlug,
+      });
+
+      if (tenantError) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = tenantError.message;
+        submitBtn.disabled = false;
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName, tenant_id: tenantId } },
+      });
+
+      if (error) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = error.message;
+      } else if (!data.session) {
+        statusEl.className = 'text-sm text-emerald-600';
+        statusEl.textContent = t('auth.accountCreatedCheckEmail');
+      } else {
+        // Best-effort: claim_tenant_admin() only ever succeeds once, for
+        // whoever's account is still role-less in a brand new tenant --
+        // see sql/saas_platform/03_signup_rpcs.sql. If app.js's own
+        // auth-state listener happens to render before this resolves,
+        // it'll catch up on the next profile refresh.
+        const { error: claimError } = await supabase.rpc('claim_tenant_admin');
+        if (claimError) console.error('claim_tenant_admin failed:', claimError.message);
+        // onAuthStateChange in app.js takes over from here.
+      }
+    } else if (mode === 'signup') {
+      if (!inviteTenant) {
+        // Shouldn't be reachable -- the tab is hidden without a resolved
+        // invite -- but signUp() would otherwise fail on a missing
+        // tenant_id with a confusing raw database error, so fail clearly.
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = t('auth.noInvite');
+        submitBtn.disabled = false;
+        return;
+      }
       const fullName = form.elements.full_name.value.trim();
       const selectedDepartments = Array.from(form.querySelectorAll('[data-dept-checkbox]:checked')).map((cb) => cb.value);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName } },
+        options: { data: { full_name: fullName, tenant_id: inviteTenant.id } },
       });
 
       if (error) {

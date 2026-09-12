@@ -169,15 +169,25 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span class="text-lg font-semibold" data-i18n="app.brand">VPD Church Organisation</span>
+        <span class="text-lg font-semibold" data-nav-group="org-name">VPD Church Organisation</span>
       </div>
 
       <!-- Desktop-only brand mark — mobile keeps the hamburger+name
            above instead, since the sidebar itself repeats the full
-           name right below. -->
+           name right below. Text set dynamically (not data-i18n, which
+           would reset it to the placeholder on every language switch) by
+           js/app.js applyTenantBranding() -- see loadMyTenant() in
+           showApp() and the onLangChange handler. -->
       <div class="hidden md:flex items-center gap-2 shrink-0">
-        <div class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-semibold">VPD</div>
-        <span class="font-semibold whitespace-nowrap" data-i18n="app.brandShort">VPD Academy</span>
+        <!-- Per-tenant logo replaces this placeholder once tenants.logo_url
+             is known; falls back to it when no logo has been uploaded.
+             Clickable for a Super Admin to jump straight to the upload
+             tool. See sql/saas_platform/09_tenant_logo.sql. -->
+        <button type="button" id="tenant-logo-btn" data-i18n-aria-label="logo.title" aria-label="Church Logo" class="contents">
+          <div id="tenant-logo-placeholder" class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-semibold">VPD</div>
+          <img id="tenant-logo-img" alt="" class="hidden w-8 h-8 rounded-lg object-cover" />
+        </button>
+        <span class="font-semibold whitespace-nowrap" data-nav-group="org-name">VPD Church Organisation</span>
       </div>
 
       <!-- Visual placeholder only — no cross-entity search exists yet,
@@ -240,6 +250,15 @@
           </svg>
         </button>
 
+        <!-- Help / training — opens the tenant's training PDF (uploaded by
+             their Super Admin) so a new user or admin has something to
+             follow along with. See js/components/helpModal.js. -->
+        <button type="button" id="help-btn" data-i18n-aria-label="help.title" aria-label="Help" class="p-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+
         <div class="hidden md:block w-px h-6 bg-slate-700"></div>
 
         <!-- Account menu trigger — a circular initials avatar. Opens
@@ -254,6 +273,19 @@
         </button>
       </div>
     </header>
+
+    <!-- Trial / plan status banner. Hidden by default; app.js shows it
+         with the right text/color once the tenant's status is known
+         (loadMyTenant() in showApp()). See js/tenant.js. -->
+    <div id="trial-banner" class="hidden px-4 py-2 text-sm text-center font-medium">
+      <span data-el="trial-banner-text"></span>
+      <button type="button" data-action="view-plans" class="ml-3 underline hover:no-underline">
+        <span data-i18n="plans.viewPlans">View Plans</span>
+      </button>
+      <button type="button" data-action="dismiss-trial-banner" class="ml-3 underline hover:no-underline">
+        <span data-i18n="trial.dismiss">Dismiss for today</span>
+      </button>
+    </div>
 
     <!-- Account dialog (desktop only, opened by #account-menu-btn) —
          Profile/Change Password/View As/Role mode/Sign out, all in one
@@ -310,7 +342,7 @@
     <aside id="sidebar"
            class="fixed md:static inset-y-0 left-0 z-40 w-64 shrink-0 bg-slate-900 text-slate-300 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
       <div class="px-6 py-5 flex items-center justify-between border-b border-slate-800">
-        <span class="text-xl font-semibold text-white" data-i18n="app.brand">VPD Church Organisation</span>
+        <span class="text-xl font-semibold text-white" data-nav-group="org-name">VPD Church Organisation</span>
         <button type="button" id="menu-close-btn" data-i18n-aria-label="menu.close" aria-label="Close menu" class="md:hidden p-1 text-slate-400 hover:text-white">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -355,9 +387,10 @@
         <!-- Visible to every signed-in user regardless of department
              access — courses aren't department-scoped. -->
         <div class="space-y-1 mb-2 pb-2 border-b border-slate-800">
-          <button data-tab-target="training" data-i18n="nav.training"
-                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-            VPD Academy
+          <button data-tab-target="training" data-nav-group="vpd-academy-nav"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800 flex items-center justify-between gap-2">
+            <span data-i18n="nav.training">VPD Academy</span>
+            <span data-el="vpd-academy-lock" class="hidden text-xs font-normal text-amber-400">🔒 <span data-i18n="entitlements.upgrade">Upgrade</span></span>
           </button>
         </div>
 

@@ -4,15 +4,21 @@
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-// TODO: replace with your project's values (Project Settings > API).
 // The anon key is safe to expose in client-side code as long as
-// Row Level Security policies are enabled on every table (see sql/schema.sql).
+// Row Level Security policies are enabled on every table (see
+// sql/saas_platform/01_schema.sql).
 // Exported so callers that need a raw fetch() straight to an edge
 // function (e.g. to read a streaming response body, which
 // supabase.functions.invoke() doesn't expose) can build the request
 // themselves instead of duplicating these values.
-export const SUPABASE_URL = 'https://ezrwmplohjvttwosqvrn.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6cndtcGxvaGp2dHR3b3NxdnJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MzkxMjksImV4cCI6MjEwMjQxNTEyOX0.YzGP5gfb0GhGNGRylK4g_lBH4-mERiOmClqCQ_UrO_M';
+//
+// Points at the new multi-tenant SaaS project (towlqbxvhftzjfrtepsy), NOT
+// the live single-church app's project (ezrwmplohjvttwosqvrn) -- this
+// branch is the working copy for the new SaaS codebase, kept local until
+// it's split into its own repo (see sql/saas_platform/README.md). Do not
+// merge this file's change back into whatever deploys the live app.
+export const SUPABASE_URL = 'https://towlqbxvhftzjfrtepsy.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2xxYnh2aGZ0empmcnRlcHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNzY2NjIsImV4cCI6MjEwNDY1MjY2Mn0.k3tlKMNNlpd-TGcd5hnyDfSzNcdmy8QLKiRYKkOEa-c';
 
 // persistSession/autoRefreshToken are already the library defaults —
 // spelled out explicitly here so "stay signed in on this device" is a

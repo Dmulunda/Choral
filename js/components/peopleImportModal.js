@@ -16,6 +16,7 @@
 import { createScopedClient } from '../supabaseClient.js';
 import { departmentLabel, t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
+import { getTenantId } from '../tenant.js';
 
 const SIGNUP_DELAY_MS = 400;
 // Both English and French header names are recognized (this church runs
@@ -353,7 +354,9 @@ export function createPeopleImportModal({ supabase, currentUserId }) {
       const { data, error } = await scopedClient.auth.signUp({
         email,
         password,
-        options: { data: { full_name: row.full_name } },
+        // See userCreatorModal.js for why this is required -- the
+        // handle_new_user() trigger can't create a profiles row without it.
+        options: { data: { full_name: row.full_name, tenant_id: getTenantId() } },
       });
       const alreadyRegistered = !error && data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0;
 

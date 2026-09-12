@@ -21,6 +21,9 @@ import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createJoinDepartmentModal } from './components/joinDepartmentModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
+import { createTenantLogoModal } from './components/tenantLogoModal.js';
+import { createPlansModal } from './components/plansModal.js';
+import { createInviteLinkModal } from './components/inviteLinkModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
@@ -40,6 +43,9 @@ import {
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
 } from './departments.js';
+import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft } from './tenant.js';
+import { loadMyEntitlements, hasFeature } from './entitlements.js';
+import { createHelpModal } from './components/helpModal.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
 import { confirmLeaveIfProjecting } from './utils/projectionGuard.js';
@@ -58,6 +64,128 @@ const comingSoonApprovalsEl = document.querySelector('#department-coming-soon-ap
 const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el="approvals-list"]');
 const noAccessPanelEl = document.querySelector('#no-department-access');
 const inboxBtn = document.querySelector('#inbox-btn');
+const helpBtn = document.querySelector('#help-btn');
+const tenantLogoImgEl = document.querySelector('#tenant-logo-img');
+const tenantLogoPlaceholderEl = document.querySelector('#tenant-logo-placeholder');
+const tenantLogoBtnEl = document.querySelector('#tenant-logo-btn');
+
+// Sets the header/sidebar org name and logo from the loaded tenant (see
+// loadMyTenant() in showApp()). Not data-i18n-driven -- a language switch
+// re-runs applyStaticTranslations(), which would otherwise stomp the
+// tenant's actual name back to the static "VPD Church Organisation"
+// placeholder; this is called again from the onLangChange handler below
+// specifically to survive that.
+function applyTenantBranding() {
+  const tenant = getTenant();
+  forEachNavGroup('org-name', (el) => { el.textContent = tenant?.name || t('app.brand'); });
+
+  if (tenant?.logo_url) {
+    tenantLogoImgEl.src = tenant.logo_url;
+    tenantLogoImgEl.classList.remove('hidden');
+    tenantLogoPlaceholderEl.classList.add('hidden');
+  } else {
+    tenantLogoImgEl.classList.add('hidden');
+    tenantLogoPlaceholderEl.classList.remove('hidden');
+  }
+}
+
+tenantLogoBtnEl.addEventListener('click', () => {
+  if (getGlobalRole() !== 'super_admin' || isViewingAs()) return;
+  createTenantLogoModal({
+    supabase: getEffectiveSupabase(),
+    tenantId: getTenantId(),
+    onSaved: async () => { await loadMyTenant(currentUserId); applyTenantBranding(); },
+  }).open();
+});
+
+const trialBannerEl = document.querySelector('#trial-banner');
+const trialBannerTextEl = trialBannerEl.querySelector('[data-el="trial-banner-text"]');
+const TRIAL_BANNER_DISMISS_KEY = 'choir-hub-trial-banner-dismissed-on';
+
+function renderTrialBanner() {
+  // Billing/trial status is a super-admin concern only -- other roles
+  // have no action to take on it, and Plans & Pricing (reached via this
+  // banner's "View Plans" button) is itself super-admin-only.
+  if (getGlobalRole() !== 'super_admin') {
+    trialBannerEl.classList.add('hidden');
+    return;
+  }
+
+  const status = getTenantStatus();
+
+  const dismissBtn = trialBannerEl.querySelector('[data-action="dismiss-trial-banner"]');
+
+  if (status === 'trial_expired') {
+    // Not dismissible -- unlike the day-to-day countdown nudge, "your
+    // trial is over" needs to stay visible until they actually act.
+    trialBannerEl.className = 'px-4 py-2 text-sm text-center font-medium bg-rose-100 text-rose-800';
+    trialBannerTextEl.textContent = t('trial.expired');
+    dismissBtn.classList.add('hidden');
+    return;
+  }
+  dismissBtn.classList.remove('hidden');
+
+  if (status !== 'trial') {
+    trialBannerEl.classList.add('hidden');
+    return;
+  }
+
+  // Dismissal is per calendar day (not "forever") -- a trial ending soon
+  // should keep resurfacing, just not on every single click during the
+  // same session.
+  const today = new Date().toDateString();
+  if (localStorage.getItem(TRIAL_BANNER_DISMISS_KEY) === today) {
+    trialBannerEl.classList.add('hidden');
+    return;
+  }
+
+  const daysLeft = getTrialDaysLeft();
+  if (daysLeft === null) {
+    trialBannerEl.classList.add('hidden');
+    return;
+  }
+
+  trialBannerEl.className = daysLeft <= 3
+    ? 'px-4 py-2 text-sm text-center font-medium bg-amber-100 text-amber-800'
+    : 'px-4 py-2 text-sm text-center font-medium bg-indigo-50 text-indigo-800';
+  trialBannerTextEl.textContent = daysLeft === 0
+    ? t('trial.lastDay')
+    : daysLeft === 1
+      ? t('trial.oneDayLeft')
+      : t('trial.daysLeft', { count: daysLeft });
+}
+
+trialBannerEl.querySelector('[data-action="dismiss-trial-banner"]').addEventListener('click', () => {
+  localStorage.setItem(TRIAL_BANNER_DISMISS_KEY, new Date().toDateString());
+  trialBannerEl.classList.add('hidden');
+});
+
+// Feature keys gated in the UI, mapped to the tab they guard. The lock
+// badge is cosmetic — the actual enforcement is the RESTRICTIVE RLS
+// policy on each feature's tables (see sql/saas_platform/08_plans_and_features.sql);
+// this only decides what the button looks like and whether clicking it
+// opens the tab or an upgrade prompt.
+const GATED_TABS = { training: 'vpd_academy' };
+
+function openPlansModal() {
+  createPlansModal({
+    supabase: getEffectiveSupabase(),
+    currentPlanId: getTenant()?.plan_id || null,
+    tenantName: getTenant()?.name || '',
+  }).open();
+}
+
+trialBannerEl.querySelector('[data-action="view-plans"]').addEventListener('click', openPlansModal);
+
+function renderEntitlementGates() {
+  for (const [tabName, featureKey] of Object.entries(GATED_TABS)) {
+    const locked = !hasFeature(featureKey);
+    forEachNavGroup(`${featureKey.replace(/_/g, '-')}-nav`, (el) => {
+      el.querySelector('[data-el*="-lock"]')?.classList.toggle('hidden', !locked);
+      el.classList.toggle('opacity-60', locked);
+    });
+  }
+}
 const inboxBadgeEl = document.querySelector('#inbox-badge');
 const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
 const viewAsBtn = document.querySelector('#view-as-btn');
@@ -515,6 +643,9 @@ function updateSidebarToolsSelect() {
     || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
 
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
+  if (getGlobalRole() === 'super_admin' && !isViewingAs()) options.push({ value: 'plans', label: t('plans.title') });
+  if (getGlobalRole() === 'super_admin' && !isViewingAs()) options.push({ value: 'church-logo', label: t('sidebar.churchLogo') });
+  if (getGlobalRole() === 'super_admin' && !isViewingAs()) options.push({ value: 'invite-link', label: t('invite.title') });
   if (!isViewingAs()) options.push({ value: 'change-password', label: t('sidebar.changePassword') });
   if (!isViewingAs()) options.push({ value: 'my-profile', label: t('sidebar.myProfile') });
   if (!isViewingAs()) options.push({ value: 'my-letters', label: t('sidebar.myLetters') });
@@ -589,6 +720,16 @@ function runSidebarTool(value) {
       currentUserId,
       title: t('rules.churchTitle'),
     }).open();
+  } else if (value === 'plans') {
+    openPlansModal();
+  } else if (value === 'invite-link') {
+    createInviteLinkModal({ supabase: effectiveSupabase, tenantId: getTenantId(), tenantSlug: getTenant()?.slug }).open();
+  } else if (value === 'church-logo') {
+    createTenantLogoModal({
+      supabase: effectiveSupabase,
+      tenantId: getTenantId(),
+      onSaved: async () => { await loadMyTenant(currentUserId); applyTenantBranding(); },
+    }).open();
   } else if (value === 'attendance') {
     createAttendanceManagerModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'app-suggestion') {
@@ -660,6 +801,17 @@ inboxBtn.addEventListener('click', () => {
   closeSidebar();
 });
 
+helpBtn.addEventListener('click', () => {
+  const modal = createHelpModal({
+    supabase: getEffectiveSupabase(),
+    tenantId: getTenantId(),
+    currentUserId,
+    canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin',
+  });
+  modal.open();
+  closeSidebar();
+});
+
 // ---- Language switcher (top bar) ----
 document.documentElement.lang = getLang();
 applyStaticTranslations();
@@ -693,6 +845,7 @@ updateThemeIcon();
 onLangChange(() => {
   document.documentElement.lang = getLang();
   applyStaticTranslations();
+  applyTenantBranding();
   updateLangSelect();
   renderAuthScreen(authScreenEl, { supabase });
   if (!passwordRecoveryEl.classList.contains('hidden')) {
@@ -719,6 +872,16 @@ onLangChange(() => {
 
 tabs.forEach((tab) => {
   tab.addEventListener('click', () => {
+    const gateFeature = GATED_TABS[tab.dataset.tabTarget];
+    if (gateFeature && !hasFeature(gateFeature)) {
+      if (getGlobalRole() === 'super_admin') {
+        openPlansModal();
+      } else {
+        window.alert(t('plans.askYourAdmin'));
+      }
+      closeSidebar();
+      return;
+    }
     activateTab(tab.dataset.tabTarget);
     closeSidebar();
   });
@@ -852,7 +1015,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, role, removed_at')
+    .select('full_name, role, removed_at, tenant_id')
     .eq('id', session.user.id)
     .single();
 
@@ -868,6 +1031,18 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
     return;
   }
 
+  // A profile with no tenant_id isn't attached to any church — RLS would
+  // make every list in the app render silently empty, which is much
+  // harder to debug from a support ticket than a clear message up front.
+  // Should only happen for a profile the tenant-migration backfill missed,
+  // or a signup flow that failed to set tenant_id.
+  if (!profile?.tenant_id) {
+    appShellEl.classList.add('hidden');
+    window.alert(t('auth.noTenant'));
+    await supabase.auth.signOut({ scope: 'global' });
+    return;
+  }
+
   const displayName = profile?.full_name || session.user.email;
   forEachNavGroup('current-user-name', (el) => { el.textContent = displayName; });
   forEachNavGroup('current-user-initials', (el) => { el.textContent = getInitials(displayName); });
@@ -876,6 +1051,11 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // renames from menuCustomizer.js are in effect on first paint, not
   // just after a re-render.
   await loadLabelOverrides();
+  await loadMyTenant(session.user.id);
+  renderTrialBanner();
+  applyTenantBranding();
+  await loadMyEntitlements();
+  renderEntitlementGates();
   await loadAppTheme();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);

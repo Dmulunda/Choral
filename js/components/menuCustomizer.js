@@ -193,7 +193,6 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
       updated_at: new Date().toISOString(),
     }));
     const theme = {
-      id: true,
       primary_color: bodyEl.querySelector('[data-el="theme-primary"]').value,
       text_color: bodyEl.querySelector('[data-el="theme-text"]').value,
       background_color: bodyEl.querySelector('[data-el="theme-bg"]').value,
@@ -203,8 +202,8 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     };
 
     const [{ error }, { error: themeError }] = await Promise.all([
-      supabase.from('menu_labels').upsert(rows, { onConflict: 'key' }),
-      supabase.from('app_theme').upsert(theme, { onConflict: 'id' }),
+      supabase.from('menu_labels').upsert(rows, { onConflict: 'tenant_id,key' }),
+      supabase.from('app_theme').upsert(theme, { onConflict: 'tenant_id' }),
     ]);
     if (error || themeError) {
       statusEl.className = 'text-sm text-rose-600';

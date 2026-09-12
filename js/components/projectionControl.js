@@ -785,7 +785,7 @@ export function renderProjectionControl(container, { supabase }) {
   async function ensureScheduleId() {
     if (currentScheduleId) return currentScheduleId;
     const { data, error } = await supabase.from('projection_schedules')
-      .upsert({ service_date: scheduleDateEl.value, updated_at: new Date().toISOString() }, { onConflict: 'service_date' })
+      .upsert({ service_date: scheduleDateEl.value, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,service_date' })
       .select('id')
       .single();
     if (error) { window.alert(t('projection.scheduleSaveFailed', { message: error.message })); return null; }

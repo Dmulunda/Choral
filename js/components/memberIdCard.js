@@ -29,6 +29,7 @@
 // html2canvas/jsPDF — loaded via CDN in index.html — can rasterize it
 // into an actual PNG/PDF file, not just a browser print-to-PDF.
 import { t } from '../i18n.js';
+import { getTenant } from '../tenant.js';
 // The `qrcode` npm package ships no browser <script> bundle (only
 // bundler-ready CommonJS source) — jsdelivr's "+esm" endpoint converts
 // it on the fly, same convention already used for @supabase/supabase-js
@@ -81,12 +82,15 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   const joinedDate = dateFmt(profile.created_at);
   const birthLine = [profile.birth_city, profile.birth_country].filter(Boolean).join(', ') || '—';
   const sexLabel = profile.sex === 'M' ? t('memberCard.male') : profile.sex === 'F' ? t('memberCard.female') : '—';
-  const logoUrl = `${window.location.origin}/img/vpd-logo.png`;
+  // Falls back to the platform default only if this tenant hasn't
+  // uploaded their own yet -- see js/components/tenantLogoModal.js.
+  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/vpd-logo.png`;
+  const churchName = getTenant()?.name || t('app.brand');
 
   container.innerHTML = `
     <div data-el="cards-wrap">
       <div data-el="card-front" style="${cardOuterStyle()}position:relative;">
-        ${headerBar(logoUrl, true)}
+        ${headerBar(logoUrl, churchName, true)}
         <div style="display:flex;gap:12px;padding:12px 16px;flex:1;">
           <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
             <div style="width:84px;height:104px;border-radius:6px;background:#1e2f4d;border:2px solid ${GOLD};overflow:hidden;display:flex;align-items:center;justify-content:center;">
@@ -103,24 +107,26 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
             ${fieldRow(t('memberCard.issuedOn'), dateFmt(issuedDate))}
             ${fieldRow(t('memberCard.expiresOn'), dateFmt(expirationDate))}
           </div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
-            ${isRevoked || !profile.member_code
-              ? `<div style="width:60px;height:60px;background:#1e2f4d;border:2px solid #93a5c4;border-radius:4px;display:flex;align-items:center;justify-content:center;text-align:center;"><span style="font-size:8px;color:#93a5c4;">${escapeHtml(t('memberCard.qrUnavailable'))}</span></div>`
-              : `<canvas data-el="qr" width="60" height="60" style="width:60px;height:60px;background:white;border:2px solid ${GOLD};border-radius:4px;"></canvas>`}
-          </div>
         </div>
         ${isRevoked ? revokedStamp() : ''}
       </div>
 
       <div data-el="card-back" style="${cardOuterStyle()}margin-top:14px;position:relative;">
-        ${headerBar(logoUrl, false)}
-        <div style="padding:12px 16px;flex:1;font-size:11px;line-height:1.55;">
-          ${fieldRow(t('memberCard.birthInfo'), birthLine)}
-          ${fieldRow(t('memberCard.joinedOn'), joinedDate)}
-          ${fieldRow(t('memberCard.address'), profile.address || '—')}
-          <div style="display:flex;gap:24px;margin-top:12px;">
-            ${signatureBlock(t('memberCard.memberSignature'), profile.signature_data)}
-            ${signatureBlock(t('memberCard.pastorSignature'), pastorRow?.signature_data)}
+        ${headerBar(logoUrl, churchName, false)}
+        <div style="display:flex;gap:12px;padding:12px 16px;flex:1;">
+          <div style="flex:1;font-size:11px;line-height:1.55;">
+            ${fieldRow(t('memberCard.birthInfo'), birthLine)}
+            ${fieldRow(t('memberCard.joinedOn'), joinedDate)}
+            ${fieldRow(t('memberCard.address'), profile.address || '—')}
+            <div style="display:flex;gap:24px;margin-top:12px;">
+              ${signatureBlock(t('memberCard.memberSignature'), profile.signature_data)}
+              ${signatureBlock(t('memberCard.pastorSignature'), pastorRow?.signature_data)}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
+            ${isRevoked || !profile.member_code
+              ? `<div style="width:60px;height:60px;background:#1e2f4d;border:2px solid #93a5c4;border-radius:4px;display:flex;align-items:center;justify-content:center;text-align:center;"><span style="font-size:8px;color:#93a5c4;">${escapeHtml(t('memberCard.qrUnavailable'))}</span></div>`
+              : `<canvas data-el="qr" width="60" height="60" style="width:60px;height:60px;background:white;border:2px solid ${GOLD};border-radius:4px;"></canvas>`}
           </div>
         </div>
         <div style="background:${GOLD};color:${NAVY};font-size:10px;font-weight:700;text-align:center;padding:5px;letter-spacing:0.5px;">
@@ -143,6 +149,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   if (qrEl && profile.member_code) {
     try { await qrToCanvas(qrEl, profile.member_code, { width: 60, margin: 0 }); } catch { /* QR is a nice-to-have, not worth failing the whole card over */ }
   }
+  await recolorSignatureImages(container);
 
   container.querySelector('[data-action="download-png"]').addEventListener('click', () => downloadPng(wrapEl, statusEl));
   container.querySelector('[data-action="download-pdf"]').addEventListener('click', () => downloadPdf(container, statusEl));
@@ -152,16 +159,16 @@ function cardOuterStyle() {
   return `width:${CARD_WIDTH}px;height:${CARD_HEIGHT}px;background:${NAVY};color:white;border-radius:14px;overflow:hidden;font-family:system-ui,sans-serif;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.3);`;
 }
 
-function headerBar(logoUrl, isFront) {
-  // The logo file is a wide lockup (seal + full church name text), not
-  // a square mark — showing it at its natural aspect ratio here rather
-  // than clipped into a small circle (which used to squash it into an
-  // illegible sliver). It already carries the church name, so there's
-  // no separate name text here — just the card-label subtitle.
+function headerBar(logoUrl, churchName, isFront) {
+  // Per-tenant logos are typically an icon/mark, not a lockup with the
+  // church's name baked into the image (unlike the original single-church
+  // VPD wordmark this design started from) — so the name is always shown
+  // as real text here, not assumed to already be part of the image.
   return `
     <div style="display:flex;align-items:center;gap:10px;padding:6px 14px;border-bottom:2px solid ${GOLD};background:white;">
-      <img src="${logoUrl}" alt="" style="height:32px;width:auto;flex-shrink:0;" />
-      <div style="flex:1;line-height:1.2;text-align:right;">
+      <img src="${logoUrl}" alt="" style="height:32px;width:32px;object-fit:contain;flex-shrink:0;" />
+      <div style="flex:1;line-height:1.2;text-align:right;overflow:hidden;">
+        <div style="font-size:10px;font-weight:700;color:${NAVY};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(churchName)}</div>
         <div style="font-size:9px;letter-spacing:0.5px;color:${NAVY};font-weight:700;">${escapeHtml(t('memberCard.cardLabel'))}</div>
       </div>
       ${isFront ? `<span style="font-size:16px;" aria-hidden="true">📷</span>` : ''}
@@ -174,14 +181,57 @@ function fieldRow(label, value) {
 }
 
 function signatureBlock(label, signatureDataUrl) {
+  // Rendered navy-on-transparent as drawn (signaturePad.js never fills a
+  // background) -- invisible against this card's own navy background, so
+  // recolorSignatureImages() below repaints it white specifically for
+  // this card, after the initial render. Left as data-src rather than
+  // src so the browser never bothers loading/painting the (currently
+  // invisible) navy version first.
   return `
     <div style="flex:1;">
       <div style="border-bottom:1px solid #93a5c4;height:32px;display:flex;align-items:flex-end;justify-content:center;">
-        ${signatureDataUrl ? `<img src="${signatureDataUrl}" alt="" style="max-height:30px;max-width:100%;" />` : ''}
+        ${signatureDataUrl ? `<img data-el="signature-img" data-src="${signatureDataUrl}" alt="" style="max-height:30px;max-width:100%;" />` : ''}
       </div>
       <div style="font-size:9px;color:#93a5c4;margin-top:3px;">${escapeHtml(label)}</div>
     </div>
   `;
+}
+
+// Repaints a navy-ink-on-transparent signature image as white-ink-on-
+// transparent, so it reads clearly against the card's navy background
+// without touching the underlying signature_data (other contexts, e.g.
+// disciplinary letters, still want the navy ink as actually drawn).
+// source-in composites the fill only where the existing image already
+// has opacity, so the signature's shape/antialiasing survives exactly;
+// only its color changes.
+function recolorSignatureWhite(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const cctx = c.getContext('2d');
+      cctx.drawImage(img, 0, 0);
+      cctx.globalCompositeOperation = 'source-in';
+      cctx.fillStyle = '#ffffff';
+      cctx.fillRect(0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+async function recolorSignatureImages(container) {
+  const imgs = container.querySelectorAll('[data-el="signature-img"]');
+  await Promise.all(Array.from(imgs).map(async (img) => {
+    try {
+      img.src = await recolorSignatureWhite(img.dataset.src);
+    } catch {
+      /* leave unset rather than show the (invisible-on-navy) original */
+    }
+  }));
 }
 
 function revokedStamp() {
@@ -194,15 +244,37 @@ function revokedStamp() {
   `;
 }
 
+// Tries the native share sheet first (what actually gets an image into
+// Photos/Files on a phone in one tap -- an <a download> click on iOS
+// Safari just opens the image in a new tab instead of saving it, leaving
+// a fiddly long-press-to-save as the only way in). Falls back to the old
+// download-link behavior wherever Web Share (or sharing files specifically)
+// isn't supported, e.g. most desktop browsers.
+async function shareOrDownload(file, statusEl) {
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      statusEl.textContent = '';
+      return;
+    } catch (err) {
+      if (err?.name === 'AbortError') { statusEl.textContent = ''; return; } // user cancelled the share sheet -- not a failure
+      // fall through to the download link on any other share failure
+    }
+  }
+  const link = document.createElement('a');
+  link.download = file.name;
+  link.href = URL.createObjectURL(file);
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  statusEl.textContent = '';
+}
+
 async function downloadPng(wrapEl, statusEl) {
   if (!window.html2canvas) { statusEl.textContent = t('memberCard.exportUnavailable'); return; }
   statusEl.textContent = t('common.loading');
   const canvas = await window.html2canvas(wrapEl, { backgroundColor: '#ffffff', scale: 2 });
-  const link = document.createElement('a');
-  link.download = 'member-id-card.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-  statusEl.textContent = '';
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  await shareOrDownload(new File([blob], 'member-id-card.png', { type: 'image/png' }), statusEl);
 }
 
 async function downloadPdf(container, statusEl) {
@@ -220,8 +292,8 @@ async function downloadPdf(container, statusEl) {
   const backCanvas = await window.html2canvas(backEl, { backgroundColor: '#ffffff', scale: 2 });
   doc.addImage(backCanvas.toDataURL('image/png'), 'PNG', 0, 0, CARD_WIDTH, CARD_HEIGHT);
 
-  doc.save('member-id-card.pdf');
-  statusEl.textContent = '';
+  const blob = doc.output('blob');
+  await shareOrDownload(new File([blob], 'member-id-card.pdf', { type: 'application/pdf' }), statusEl);
 }
 
 function escapeHtml(str) {

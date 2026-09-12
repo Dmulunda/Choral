@@ -80,7 +80,7 @@ export function createDepartmentModal({ supabase, currentUserId, onCreated }) {
 
       const { error: labelError } = await supabase
         .from('menu_labels')
-        .upsert({ key: `department.${key}`, label_en: name, label_fr: name, updated_by: currentUserId }, { onConflict: 'key' });
+        .upsert({ key: `department.${key}`, label_en: name, label_fr: name, updated_by: currentUserId }, { onConflict: 'tenant_id,key' });
       if (labelError) throw labelError;
 
       await loadLabelOverrides();
