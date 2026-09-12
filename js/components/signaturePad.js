@@ -73,10 +73,14 @@ export function createSignaturePad(canvas) {
   // touching the pad should keep it, not silently clear it.
   function loadFromDataUrl(dataUrl) {
     if (!dataUrl) return;
+    // Set synchronously, not inside onload below -- isEmpty() can be
+    // checked (on form submit) before the async image decode finishes,
+    // and a data URL was already given, so "empty" is already wrong the
+    // instant this is called, not just once the pixels are drawn.
+    hasStroke = true;
     const img = new Image();
     img.onload = () => {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      hasStroke = true;
     };
     img.src = dataUrl;
   }

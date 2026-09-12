@@ -21,6 +21,7 @@ import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createJoinDepartmentModal } from './components/joinDepartmentModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
+import { createHelpModal } from './components/helpModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
@@ -59,6 +60,7 @@ const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el=
 const noAccessPanelEl = document.querySelector('#no-department-access');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
+const helpBtn = document.querySelector('#help-btn');
 const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -656,6 +658,16 @@ async function refreshInboxBadge() {
 inboxBtn.addEventListener('click', () => {
   const inboxUserId = getViewAsTarget()?.id || currentUserId;
   const modal = createInboxModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId, onRead: refreshInboxBadge });
+  modal.open();
+  closeSidebar();
+});
+
+helpBtn.addEventListener('click', () => {
+  const modal = createHelpModal({
+    supabase: getEffectiveSupabase(),
+    currentUserId,
+    canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin',
+  });
   modal.open();
   closeSidebar();
 });
