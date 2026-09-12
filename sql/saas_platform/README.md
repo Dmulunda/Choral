@@ -96,6 +96,20 @@ which is untouched and stays on its own project). Local-only for now — this
     `service_plans` after 8 days. No tenant filtering needed — it deletes
     by date across every tenant, which is safe (nothing read, nothing
     leaked) and matches what every tenant already expects.
+12. `14_service_program.sql` — `get_service_program(date)`, ported from
+    the live single-church app's "Service Program" roster page (one page
+    showing every department's assignments for a single date, with
+    department/personal highlighting client-side). This one **does**
+    need tenant filtering, unlike the cleanup job above — it's a
+    `SECURITY DEFINER` function that deliberately reads across every
+    department's tables (each normally RLS-restricted to its own
+    department's members), so every single table reference inside it is
+    explicitly scoped to `current_tenant_id()`. Verified live via
+    impersonation (`current_tenant_id()` resolves correctly under a real
+    session, function returns clean empty JSON for the test tenant, which
+    has no scheduling data yet). New client files: `js/serviceProgram.js`,
+    `js/components/serviceProgramBoard.js`; new unconditional sidebar tab
+    next to VPD Academy (not plan-gated).
 
 ## Other client-side fixes from this session
 
