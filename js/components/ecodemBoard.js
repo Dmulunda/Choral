@@ -8,6 +8,7 @@
 import { t, ecodemAgeGroupLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
@@ -285,7 +286,7 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
     // Admin, who still needs to find and correct an already-past one.
     let listQuery = supabase
       .from('ecodem_sessions')
-      .select('date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )');
+      .select('id, date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )');
     if (getGlobalRole() !== 'super_admin') listQuery = listQuery.gte('date', todayLocal());
     const { data, error } = await listQuery.order('date', { ascending: true });
 
@@ -313,7 +314,10 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
             const workers = (session.ecodem_session_workers || []).filter((w) => w.worker?.full_name);
             return `
               <div class="text-sm">
-                <div class="font-medium text-slate-700">${ecodemAgeGroupLabel(session.age_group)}</div>
+                <div class="flex items-baseline justify-between gap-2">
+                  <div class="font-medium text-slate-700">${ecodemAgeGroupLabel(session.age_group)}</div>
+                  ${canAdminister ? `<button type="button" data-action="delete" data-session-id="${session.id}" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('ecodem.delete')}</button>` : ''}
+                </div>
                 <div class="text-slate-600">${session.topic ? escapeHtml(session.topic) : `<span class="text-slate-400">${t('ecodem.noTopic')}</span>`}</div>
                 <div class="text-slate-500 mt-1 flex flex-wrap gap-1">${workers.length > 0
                   ? workers.map((w) => renderAssigneeBadge({
@@ -330,6 +334,22 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
       </div>
     `).join('');
   }
+
+  // Delegated rather than one listener per row -- load() rebuilds
+  // listEl.innerHTML wholesale on every refresh. Deleting the session
+  // cascades to its ecodem_session_workers rows (sql/018's FK).
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="delete"]');
+    if (!btn) return;
+    const sessionId = btn.dataset.sessionId;
+    if (!(await confirmDialog({ message: t('ecodem.confirmDelete') }))) return;
+    const { error } = await supabase.from('ecodem_sessions').delete().eq('id', sessionId);
+    if (error) {
+      window.alert(t('ecodem.deleteFailed', { message: error.message }));
+      return;
+    }
+    load();
+  });
 }
 
 function escapeHtml(str) {

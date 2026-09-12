@@ -8,6 +8,7 @@
 import { t, mediaTechRoleLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
@@ -326,7 +327,10 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
 
     listEl.innerHTML = Array.from(byDate.entries()).map(([date, roleMap]) => `
       <div class="border border-slate-200 rounded-lg p-3">
-        <div class="text-sm font-semibold text-slate-800 mb-2">${escapeHtml(date)}</div>
+        <div class="flex items-baseline justify-between gap-3 mb-2">
+          <div class="text-sm font-semibold text-slate-800">${escapeHtml(date)}</div>
+          ${canAdminister ? `<button type="button" data-action="delete" data-date="${escapeHtml(date)}" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('mediaTech.delete')}</button>` : ''}
+        </div>
         <div class="grid sm:grid-cols-2 gap-2">
           ${ROLES.filter((role) => roleMap.has(role)).map((role) => `
             <div class="text-sm">
@@ -346,6 +350,24 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
       </div>
     `).join('');
   }
+
+  // Delegated rather than one listener per row -- load() rebuilds
+  // listEl.innerHTML wholesale on every refresh. There's no single
+  // "session" id to delete here (each role/person/date is its own flat
+  // row, sql/018/060) -- deleting a date's whole program means deleting
+  // every assignment row sharing that date.
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="delete"]');
+    if (!btn) return;
+    const date = btn.dataset.date;
+    if (!(await confirmDialog({ message: t('mediaTech.confirmDelete', { date }) }))) return;
+    const { error } = await supabase.from('media_tech_assignments').delete().eq('date', date);
+    if (error) {
+      window.alert(t('mediaTech.deleteFailed', { message: error.message }));
+      return;
+    }
+    load();
+  });
 }
 
 function escapeHtml(str) {

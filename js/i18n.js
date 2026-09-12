@@ -876,6 +876,9 @@ const TRANSLATIONS = {
     'deptScheduling.loadFailed': 'Failed to load shifts: {message}',
     'deptScheduling.none': 'No shifts scheduled yet.',
     'deptScheduling.unassigned': 'Unassigned',
+    'deptScheduling.delete': 'Delete',
+    'deptScheduling.confirmDelete': 'Delete this shift? Assigned members will no longer see it.',
+    'deptScheduling.deleteFailed': 'Failed to delete: {message}',
     'deptScheduling.unavailableOnDate': 'unavailable that day',
     'deptScheduling.switchDepartment': 'Make a schedule for:',
 
@@ -948,6 +951,9 @@ const TRANSLATIONS = {
     'mediaTech.upcoming': 'Upcoming Assignments',
     'mediaTech.loadFailed': 'Failed to load assignments: {message}',
     'mediaTech.none': 'No assignments scheduled yet.',
+    'mediaTech.delete': 'Delete',
+    'mediaTech.confirmDelete': 'Delete the whole program for {date}? Every role assignment for that date will be removed.',
+    'mediaTech.deleteFailed': 'Failed to delete: {message}',
 
     'ecodem.ageGroup.group_1': 'Group 1 (2–6 years)',
     'ecodem.ageGroup.group_2': 'Group 2 (7–11 years)',
@@ -963,6 +969,9 @@ const TRANSLATIONS = {
     'ecodem.upcoming': 'Upcoming Sessions',
     'ecodem.loadFailed': 'Failed to load sessions: {message}',
     'ecodem.none': 'No sessions scheduled yet.',
+    'ecodem.delete': 'Delete',
+    'ecodem.confirmDelete': 'Delete this session? Assigned workers will no longer see it.',
+    'ecodem.deleteFailed': 'Failed to delete: {message}',
     'ecodem.noTopic': 'No topic set',
 
     'dashboard.placeholder': 'Dashboard content will be rendered here.',
@@ -2301,6 +2310,9 @@ const TRANSLATIONS = {
     'deptScheduling.loadFailed': 'Échec du chargement des services : {message}',
     'deptScheduling.none': 'Aucun service planifié pour le moment.',
     'deptScheduling.unassigned': 'Non assigné',
+    'deptScheduling.delete': 'Supprimer',
+    'deptScheduling.confirmDelete': 'Supprimer ce service ? Les membres assignés ne le verront plus.',
+    'deptScheduling.deleteFailed': 'Échec de la suppression : {message}',
     'deptScheduling.unavailableOnDate': 'indisponible ce jour-là',
     'deptScheduling.switchDepartment': 'Créer un planning pour :',
 
@@ -2373,6 +2385,9 @@ const TRANSLATIONS = {
     'mediaTech.upcoming': 'Assignations à venir',
     'mediaTech.loadFailed': 'Échec du chargement des assignations : {message}',
     'mediaTech.none': 'Aucune assignation planifiée pour le moment.',
+    'mediaTech.delete': 'Supprimer',
+    'mediaTech.confirmDelete': 'Supprimer tout le programme du {date} ? Toutes les assignations de rôle pour cette date seront supprimées.',
+    'mediaTech.deleteFailed': 'Échec de la suppression : {message}',
 
     'ecodem.ageGroup.group_1': 'Groupe 1 (2–6 ans)',
     'ecodem.ageGroup.group_2': 'Groupe 2 (7–11 ans)',
@@ -2388,6 +2403,9 @@ const TRANSLATIONS = {
     'ecodem.upcoming': 'Séances à venir',
     'ecodem.loadFailed': 'Échec du chargement des séances : {message}',
     'ecodem.none': 'Aucune séance planifiée pour le moment.',
+    'ecodem.delete': 'Supprimer',
+    'ecodem.confirmDelete': 'Supprimer cette séance ? Les travailleurs assignés ne la verront plus.',
+    'ecodem.deleteFailed': 'Échec de la suppression : {message}',
     'ecodem.noTopic': 'Aucun sujet défini',
 
     'dashboard.placeholder': 'Le contenu du tableau de bord sera affiché ici.',
