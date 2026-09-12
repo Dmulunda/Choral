@@ -12,6 +12,7 @@
 // and none was asked for, so these are simple constants a future code
 // change would update if the actual people ever change.
 import { t } from '../i18n.js';
+import { getTenant } from '../tenant.js';
 
 const LEAD_INSTRUCTOR_NAME = 'Prophète Francis Ngawala';
 const LEAD_INSTRUCTOR_TITLE = 'LEAD INSTRUCTOR';
@@ -20,7 +21,10 @@ const ACADEMY_DIRECTOR_TITLE = 'PASTEUR PRINCIPAL';
 
 export function openCertificate({ studentName, courseTitle, approvedAt, approvalId }) {
   const dateLabel = new Date(approvedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  const logoUrl = `${window.location.origin}/img/vpd-logo.png`;
+  // Falls back to the platform default only if this tenant hasn't
+  // uploaded their own yet -- see js/components/tenantLogoModal.js,
+  // same pattern as memberIdCard.js's header.
+  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/vpd-logo.png`;
   const certificateId = formatCertificateId(approvalId, approvedAt);
 
   const html = `

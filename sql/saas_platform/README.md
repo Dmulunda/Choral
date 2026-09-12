@@ -160,9 +160,13 @@ which is untouched and stays on its own project). Local-only for now — this
   urgent to actually deploy — neither push notifications nor course
   video playback is in use yet — but the code is ready whenever a token
   is provided.
-- **Logo branding still hardcoded in `certificate.js` and
-  `disciplinaryLetters.js`** (both `img/vpd-logo.png`) — `memberIdCard.js`
-  and the header are done.
+- ~~Logo branding still hardcoded in `certificate.js` and
+  `disciplinaryLetters.js`~~ — done. Both now use `getTenant()?.logo_url`,
+  same fallback pattern as `memberIdCard.js`/the header. The remaining
+  hardcoded `img/vpd-logo.png` references (`authScreen.js`,
+  `passwordRecovery.js`, `index.html`'s splash/watermark/favicon) are all
+  pre-login surfaces where no tenant is known yet — left as the generic
+  platform logo on purpose, not an oversight.
 - **No billing integration.** `plans`/`plan_id` changes are still a manual
   SQL/dashboard operation — no Stripe (or other) checkout flow exists to let
   a tenant actually change their own plan.

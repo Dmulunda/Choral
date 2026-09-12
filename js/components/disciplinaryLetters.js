@@ -22,6 +22,7 @@
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { createSignaturePad } from './signaturePad.js';
+import { getTenant } from '../tenant.js';
 
 const LETTER_TYPES = ['warning', 'suspension'];
 
@@ -492,7 +493,10 @@ export function createDisciplinaryLettersAdminModal({ supabase, currentUserId })
 
 function printLetter(letter, sigs) {
   const dateLabel = new Date(letter.issued_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  const logoUrl = `${window.location.origin}/img/vpd-logo.png`;
+  // Falls back to the platform default only if this tenant hasn't
+  // uploaded their own yet -- see js/components/tenantLogoModal.js,
+  // same pattern as memberIdCard.js's header.
+  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/vpd-logo.png`;
 
   const html = `
     <!DOCTYPE html>
