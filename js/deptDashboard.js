@@ -10,6 +10,7 @@ import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
+import { renderBudgetBoard } from './components/budgetBoard.js';
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
@@ -114,6 +115,15 @@ export async function renderDeptDashboardTab() {
         createBudgetRequestsInboxModal({ supabase, adminUserId: user.id }).open();
       });
     }
+
+    // The actual budget ledger -- separate from the fund-request inbox
+    // above (that's "ask Finance for money"; this is Finance tracking
+    // what it's actually spending). Read-only for a plain Finance
+    // member; create/edit/expense/close actions need canManageDept
+    // (admin or secretary), same threshold as headcountBoard.js below.
+    const budgetBoardEl = document.createElement('div');
+    container.appendChild(budgetBoardEl);
+    renderBudgetBoard(budgetBoardEl, { supabase, departmentId: active.id, currentUserId: user.id, canManage: canManageDept });
   } else if (canAdminister) {
     const budgetBtn = document.createElement('button');
     budgetBtn.type = 'button';
