@@ -1,15 +1,16 @@
-// Finance budget/financial requests, for a specific budget month.
-// Submitting is department-admin-only (can_write_department(), the
-// insert policy in sql/029 — briefly opened to any approved member in
-// sql/028, reverted after feedback) and the UI mirrors that: the
-// "Request Funds" button itself is admin-gated on every department
-// page, not just the RLS. Both the submit form and Finance's review
-// board are pop-up modals (same createXModal({ ... }) => { open } shape
-// as every other modal in this app) — a button on the dashboard opens
-// them, so they don't take up permanent space when not in use.
-// createBudgetRequestModal is mounted on every department's dashboard;
-// createBudgetRequestsInboxModal is Finance's own — admins only (plus
-// every church-wide role, via can_manage_finance() in sql/027).
+// Finance fund requests -- the "ask Finance for money" queue that
+// approve_budget_request() (sql) turns into an actual tracked budget on
+// approval. Two render functions, embedded directly into the
+// centralized Budget page (js/components/budgetCentralBoard.js) rather
+// than opened as modals -- there's exactly one place in the app this is
+// reachable from now, so there's no reason to pay for modal chrome:
+//   renderMyFundRequests    -- any ordinary department's own admin/secretary:
+//                              submit a request, see their own request history.
+//   renderFundRequestsInbox -- Finance oversight (Finance admin/secretary,
+//                              Pastor, Church Secretary, Super Admin):
+//                              every department's requests, month/department
+//                              filters, a pending-count callback for the
+//                              tab's notification badge.
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 
@@ -18,69 +19,7 @@ function currentMonthValue() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function createBudgetRequestModal({ supabase, departmentId, currentUserId }) {
-  const root = document.createElement('div');
-  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
-  root.innerHTML = `
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">${t('finance.requestFunds')}</h2>
-        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
-      </div>
-      <div data-el="body"></div>
-    </div>
-  `;
-  document.body.appendChild(root);
-
-  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
-  root.addEventListener('click', (e) => { if (e.target === root) close(); });
-
-  function open() {
-    root.classList.remove('hidden');
-    root.classList.add('flex');
-    renderFormBody(root.querySelector('[data-el="body"]'), { supabase, departmentId, currentUserId });
-  }
-
-  function close() {
-    root.classList.add('hidden');
-    root.classList.remove('flex');
-  }
-
-  return { open };
-}
-
-export function createBudgetRequestsInboxModal({ supabase, adminUserId }) {
-  const root = document.createElement('div');
-  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
-  root.innerHTML = `
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">${t('finance.inboxTitle')}</h2>
-        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
-      </div>
-      <div data-el="body"></div>
-    </div>
-  `;
-  document.body.appendChild(root);
-
-  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
-  root.addEventListener('click', (e) => { if (e.target === root) close(); });
-
-  function open() {
-    root.classList.remove('hidden');
-    root.classList.add('flex');
-    renderInboxBody(root.querySelector('[data-el="body"]'), { supabase, adminUserId });
-  }
-
-  function close() {
-    root.classList.add('hidden');
-    root.classList.remove('flex');
-  }
-
-  return { open };
-}
-
-async function renderFormBody(container, { supabase, departmentId, currentUserId }) {
+export async function renderMyFundRequests(container, { supabase, departmentId, currentUserId }) {
   // Existing (not-yet-closed) budgets this department can top up instead
   // of starting a new one -- approve_budget_request() adds the amount
   // to initial_amount when budget_id is set, or creates a fresh budget
@@ -130,13 +69,19 @@ async function renderFormBody(container, { supabase, departmentId, currentUserId
         <span data-el="form-status" class="text-sm text-slate-500"></span>
       </div>
     </form>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">${t('finance.myRequests')}</h3>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400">${t('finance.myRequests')}</h3>
+      <input type="month" data-el="month-filter" class="border border-slate-300 rounded-lg px-2 py-1 text-sm" />
+    </div>
     <div data-el="list" class="space-y-2"></div>
   `;
 
   const form = container.querySelector('[data-el="form"]');
   const formStatusEl = container.querySelector('[data-el="form-status"]');
   const listEl = container.querySelector('[data-el="list"]');
+  const monthFilterEl = container.querySelector('[data-el="month-filter"]');
+
+  monthFilterEl.addEventListener('change', () => load());
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -179,11 +124,13 @@ async function renderFormBody(container, { supabase, departmentId, currentUserId
   async function load() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('budget_requests')
       .select('id, title, amount, request_month, status, created_at')
-      .eq('requesting_department_id', departmentId)
-      .order('created_at', { ascending: false });
+      .eq('requesting_department_id', departmentId);
+    if (monthFilterEl.value) query = query.eq('request_month', `${monthFilterEl.value}-01`);
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('finance.loadFailed', { message: error.message })}</p>`;
@@ -207,27 +154,50 @@ async function renderFormBody(container, { supabase, departmentId, currentUserId
   }
 }
 
-function renderInboxBody(container, { supabase, adminUserId }) {
-  container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+export function renderFundRequestsInbox(container, { supabase, adminUserId, departments, onPendingCountChange }) {
+  container.innerHTML = `
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <input type="month" data-el="month-filter" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+      <select data-el="department-filter" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+        <option value="">${t('finance.allDepartments')}</option>
+        ${departments.map((d) => `<option value="${d.id}">${escapeHtml(departmentLabel(d.key))}</option>`).join('')}
+      </select>
+    </div>
+    <div data-el="list"><p class="text-sm text-slate-500">${t('common.loading')}</p></div>
+  `;
+
+  const listEl = container.querySelector('[data-el="list"]');
+  const monthFilterEl = container.querySelector('[data-el="month-filter"]');
+  const deptFilterEl = container.querySelector('[data-el="department-filter"]');
+
+  monthFilterEl.addEventListener('change', load);
+  deptFilterEl.addEventListener('change', load);
+
   load();
+  refreshPendingCount();
 
   async function load() {
-    const { data, error } = await supabase
+    listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+
+    let query = supabase
       .from('budget_requests')
-      .select('id, title, amount, description, request_month, status, created_at, requester:profiles!requested_by ( full_name ), departments ( key )')
-      .order('created_at', { ascending: false });
+      .select('id, title, amount, description, request_month, status, created_at, requester:profiles!requested_by ( full_name ), departments ( key )');
+    if (monthFilterEl.value) query = query.eq('request_month', `${monthFilterEl.value}-01`);
+    if (deptFilterEl.value) query = query.eq('requesting_department_id', deptFilterEl.value);
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-      container.innerHTML = `<p class="text-sm text-rose-600">${t('finance.loadFailed', { message: error.message })}</p>`;
+      listEl.innerHTML = `<p class="text-sm text-rose-600">${t('finance.loadFailed', { message: error.message })}</p>`;
       return;
     }
 
     if (data.length === 0) {
-      container.innerHTML = `<p class="text-sm text-slate-500">${t('finance.noRequests')}</p>`;
+      listEl.innerHTML = `<p class="text-sm text-slate-500">${t('finance.noRequests')}</p>`;
       return;
     }
 
-    container.innerHTML = data.map((r) => `
+    listEl.innerHTML = data.map((r) => `
       <div class="border border-slate-200 rounded-lg p-3 mb-2" data-row="${r.id}">
         <div class="flex items-center justify-between gap-3">
           <div class="font-medium text-slate-800">${escapeHtml(r.title)}${r.amount ? ` — ${formatAmount(r.amount)}` : ''}</div>
@@ -253,6 +223,16 @@ function renderInboxBody(container, { supabase, adminUserId }) {
     });
   }
 
+  // Independent of the filters above -- the badge always reflects the
+  // true total, not whatever's currently being viewed.
+  async function refreshPendingCount() {
+    const { count } = await supabase
+      .from('budget_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    onPendingCountChange?.(count || 0);
+  }
+
   async function respond(id, status) {
     const confirmLabel = status === 'approved' ? t('approvals.approve') : t('approvals.reject');
     if (!(await confirmDialog({ message: t('finance.confirmRespond', { status: confirmLabel.toLowerCase() }), confirmLabel, danger: status === 'rejected' }))) return;
@@ -274,6 +254,7 @@ function renderInboxBody(container, { supabase, adminUserId }) {
       return;
     }
     load();
+    refreshPendingCount();
   }
 }
 

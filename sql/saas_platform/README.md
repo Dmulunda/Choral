@@ -185,6 +185,22 @@ which is untouched and stays on its own project). Local-only for now — this
     request → approve → auto-created-budget flow produces the right
     `tenant_id`, and reimbursement approval is blocked without a receipt
     and succeeds once one's attached.
+16. No new SQL — client-only, ported from `main` (commit `f76f690`):
+    replaced the nested-per-department Budget UI with one centralized
+    "Budget" page (`js/budgetPage.js`, `js/components/budgetCentralBoard.js`)
+    reached from a top-level nav item next to Service Program, but with
+    zero trace for anyone who isn't a department admin/secretary or
+    Pastor — no nav button constructed in the DOM at all for a
+    disqualifying viewer, not just CSS-hidden like every other
+    conditional nav item in `index.html`. Two new exports on
+    `departments.js` (`hasFinanceOversight()`, `hasAnyDeptLeadership()`)
+    mirror `can_manage_finance()`'s exact composition so what's shown
+    client-side tracks what RLS actually allows. Fund Request (submit +
+    Finance's inbox) and the per-department budget board moved into the
+    new page's two tabs (filterable by month/department, a pending-count
+    badge on Fund Request); Reimbursements ("My Budget") stayed nested
+    per-department, unchanged, since that restructuring was specifically
+    about Fund Request/Budget Report.
 
 ## Other client-side fixes from this session
 

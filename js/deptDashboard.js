@@ -9,8 +9,6 @@ import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlob
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createUserManagerModal } from './components/userManager.js';
-import { createBudgetRequestModal, createBudgetRequestsInboxModal } from './components/budgetRequests.js';
-import { renderBudgetBoard } from './components/budgetBoard.js';
 import { createReimbursementRequestModal, createReimbursementInboxModal } from './components/reimbursementModal.js';
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
@@ -102,22 +100,14 @@ export async function renderDeptDashboardTab() {
     });
   }
 
-  // Finance sees the incoming requests from every other department
-  // instead of a form to submit its own; inbox actions (approving
-  // someone else's money) stay admin-only, unlike the department-level
-  // actions below (Request Fund/My Budget), which the spec explicitly
-  // widens to admin+secretary.
+  // Fund Request (submit + Finance's own review) and the per-department
+  // budget board moved to the centralized Budget page (js/budgetPage.js)
+  // -- reachable only by a department admin/secretary or Pastor, with no
+  // nav trace at all for anyone else. Finance's Reimbursements inbox and
+  // every department's own "My Budget" stay here, unchanged -- that
+  // restructuring was specifically about Fund Request/Budget Report.
   if (active.key === 'finance') {
     if (canAdminister) {
-      const inboxBtn = document.createElement('button');
-      inboxBtn.type = 'button';
-      inboxBtn.className = 'mb-3 mr-2 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-      inboxBtn.textContent = t('finance.inboxTitle');
-      container.appendChild(inboxBtn);
-      inboxBtn.addEventListener('click', () => {
-        createBudgetRequestsInboxModal({ supabase, adminUserId: user.id }).open();
-      });
-
       const reimbursementInboxBtn = document.createElement('button');
       reimbursementInboxBtn.type = 'button';
       reimbursementInboxBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
@@ -128,15 +118,6 @@ export async function renderDeptDashboardTab() {
       });
     }
   } else if (canManageDept) {
-    const budgetBtn = document.createElement('button');
-    budgetBtn.type = 'button';
-    budgetBtn.className = 'mb-3 mr-2 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-    budgetBtn.textContent = t('finance.requestFunds');
-    container.appendChild(budgetBtn);
-    budgetBtn.addEventListener('click', () => {
-      createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
-    });
-
     const myBudgetBtn = document.createElement('button');
     myBudgetBtn.type = 'button';
     myBudgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200';
@@ -146,19 +127,6 @@ export async function renderDeptDashboardTab() {
       createReimbursementRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
     });
   }
-
-  // Every department gets its own budget board now, not just Finance --
-  // gated behind Finance approving a fund request first (budgetRequests.js
-  // auto-creates the budget on approval; see allowManualCreate below).
-  // Finance keeps direct creation since it's the approver, not a
-  // requester. Read-visible to any approved department member; the
-  // manage actions inside are gated by canManage/canManageDept.
-  const budgetBoardEl = document.createElement('div');
-  container.appendChild(budgetBoardEl);
-  renderBudgetBoard(budgetBoardEl, {
-    supabase, departmentId: active.id, currentUserId: user.id, canManage: canManageDept,
-    allowManualCreate: active.key === 'finance',
-  });
 
   if (active.key === 'intercession' && canManageDept) {
     const prayerRequestsBtn = document.createElement('button');
