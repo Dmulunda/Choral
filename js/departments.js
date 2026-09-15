@@ -80,6 +80,26 @@ export function hasGlobalReach() {
   return !!globalRole && !actingAsStandardUser && !isViewingAs();
 }
 
+// Mirrors can_manage_finance() (sql) exactly -- Finance department
+// admin/secretary, or one of the three global roles that get
+// church-wide financial oversight (Pastor, Church Secretary, Super
+// Admin). Deciding what's shown here tracks what RLS actually allows
+// the caller to touch, not a separate ad hoc UI-only role list.
+const FINANCE_OVERSIGHT_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+export function hasFinanceOversight() {
+  if (hasGlobalReach() && FINANCE_OVERSIGHT_ROLES.includes(globalRole)) return true;
+  return getMyDepartments().some((d) => d.key === 'finance' && (d.role === 'admin' || d.role === 'secretary'));
+}
+
+// Whether this session should see the Budget nav item at all -- either
+// full cross-department oversight above, or leadership (admin/secretary)
+// of at least one ordinary department, entitling them to that
+// department's own Fund Request / Budget Report. Everyone else gets no
+// trace of the feature -- the nav button is never constructed for them.
+export function hasAnyDeptLeadership() {
+  return hasFinanceOversight() || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
+}
+
 // ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
 // A global-role holder's own account may also carry real, literal
 // department_memberships (e.g. the original Choir admin who was later

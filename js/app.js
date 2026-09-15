@@ -15,6 +15,7 @@ import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab, openGuestOnboardingHub } from './superAdminHome.js';
 import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
+import { renderBudgetPageTab } from './budgetPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
@@ -40,7 +41,7 @@ import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
-  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
+  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
@@ -98,6 +99,7 @@ const lazyTabs = {
   'super-home': renderSuperAdminHomeTab,
   training: renderTrainingTab,
   'service-program': renderServiceProgramTab,
+  budget: renderBudgetPageTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -109,7 +111,12 @@ function activateTab(name) {
     panel.classList.toggle('hidden', panel.dataset.tabPanel !== name);
   });
 
-  tabs.forEach((tab) => {
+  // Queried fresh rather than using the closed-over `tabs` snapshot from
+  // script load -- the Budget nav button (see updateBudgetNavVisibility())
+  // is inserted dynamically, after that snapshot was taken, specifically
+  // so it can be entirely absent for most viewers rather than just
+  // CSS-hidden like every other conditional nav item in this file.
+  document.querySelectorAll('[data-tab-target]').forEach((tab) => {
     const isActive = tab.dataset.tabTarget === name;
     tab.classList.toggle('bg-indigo-600', isActive);
     tab.classList.toggle('text-white', isActive);
@@ -158,6 +165,38 @@ function forEachNavGroup(name, fn) {
   document.querySelectorAll(`[data-nav-group="${name}"]`).forEach(fn);
 }
 
+// The Budget nav button (Finance/Budget module) deliberately isn't
+// built-then-CSS-hidden like every other conditional nav item above --
+// the spec calls for zero trace for anyone who isn't a department
+// admin/secretary or Pastor, so it's only ever constructed and inserted
+// into the DOM for hasAnyDeptLeadership() (departments.js), and removed
+// again if that ever becomes false mid-session (Standard User Mode,
+// View-As). Re-run on every applyActiveDepartment(), same as the
+// 'global' nav group right above this call, since department
+// leadership can change identity (not just visibility) across those
+// mode switches.
+const unconditionalNavGroupEl = document.querySelector('#unconditional-nav-group');
+let budgetNavBtn = null;
+function updateBudgetNavVisibility() {
+  if (hasAnyDeptLeadership()) {
+    if (!budgetNavBtn) {
+      budgetNavBtn = document.createElement('button');
+      budgetNavBtn.dataset.tabTarget = 'budget';
+      budgetNavBtn.setAttribute('data-i18n', 'nav.budget');
+      budgetNavBtn.className = 'w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800';
+      budgetNavBtn.textContent = t('nav.budget');
+      budgetNavBtn.addEventListener('click', () => {
+        activateTab('budget');
+        closeSidebar();
+      });
+      unconditionalNavGroupEl.appendChild(budgetNavBtn);
+    }
+  } else if (budgetNavBtn) {
+    budgetNavBtn.remove();
+    budgetNavBtn = null;
+  }
+}
+
 // ---- Department switcher ----
 // Only Choir has real screens today — other departments show a
 // placeholder until their own phase ships. The switcher itself only
@@ -197,6 +236,7 @@ function applyActiveDepartment() {
   // since active is intentionally null while on the Home console —
   // Home itself lives inside this same nav group.
   forEachNavGroup('global', (el) => el.classList.toggle('hidden', !hasGlobalReach()));
+  updateBudgetNavVisibility();
   updateSidebarToolsSelect();
 
   if (!active) {

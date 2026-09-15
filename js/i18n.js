@@ -451,6 +451,7 @@ const TRANSLATIONS = {
 
     'nav.training': 'VPD Academy',
     'nav.serviceProgram': 'Service Program',
+    'nav.budget': 'Budget',
     'users.setSchoolAdmin': 'Make School Admin',
     'users.removeSchoolAdmin': 'Remove School Admin',
     'users.confirmSetSchoolAdmin': 'Make {name} a School Admin? They’ll be able to create and manage courses, and review completion approvals.',
@@ -725,6 +726,7 @@ const TRANSLATIONS = {
     'finance.titlePlaceholder': 'e.g. Sound equipment repair',
     'finance.budgetLabel': 'Budget',
     'finance.newBudgetOption': 'New budget',
+    'finance.allDepartments': 'All departments',
     'finance.monthLabel': 'Budget Month',
     'finance.amountLabel': 'Amount (optional)',
     'finance.descriptionLabel': 'Description',
@@ -808,6 +810,13 @@ const TRANSLATIONS = {
     'reimbursement.confirmApprove': 'Approve this reimbursement?',
     'reimbursement.confirmReject': 'Reject this reimbursement request?',
     'reimbursement.updateFailed': 'Failed to update: {message}',
+
+    'budgetPage.fundRequestTab': 'Fund Request',
+    'budgetPage.budgetReportTab': 'Budget Report',
+    'budgetPage.noAccess': 'Nothing to show here.',
+    'budgetPage.manageBudgets': 'Manage Budgets',
+    'budgetPage.reportLoadFailed': 'Failed to load: {message}',
+    'budgetPage.noSpending': 'No spending recorded for this month yet.',
 
     'superHome.pendingTitle': 'Pending Requests',
     'superHome.reportsTitle': 'Department Reports',
@@ -1961,6 +1970,7 @@ const TRANSLATIONS = {
 
     'nav.training': 'VPD Academy',
     'nav.serviceProgram': 'Programme du service',
+    'nav.budget': 'Budget',
     'users.setSchoolAdmin': 'Nommer administrateur de formation',
     'users.removeSchoolAdmin': 'Retirer administrateur de formation',
     'users.confirmSetSchoolAdmin': 'Faire de {name} un administrateur de formation ? Il/elle pourra créer et gérer des cours, et examiner les demandes d’approbation.',
@@ -2235,6 +2245,7 @@ const TRANSLATIONS = {
     'finance.titlePlaceholder': 'ex. Réparation du matériel de son',
     'finance.budgetLabel': 'Budget',
     'finance.newBudgetOption': 'Nouveau budget',
+    'finance.allDepartments': 'Tous les départements',
     'finance.monthLabel': 'Mois budgétaire',
     'finance.amountLabel': 'Montant (optionnel)',
     'finance.descriptionLabel': 'Description',
@@ -2318,6 +2329,13 @@ const TRANSLATIONS = {
     'reimbursement.confirmApprove': 'Approuver ce remboursement ?',
     'reimbursement.confirmReject': 'Rejeter cette demande de remboursement ?',
     'reimbursement.updateFailed': 'Échec de la mise à jour : {message}',
+
+    'budgetPage.fundRequestTab': 'Demande de fonds',
+    'budgetPage.budgetReportTab': 'Rapport budgétaire',
+    'budgetPage.noAccess': 'Rien à afficher ici.',
+    'budgetPage.manageBudgets': 'Gérer les budgets',
+    'budgetPage.reportLoadFailed': 'Échec du chargement : {message}',
+    'budgetPage.noSpending': 'Aucune dépense enregistrée pour ce mois.',
 
     'superHome.pendingTitle': 'Demandes en attente',
     'superHome.reportsTitle': 'Rapports par département',
