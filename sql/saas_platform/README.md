@@ -138,6 +138,27 @@ which is untouched and stays on its own project). Local-only for now — this
     button (Billing Portal) appears once a tenant has ever checked out.
     No Stripe.js/publishable key anywhere client-side — both flows are
     plain redirects to Stripe's hosted pages and back.
+14. `16_budget_management.sql` — Finance: Budget Management, ported from
+    `main` (commit `c948eeb`). New `budgets`/`budget_transactions`
+    tables, RLS via the same `can_read_department()`/
+    `can_write_department()` helpers every other department table
+    already uses, plus a `RESTRICTIVE tenant_isolation` policy on both —
+    the standard Phase 1 two-layer pattern, confirmed identical to
+    `department_shifts`' actual live policy set before writing this.
+    New private `budget-receipts` storage bucket, same
+    folder-scoped-by-`department_id` shape as `uniform-photos` (no
+    tenant-id path segment needed — confirmed live that `uniform-photos`
+    itself doesn't use one either, since `department_id` is already
+    tenant-unique). Verified live via impersonation: a Finance admin's
+    insert correctly auto-fills `tenant_id` via the column default, and
+    the `tenant_isolation` policy is present with the expected
+    expression (a true cross-tenant negative test wasn't possible — this
+    project's one populated tenant only has a single profile in it).
+    Client files ported unmodified except `budgetPdf.js`'s church-name
+    text, which now reads `getTenant()?.name` (falling back to
+    `t('app.brand')`) instead of the live app's hardcoded name — same
+    pattern as `memberIdCard.js`'s header, the one other place in this
+    app that prints the org's name as text rather than just a logo.
 
 ## Other client-side fixes from this session
 
