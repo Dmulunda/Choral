@@ -159,6 +159,32 @@ which is untouched and stays on its own project). Local-only for now — this
     `t('app.brand')`) instead of the live app's hardcoded name — same
     pattern as `memberIdCard.js`'s header, the one other place in this
     app that prints the org's name as text rather than just a logo.
+15. `17_budget_v2_reimbursements.sql` — extends Budget Management to
+    every department (ported from `main` commit `ee85bf4`): a fund
+    request now auto-creates the requesting department's budget on
+    Finance approval (or tops up an existing one, if the request points
+    at one), a standalone `reimbursement_requests` table for personal
+    out-of-pocket spending ("My Budget"), and cross-department audit
+    read access for Finance Admins + Pastor via `can_manage_finance()`.
+    **Found and fixed a pre-existing multi-tenant bug in
+    `can_manage_finance()` while doing this**: its subquery for
+    Finance's own `department_id` had no `tenant_id` filter — harmless
+    with only one tenant, but the moment a second tenant's own Finance
+    department exists, `select id from departments where key='finance'`
+    returns more than one row, which Postgres raises as an error in a
+    scalar-subquery context, breaking the function platform-wide, not
+    just leaking data. Fixed in place (`and tenant_id =
+    current_tenant_id()`), since this function is now load-bearing for
+    the new audit-read policy. `approve_budget_request()`/
+    `approve_reimbursement_request()` are `SECURITY DEFINER` (same
+    reasoning as `sync_tenant_stripe_subscription()`), so — unlike
+    `can_manage_finance()` alone, which only proves the caller is *a*
+    Finance admin somewhere — every row each RPC touches is explicitly
+    re-checked against `current_tenant_id()`, not just looked up by id.
+    Verified live: `can_manage_finance()` no longer errors, the full
+    request → approve → auto-created-budget flow produces the right
+    `tenant_id`, and reimbursement approval is blocked without a receipt
+    and succeeds once one's attached.
 
 ## Other client-side fixes from this session
 
