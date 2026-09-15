@@ -80,9 +80,29 @@ export function createBudgetRequestsInboxModal({ supabase, adminUserId }) {
   return { open };
 }
 
-function renderFormBody(container, { supabase, departmentId, currentUserId }) {
+async function renderFormBody(container, { supabase, departmentId, currentUserId }) {
+  // Existing (not-yet-closed) budgets this department can top up instead
+  // of starting a new one -- approve_budget_request() adds the amount
+  // to initial_amount when budget_id is set, or creates a fresh budget
+  // when it's left as "New budget".
+  const { data: openBudgets } = await supabase
+    .from('budgets')
+    .select('id, name')
+    .eq('department_id', departmentId)
+    .neq('status', 'closed')
+    .order('name');
+
   container.innerHTML = `
     <form data-el="form" class="space-y-3 mb-6 pb-6 border-b border-slate-200">
+      ${openBudgets && openBudgets.length > 0 ? `
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('finance.budgetLabel')}</label>
+          <select name="budget_id" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+            <option value="">${t('finance.newBudgetOption')}</option>
+            ${openBudgets.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('')}
+          </select>
+        </div>
+      ` : ''}
       <div>
         <label class="block text-sm font-medium text-slate-600 mb-1">${t('finance.titleLabel')}</label>
         <input type="text" name="title" required placeholder="${t('finance.titlePlaceholder')}"
@@ -124,6 +144,7 @@ function renderFormBody(container, { supabase, departmentId, currentUserId }) {
     const requestMonth = form.elements.request_month.value;
     const amount = form.elements.amount.value ? Number(form.elements.amount.value) : null;
     const description = form.elements.description.value.trim() || null;
+    const budgetId = form.elements.budget_id?.value || null;
     if (!title || !requestMonth) return;
 
     if (!(await confirmDialog({ message: t('finance.confirmSubmit'), confirmLabel: t('finance.submit'), danger: false }))) return;
@@ -138,6 +159,7 @@ function renderFormBody(container, { supabase, departmentId, currentUserId }) {
       request_month: `${requestMonth}-01`,
       amount,
       description,
+      budget_id: budgetId,
     });
 
     if (error) {
@@ -235,10 +257,17 @@ function renderInboxBody(container, { supabase, adminUserId }) {
     const confirmLabel = status === 'approved' ? t('approvals.approve') : t('approvals.reject');
     if (!(await confirmDialog({ message: t('finance.confirmRespond', { status: confirmLabel.toLowerCase() }), confirmLabel, danger: status === 'rejected' }))) return;
 
-    const { error } = await supabase
-      .from('budget_requests')
-      .update({ status, resolved_at: new Date().toISOString(), resolved_by: adminUserId })
-      .eq('id', id);
+    // Approval needs to create (or top up) a budget in a department the
+    // approver isn't necessarily a member of -- that write wouldn't pass
+    // RLS from here, so it goes through approve_budget_request() instead,
+    // which runs with the privilege to do both atomically. Rejection
+    // doesn't touch budgets at all, so the plain update is unchanged.
+    const { error } = status === 'approved'
+      ? await supabase.rpc('approve_budget_request', { p_request_id: id })
+      : await supabase
+          .from('budget_requests')
+          .update({ status, resolved_at: new Date().toISOString(), resolved_by: adminUserId })
+          .eq('id', id);
 
     if (error) {
       window.alert(t('finance.updateFailed', { message: error.message }));

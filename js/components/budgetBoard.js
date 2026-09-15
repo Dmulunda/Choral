@@ -9,12 +9,12 @@
 import { t } from '../i18n.js';
 import { createBudgetDetailModal } from './budgetDetailModal.js';
 
-export function renderBudgetBoard(container, { supabase, departmentId, currentUserId, canManage }) {
+export function renderBudgetBoard(container, { supabase, departmentId, currentUserId, canManage, allowManualCreate = true }) {
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold">${t('budget.title')}</h2>
-        ${canManage ? `<button type="button" data-action="add-budget" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('budget.addNew')}</button>` : ''}
+        <div data-el="header-action"></div>
       </div>
       <div data-el="create-form-wrap" class="hidden mb-6 pb-6 border-b border-slate-200"></div>
       <div data-el="sections"></div>
@@ -23,7 +23,7 @@ export function renderBudgetBoard(container, { supabase, departmentId, currentUs
 
   const sectionsEl = container.querySelector('[data-el="sections"]');
   const createFormWrapEl = container.querySelector('[data-el="create-form-wrap"]');
-  container.querySelector('[data-action="add-budget"]')?.addEventListener('click', toggleCreateForm);
+  const headerActionEl = container.querySelector('[data-el="header-action"]');
 
   load();
 
@@ -32,6 +32,27 @@ export function renderBudgetBoard(container, { supabase, departmentId, currentUs
     if (!isHidden) { createFormWrapEl.classList.add('hidden'); createFormWrapEl.innerHTML = ''; return; }
     createFormWrapEl.classList.remove('hidden');
     renderCreateForm(createFormWrapEl);
+  }
+
+  // Finance creates budgets directly (unchanged). Every other department
+  // only ever gets one through Finance approving a fund request
+  // (budgetRequests.js) -- approval auto-creates it, so there's no
+  // manual "Add New Budget" button for them to operate; a disabled
+  // placeholder just explains that, shown only while they have nothing
+  // yet (the spec's "button stays greyed out until approved" -- once
+  // approved, what they see is the real budget, not an unlocked button).
+  function renderHeaderAction(hasBudgets) {
+    if (!canManage) { headerActionEl.innerHTML = ''; return; }
+    if (allowManualCreate) {
+      headerActionEl.innerHTML = `<button type="button" data-action="add-budget" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('budget.addNew')}</button>`;
+      headerActionEl.querySelector('[data-action="add-budget"]').addEventListener('click', toggleCreateForm);
+      return;
+    }
+    if (!hasBudgets) {
+      headerActionEl.innerHTML = `<button type="button" disabled class="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-400 text-sm font-medium cursor-not-allowed" title="${t('budget.addNewDisabledHint')}">${t('budget.addNew')}</button>`;
+    } else {
+      headerActionEl.innerHTML = '';
+    }
   }
 
   function renderCreateForm(el) {
@@ -103,8 +124,10 @@ export function renderBudgetBoard(container, { supabase, departmentId, currentUs
       return;
     }
 
+    renderHeaderAction((budgets || []).length > 0);
+
     if (!budgets || budgets.length === 0) {
-      sectionsEl.innerHTML = `<p class="text-sm text-slate-500">${t('budget.noBudgets')}</p>`;
+      sectionsEl.innerHTML = `<p class="text-sm text-slate-500">${allowManualCreate ? t('budget.noBudgets') : t('budget.noBudgetsPendingApproval')}</p>`;
       return;
     }
 

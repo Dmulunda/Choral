@@ -89,8 +89,9 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
 
       ${budget.description ? `<p class="text-sm text-slate-600 mb-4 whitespace-pre-wrap">${escapeHtml(budget.description)}</p>` : ''}
 
+      ${canManage && remaining <= 0 ? `<p class="text-xs text-amber-600 mb-2">${t('budget.exhausted')}</p>` : ''}
       <div class="flex flex-wrap gap-2 mb-4">
-        ${canManage ? `<button type="button" data-action="new-expense" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('budget.newExpense')}</button>` : ''}
+        ${canManage ? `<button type="button" data-action="new-expense" ${remaining <= 0 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-sm font-medium ${remaining <= 0 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}">${t('budget.newExpense')}</button>` : ''}
         <button type="button" data-action="export-pdf" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('budget.exportPdf')}</button>
         ${canManage ? `<button type="button" data-action="edit-budget" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('budget.editBudget')}</button>` : ''}
         ${canManage ? `
@@ -143,6 +144,15 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
           link.textContent = t('budget.viewReceipt');
           link.addEventListener('click', () => viewReceipt(tx.receipt_path, link));
           receiptCell.appendChild(link);
+        } else if (canManage) {
+          // Post-creation editing -- a transaction logged without a
+          // receipt at the time can still get one attached later.
+          const attachBtn = document.createElement('button');
+          attachBtn.type = 'button';
+          attachBtn.className = 'text-slate-500 hover:text-slate-700 text-xs font-medium underline';
+          attachBtn.textContent = t('budget.attachReceipt');
+          attachBtn.addEventListener('click', () => attachReceipt(tx.id, attachBtn));
+          receiptCell.appendChild(attachBtn);
         } else {
           receiptCell.innerHTML = `<span class="text-xs text-slate-300">—</span>`;
         }
@@ -171,6 +181,40 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
       return;
     }
     window.open(data.signedUrl, '_blank');
+  }
+
+  function attachReceipt(transactionId, triggerEl) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      const original = triggerEl.textContent;
+      triggerEl.textContent = t('common.saving');
+      triggerEl.disabled = true;
+
+      const path = `${departmentId}/${budgetId}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, file);
+      if (uploadError) {
+        triggerEl.textContent = original;
+        triggerEl.disabled = false;
+        window.alert(t('budget.expenseFailed', { message: uploadError.message }));
+        return;
+      }
+
+      const { error } = await supabase.from('budget_transactions').update({ receipt_path: path }).eq('id', transactionId);
+      if (error) {
+        triggerEl.textContent = original;
+        triggerEl.disabled = false;
+        window.alert(t('budget.expenseFailed', { message: error.message }));
+        return;
+      }
+
+      load();
+    });
+    input.click();
   }
 
   async function handleStatusChange(e) {
