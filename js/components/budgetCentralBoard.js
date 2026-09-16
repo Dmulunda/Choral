@@ -244,12 +244,14 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
     // Not a transaction feed -- only a department (never an individual)
     // can hold a fund request, so the department is the right unit of
     // aggregation here; totals per department for the selected month.
+    // Keyed by department_id (not key) so oversight can click straight
+    // into that department's drill-down below.
     const totals = new Map();
     (data || []).forEach((tx) => {
+      const departmentId = tx.budgets.department_id;
       const dept = tx.budgets.departments;
-      const key = dept.key;
-      if (!totals.has(key)) totals.set(key, { name: dept.name, total: 0, count: 0 });
-      const entry = totals.get(key);
+      if (!totals.has(departmentId)) totals.set(departmentId, { key: dept.key, name: dept.name, total: 0, count: 0 });
+      const entry = totals.get(departmentId);
       entry.total += Number(tx.amount);
       entry.count += 1;
     });
@@ -260,19 +262,33 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
     }
 
     const rows = Array.from(totals.entries()).sort((a, b) => b[1].total - a[1].total);
+    // Oversight only -- a plain department's own admin/secretary only
+    // ever has one row (their own department), already expanded in the
+    // "Manage Budgets" section below, so there's nothing to drill into.
+    const rowTag = oversight ? 'button' : 'div';
     reportEl.innerHTML = `
       <div class="space-y-2">
-        ${rows.map(([key, entry]) => `
-          <div class="flex items-center justify-between border border-slate-200 rounded-lg p-3">
-            <div class="font-medium text-slate-800">${escapeHtml(departmentLabel(key) || entry.name)}</div>
+        ${rows.map(([departmentId, entry]) => `
+          <${rowTag} ${oversight ? `type="button" data-department-id="${departmentId}"` : ''} class="w-full flex items-center justify-between border border-slate-200 rounded-lg p-3 text-left ${oversight ? 'hover:border-indigo-300 hover:shadow-sm transition-shadow cursor-pointer' : ''}">
+            <div class="font-medium text-slate-800">${escapeHtml(departmentLabel(entry.key) || entry.name)}</div>
             <div class="text-right">
               <div class="font-semibold">${formatAmount(entry.total)}</div>
               <div class="text-xs text-slate-400">${t('budget.transactionCount', { count: entry.count })}</div>
             </div>
-          </div>
+          </${rowTag}>
         `).join('')}
       </div>
     `;
+
+    if (oversight) {
+      reportEl.querySelectorAll('[data-department-id]').forEach((rowEl) => {
+        rowEl.addEventListener('click', () => {
+          deptFilterEl.value = rowEl.dataset.departmentId;
+          renderDrilldown();
+          drilldownEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    }
   }
 }
 
