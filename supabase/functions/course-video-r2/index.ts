@@ -101,6 +101,54 @@ Deno.serve(async (req) => {
     // whose first path segment is a lesson_id) must verify that lesson
     // belongs to the caller's own tenant, or a School Admin from one
     // church could read/overwrite/delete another church's course videos.
+
+    if (action === 'playback_url') {
+      // The hot path -- every lesson open hits this. The profile lookup
+      // (for callerTenantId/isSchoolAdmin) and the lesson lookup used to
+      // run one-after-another because the lesson query filtered by
+      // tenant_id at the query level, which needs callerTenantId first.
+      // Fetches the lesson unscoped instead, concurrently with the
+      // profile lookup, and checks lesson.tenant_id === callerTenantId
+      // in JS afterward -- same security guarantee (every rejection
+      // below returns the identical generic 404, so there's no
+      // cross-tenant existence leak), one fewer round trip before a
+      // signed URL comes back.
+      if (!lesson_id) return json({ error: 'lesson_id is required' }, 400);
+
+      const [{ data: callerProfile }, { data: lesson }] = await Promise.all([
+        admin.from('profiles').select('tenant_id, is_school_admin, global_role').eq('id', caller.id).single(),
+        admin.from('lessons').select('tenant_id, video_storage_path, video_provider, module_id, course_modules!module_id ( course_id )').eq('id', lesson_id).single(),
+      ]);
+      if (!callerProfile) return json({ error: 'Profile not found' }, 404);
+      const callerTenantId = callerProfile.tenant_id;
+      const isSchoolAdmin = callerProfile.is_school_admin || callerProfile.global_role === 'super_admin';
+
+      if (!lesson || lesson.tenant_id !== callerTenantId || lesson.video_provider !== 'r2' || !lesson.video_storage_path) {
+        return json({ error: 'No R2 video found for this lesson' }, 404);
+      }
+
+      if (!isSchoolAdmin) {
+        const { data: enrollment } = await admin
+          .from('course_enrollments')
+          .select('status')
+          .eq('user_id', caller.id)
+          .eq('course_id', lesson.course_modules.course_id)
+          .eq('status', 'approved')
+          .eq('tenant_id', callerTenantId)
+          .maybeSingle();
+        if (!enrollment) return json({ error: 'Not enrolled in this course' }, 403);
+      }
+
+      const url = new URL(`${endpoint}/${lesson.video_storage_path}`);
+      url.searchParams.set('X-Amz-Expires', String(PLAYBACK_URL_TTL_SECONDS));
+      const playbackUrl = await presign(client, url, 'GET');
+
+      return json({ url: playbackUrl });
+    }
+
+    // upload_url/delete are School-Admin-only, infrequent, and not on
+    // the student playback hot path -- the single profile lookup here
+    // isn't worth the same treatment as playback_url above.
     const { data: callerProfile } = await admin
       .from('profiles')
       .select('tenant_id, is_school_admin, global_role')
@@ -135,33 +183,6 @@ Deno.serve(async (req) => {
       const uploadUrl = await presign(client, url, 'PUT', { 'content-type': resolvedContentType });
 
       return json({ upload_url: uploadUrl, object_key: objectKey, content_type: resolvedContentType });
-    }
-
-    if (action === 'playback_url') {
-      if (!lesson_id) return json({ error: 'lesson_id is required' }, 400);
-
-      const lesson = await lessonInOwnTenant(lesson_id);
-      if (!lesson || lesson.video_provider !== 'r2' || !lesson.video_storage_path) {
-        return json({ error: 'No R2 video found for this lesson' }, 404);
-      }
-
-      if (!isSchoolAdmin) {
-        const { data: enrollment } = await admin
-          .from('course_enrollments')
-          .select('status')
-          .eq('user_id', caller.id)
-          .eq('course_id', lesson.course_modules.course_id)
-          .eq('status', 'approved')
-          .eq('tenant_id', callerTenantId)
-          .maybeSingle();
-        if (!enrollment) return json({ error: 'Not enrolled in this course' }, 403);
-      }
-
-      const url = new URL(`${endpoint}/${lesson.video_storage_path}`);
-      url.searchParams.set('X-Amz-Expires', String(PLAYBACK_URL_TTL_SECONDS));
-      const playbackUrl = await presign(client, url, 'GET');
-
-      return json({ url: playbackUrl });
     }
 
     if (action === 'delete') {
