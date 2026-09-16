@@ -237,6 +237,34 @@ which is untouched and stays on its own project). Local-only for now — this
     impersonation approve/reject-with-note test wasn't possible — this
     project's one populated tenant has no Finance admin/secretary
     membership yet to test against, unlike `16`/`17` which had one).
+18. `19_budget_v4_finance_write_parity.sql` — three follow-up fixes from
+    the same round, ported from `main` (commit `4dc42b2`). **Finance-admin
+    write parity**: widened the `budgets`/`budget_transactions` write RLS
+    policies and the `budget-receipts` storage policy to also allow
+    `can_approve_finance()`, so a Finance Admin (not a Finance secretary)
+    can fully manage any department's budget from the Budget Report
+    drill-down — log expenses, attach/view receipts, edit name/
+    description, change status — the same actions that department's own
+    admin has, instead of the read-only view `17` shipped. Verified live
+    (create a throwaway budget in a non-Finance department, `UPDATE`/
+    `INSERT` as the Finance admin, confirm success, delete the test row).
+    Client: `budgetCentralBoard.js`'s drill-down now passes
+    `canManage: canApproveFinance()` instead of a hardcoded `false`.
+    **Self-approval + "Approved by" fallback** (client-only, no new SQL):
+    Finance creating its own budget directly now sets `approved_by` to
+    itself at insert time (`budgetBoard.js`); `budgetDetailModal.js`/
+    `budgetPdf.js` now fall back to the creator's name whenever
+    `approved_by` is null, so every budget shows an approver — including
+    the `18` gap this closes (a Finance-created budget, or any
+    pre-`18` row, previously showed nothing). **Church address**:
+    `main` hardcoded its real address into `memberCard.churchAddress` —
+    deliberately **not** carried over here, since that's one specific
+    church's street address and every other tenant would otherwise
+    inherit it. Kept blank (`''`) on `sandbox2` instead, and
+    `budgetPdf.js` only renders the address line when a tenant actually
+    has one set — still the same known gap as `17` (no per-tenant address
+    field in `tenants` yet), now handled without leaking `main`'s data
+    into the shared template.
 
 ## Other client-side fixes from this session
 

@@ -20,7 +20,7 @@
 // Nobody else ever reaches this file at all -- js/app.js only
 // constructs the nav button/tab for hasAnyDeptLeadership().
 import { t, departmentLabel } from '../i18n.js';
-import { hasFinanceOversight, getMyDepartments, getActiveDepartment } from '../departments.js';
+import { hasFinanceOversight, canApproveFinance, getMyDepartments, getActiveDepartment } from '../departments.js';
 import { renderMyFundRequests, renderFundRequestsInbox } from './budgetRequests.js';
 import { renderBudgetBoard } from './budgetBoard.js';
 import { createReimbursementRequestModal, createReimbursementInboxModal } from './reimbursementModal.js';
@@ -160,9 +160,11 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
   //     manages Finance's own budget the same way it always worked --
   //     direct creation (allowManualCreate: true).
   //   - Finance oversight, with a specific department selected in the
-  //     filter: a read-only drill-down into that department's own budget
-  //     list underneath the aggregate table (canManage: false) -- Export
-  //     PDF and View Receipt both already work regardless of canManage.
+  //     filter: a drill-down into that department's own budget list
+  //     underneath the aggregate table, with the same manage rights a
+  //     Finance Admin has everywhere else (canManage: canApproveFinance()
+  //     -- a Finance secretary still only gets read/Export PDF/View
+  //     Receipt, matching the RLS write policy which also excludes them).
   const manageDepartmentId = !oversight ? departments[0].id : (financeDept ? financeDept.id : null);
   const allowManualCreate = !!financeDept;
 
@@ -216,7 +218,7 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
       </div>
     `;
     renderBudgetBoard(drilldownEl.querySelector('[data-el="drilldown-board"]'), {
-      supabase, departmentId: deptFilterEl.value, currentUserId, canManage: false, allowManualCreate: false,
+      supabase, departmentId: deptFilterEl.value, currentUserId, canManage: canApproveFinance(), allowManualCreate: false,
     });
   }
 

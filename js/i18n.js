@@ -229,7 +229,7 @@ const TRANSLATIONS = {
 
     'memberCard.loadFailed': 'Failed to load: {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
-    'memberCard.churchAddress': '[Church address — ask Didier for the exact text]',
+    'memberCard.churchAddress': '',
     'memberCard.cardLabel': 'CARTE DE MEMBRE — MEMBERSHIP CARD',
     'memberCard.noPhoto': 'No photo',
     'memberCard.numberShort': 'No.',
@@ -1817,7 +1817,7 @@ const TRANSLATIONS = {
 
     'memberCard.loadFailed': 'Échec du chargement : {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
-    'memberCard.churchAddress': '[Church address — ask Didier for the exact text]',
+    'memberCard.churchAddress': '',
     'memberCard.cardLabel': 'CARTE DE MEMBRE — MEMBERSHIP CARD',
     'memberCard.noPhoto': 'Aucune photo',
     'memberCard.numberShort': 'N°',

@@ -66,12 +66,19 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
     const spent = transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
     const remaining = Number(budget.initial_amount) - spent;
     const isOversight = hasFinanceOversight();
+    // Falls back to the creator when there's no distinct approver on
+    // record -- true for Finance's own directly-created budgets
+    // (self-approved, budgetBoard.js sets approved_by = creator at
+    // insert time) and for any pre-existing row from before that
+    // column existed. Every other department's budget only ever comes
+    // from approve_budget_request(), which always sets a real approver.
+    const approverName = budget.approver?.full_name || budget.creator?.full_name;
 
     bodyEl.innerHTML = `
       <div class="text-sm text-slate-500 mb-4 space-y-0.5">
         <div>${t('budget.createdBy')}: ${escapeHtml(budget.creator?.full_name || '—')}</div>
         <div>${t('budget.createdOn')}: ${formatDateTime(budget.created_at)}</div>
-        ${budget.approver?.full_name ? `<div>${t('budget.approvedBy')}: ${escapeHtml(budget.approver.full_name)}</div>` : ''}
+        ${approverName ? `<div>${t('budget.approvedBy')}: ${escapeHtml(approverName)}</div>` : ''}
         ${budget.closed_at ? `<div>${t('budget.closedOn')}: ${formatDateTime(budget.closed_at)}</div>` : ''}
       </div>
 

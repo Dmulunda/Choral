@@ -4,10 +4,11 @@
 // that pattern is for image-heavy card exports, this is a text/table
 // report).
 //
-// Layout: left = church name, church address, "Approved by" (only when
-// the budget actually went through Finance approval -- Finance's own
-// directly-created budgets have no approver). Right = department name,
-// budget name, created by, created/closed dates.
+// Layout: left = church name, church address, "Approved by" (the real
+// approver for a budget that came from a fund-request approval, else
+// the creator -- Finance's own directly-created budgets are
+// self-approved). Right = department name, budget name, created by,
+// created/closed dates.
 import { t, departmentLabel } from '../i18n.js';
 import { formatAmount } from './budgetBoard.js';
 import { getTenant } from '../tenant.js';
@@ -16,12 +17,14 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
   // Falls back to the platform default only if this tenant hasn't
   // uploaded/set their own yet -- same pattern as memberIdCard.js's
   // header, the one other place in this app that prints the org's name
-  // as text rather than just showing a logo image. sandbox2 has no
-  // per-tenant address field (unlike churchName, which comes from
-  // tenants.name) -- churchAddress carries the same i18n placeholder
-  // text as main until/unless a real per-tenant address is asked for.
+  // as text rather than just showing a logo image. Unlike churchName,
+  // sandbox2 has no per-tenant address field at all -- memberCard.churchAddress
+  // is deliberately left blank here (not main's real hardcoded church
+  // address, which would otherwise leak onto every other tenant's PDFs)
+  // and the line is only rendered when a tenant does have one set.
   const churchName = getTenant()?.name || t('app.brand');
   const churchAddress = t('memberCard.churchAddress');
+  const approverName = budget.approver?.full_name || budget.creator?.full_name;
   const departmentName = budget.department ? departmentLabel(budget.department.key) : '';
   const createdLabel = formatDateTime(budget.created_at);
   const closedLabel = budget.closed_at ? formatDateTime(budget.closed_at) : null;
@@ -56,8 +59,8 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
       <div class="header">
         <div class="left">
           <div class="church-name">${escapeHtml(churchName)}</div>
-          <div>${escapeHtml(churchAddress)}</div>
-          ${budget.approver?.full_name ? `<div>${t('budget.approvedBy')}: ${escapeHtml(budget.approver.full_name)}</div>` : ''}
+          ${churchAddress ? `<div>${escapeHtml(churchAddress)}</div>` : ''}
+          ${approverName ? `<div>${t('budget.approvedBy')}: ${escapeHtml(approverName)}</div>` : ''}
         </div>
         <div class="right">
           ${departmentName ? `<div class="department-name">${escapeHtml(departmentName)}</div>` : ''}
