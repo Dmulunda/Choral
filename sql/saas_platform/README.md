@@ -265,6 +265,15 @@ which is untouched and stays on its own project). Local-only for now — this
     has one set — still the same known gap as `17` (no per-tenant address
     field in `tenants` yet), now handled without leaking `main`'s data
     into the shared template.
+19. No new SQL — client-only, ported from `main` (commit `34b5ba6`).
+    Finance's Budget Report aggregate rows were plain non-interactive
+    `<div>`s; the only route into a department's actual detail (New
+    Expense/Edit/receipts, from `18`) was the separate department filter
+    dropdown above the table, which wasn't discoverable. Each row is now
+    a real `<button>` (oversight only — a plain department's own view has
+    just one row, already expanded below) that sets the filter and
+    expands that department's drill-down directly beneath it, scrolled
+    into view.
 
 ## Other client-side fixes from this session
 
