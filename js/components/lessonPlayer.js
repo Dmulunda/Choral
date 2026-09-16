@@ -150,6 +150,11 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     const videoEl = document.createElement('video');
     videoEl.src = signedUrl;
     videoEl.controls = true;
+    // Only one video is ever mounted here (the lesson the student just
+    // opened, not a list of many) -- 'auto' lets the browser start
+    // buffering as soon as the src is set instead of waiting for play,
+    // cutting the pause before playback actually starts.
+    videoEl.preload = 'auto';
     videoEl.className = 'w-full rounded-lg bg-black';
     wrapEl.appendChild(videoEl);
 
