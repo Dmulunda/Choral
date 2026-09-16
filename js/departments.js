@@ -100,6 +100,16 @@ export function hasAnyDeptLeadership() {
   return hasFinanceOversight() || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
 }
 
+// Mirrors can_approve_finance() (sql) exactly -- identical to
+// hasFinanceOversight() above MINUS a Finance department secretary: a
+// Finance secretary still sees everything (hasFinanceOversight() stays
+// true for them), but can't act on it. Drives whether Approve/Reject
+// and the review-note field show up in the inbox UI.
+export function canApproveFinance() {
+  if (hasGlobalReach() && FINANCE_OVERSIGHT_ROLES.includes(globalRole)) return true;
+  return getMyDepartments().some((d) => d.key === 'finance' && d.role === 'admin');
+}
+
 // ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
 // A global-role holder's own account may also carry real, literal
 // department_memberships (e.g. the original Choir admin who was later

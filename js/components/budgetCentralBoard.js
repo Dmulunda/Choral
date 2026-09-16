@@ -2,30 +2,41 @@
 // point). Two tabs: Fund Request and Budget Report, both filterable by
 // month and department. Which of two audiences a viewer gets is decided
 // once, client-side, purely to pick which UI to show — the real
-// boundary is RLS (can_manage_finance() vs can_read_department()),
-// already enforced identically regardless of what this file renders:
+// boundary is RLS (can_manage_finance()/can_approve_finance() vs
+// can_read_department()), already enforced identically regardless of
+// what this file renders:
 //   - Finance oversight (hasFinanceOversight(), departments.js): every
 //     department's requests/spending, both filters live, a
-//     pending-count badge on the Fund Request tab.
-//   - Ordinary department admin/secretary: their own department's
-//     request form + history, and their own department's spending only
-//     (department filter hidden -- there's only ever one answer).
+//     pending-count badge on the Fund Request tab, a Reimbursements
+//     inbox button, and their own Finance budget to manage (only when
+//     Finance is their *currently active* department -- see below).
+//   - Ordinary department admin/secretary: their own *currently active*
+//     department's request form + history + spending, plus a My Budget
+//     (reimbursement) button. Deliberately keyed off getActiveDepartment()
+//     (the same department the sidebar switcher drives everywhere else
+//     in this app), not "any department they happen to lead" -- someone
+//     who's admin of two departments must switch which one is active to
+//     see/act on the other; they never see both merged together.
 // Nobody else ever reaches this file at all -- js/app.js only
 // constructs the nav button/tab for hasAnyDeptLeadership().
 import { t, departmentLabel } from '../i18n.js';
-import { hasFinanceOversight, getMyDepartments } from '../departments.js';
+import { hasFinanceOversight, getMyDepartments, getActiveDepartment } from '../departments.js';
 import { renderMyFundRequests, renderFundRequestsInbox } from './budgetRequests.js';
 import { renderBudgetBoard } from './budgetBoard.js';
+import { createReimbursementRequestModal, createReimbursementInboxModal } from './reimbursementModal.js';
 
 export async function renderBudgetCentralBoard(container, { supabase, currentUserId }) {
   const oversight = hasFinanceOversight();
+  const active = getActiveDepartment();
+  const activeIsLeader = active && (active.role === 'admin' || active.role === 'secretary');
+
   // A Pastor/Church Secretary/Super Admin gets oversight without being a
   // Finance department member at all -- they're an auditor here, not a
   // manager, so no "own budget" to run. A Finance admin/secretary is
   // both: full cross-department audit AND a real department that spends
-  // its own money, so they additionally get the same manage-my-budget
-  // section every other department's admin/secretary gets.
-  const financeDept = getMyDepartments().find((d) => d.key === 'finance' && (d.role === 'admin' || d.role === 'secretary'));
+  // its own money -- but that management view only shows while Finance
+  // is their active department, same rule as everyone else.
+  const financeDept = (activeIsLeader && active.key === 'finance') ? active : null;
 
   // The department(s) this viewer is actually scoped to -- for the
   // report/request views below, and for the oversight department filter's
@@ -34,15 +45,19 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
   if (oversight) {
     const { data } = await supabase.from('departments').select('id, key, name').order('name');
     scopedDepartments = data || [];
-  } else {
-    scopedDepartments = getMyDepartments().filter((d) => d.role === 'admin' || d.role === 'secretary');
+  } else if (activeIsLeader) {
+    scopedDepartments = [active];
   }
 
-  if (scopedDepartments.length === 0) {
-    // Shouldn't normally happen -- hasAnyDeptLeadership() is what gates
-    // reaching this page at all -- but a role change mid-session (View-As,
-    // Standard User Mode toggle) could land here with nothing to show.
-    container.innerHTML = `<p class="text-sm text-slate-500">${t('budgetPage.noAccess')}</p>`;
+  if (!oversight && scopedDepartments.length === 0) {
+    // Distinguish "you lead nothing at all" (shouldn't happen --
+    // hasAnyDeptLeadership() gates reaching this page -- but a mode
+    // switch mid-session could land here) from "you lead something, just
+    // not whatever's currently active" -- the point 4 fix: an admin of
+    // two departments must switch which one is active, never sees both
+    // merged together.
+    const leadsAnyDept = getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
+    container.innerHTML = `<p class="text-sm text-slate-500">${leadsAnyDept ? t('budgetPage.switchDepartment') : t('budgetPage.noAccess')}</p>`;
     return;
   }
 
@@ -62,11 +77,11 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
   const tabReportBtn = container.querySelector('[data-action="tab-report"]');
   const badgeEl = container.querySelector('[data-el="pending-badge"]');
 
-  function setTabStyle(btn, active) {
-    btn.classList.toggle('bg-indigo-600', active);
-    btn.classList.toggle('text-white', active);
-    btn.classList.toggle('text-slate-600', !active);
-    btn.classList.toggle('hover:bg-slate-100', !active);
+  function setTabStyle(btn, isActive) {
+    btn.classList.toggle('bg-indigo-600', isActive);
+    btn.classList.toggle('text-white', isActive);
+    btn.classList.toggle('text-slate-600', !isActive);
+    btn.classList.toggle('hover:bg-slate-100', !isActive);
   }
 
   function activate(tab) {
@@ -82,7 +97,16 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
 
   function renderRequestsTab() {
     if (oversight) {
-      renderFundRequestsInbox(bodyEl, {
+      bodyEl.innerHTML = `
+        <div class="mb-4">
+          <button type="button" data-action="reimbursements-inbox" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('reimbursement.inboxTitle')}</button>
+        </div>
+        <div data-el="inbox"></div>
+      `;
+      bodyEl.querySelector('[data-action="reimbursements-inbox"]').addEventListener('click', () => {
+        createReimbursementInboxModal({ supabase, adminUserId: currentUserId }).open();
+      });
+      renderFundRequestsInbox(bodyEl.querySelector('[data-el="inbox"]'), {
         supabase,
         adminUserId: currentUserId,
         departments: scopedDepartments,
@@ -92,10 +116,18 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
         },
       });
     } else {
-      // Only ever their own department -- scopedDepartments has exactly
-      // one entry in this branch (see the fallback message above for the
-      // zero case).
-      renderMyFundRequests(bodyEl, { supabase, departmentId: scopedDepartments[0].id, currentUserId });
+      // Only ever the currently active department -- scopedDepartments
+      // has exactly one entry in this branch.
+      bodyEl.innerHTML = `
+        <div class="mb-4">
+          <button type="button" data-action="my-budget" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('reimbursement.myBudgetButton')}</button>
+        </div>
+        <div data-el="requests"></div>
+      `;
+      bodyEl.querySelector('[data-action="my-budget"]').addEventListener('click', () => {
+        createReimbursementRequestModal({ supabase, departmentId: scopedDepartments[0].id, currentUserId }).open();
+      });
+      renderMyFundRequests(bodyEl.querySelector('[data-el="requests"]'), { supabase, departmentId: scopedDepartments[0].id, currentUserId });
     }
   }
 
@@ -119,15 +151,18 @@ function monthRange(monthValue) {
 async function renderBudgetReport(container, { supabase, oversight, departments, currentUserId, financeDept }) {
   // Aggregate totals below are read-only by design (spec: "totals per
   // department per month, not a line-by-line transaction feed") -- but
-  // someone still has to be able to log an expense in the first place.
-  // Reuses the same card-list + detail-modal (New Expense/Export PDF/
-  // status) this app already had nested per-department:
+  // someone still has to be able to log an expense in the first place,
+  // and Finance needs to be able to audit a specific department's actual
+  // transactions/receipts, not just its total:
   //   - a plain department's own admin/secretary manages their own
   //     department, budgets always approval-gated (allowManualCreate: false).
-  //   - a Finance admin/secretary manages Finance's own budget the same
-  //     way it always worked -- direct creation (allowManualCreate: true).
-  //   - a Pastor/Church Secretary/Super Admin with no Finance membership
-  //     is an auditor here, not a manager -- no manage section at all.
+  //   - a Finance admin/secretary (Finance as their active department)
+  //     manages Finance's own budget the same way it always worked --
+  //     direct creation (allowManualCreate: true).
+  //   - Finance oversight, with a specific department selected in the
+  //     filter: a read-only drill-down into that department's own budget
+  //     list underneath the aggregate table (canManage: false) -- Export
+  //     PDF and View Receipt both already work regardless of canManage.
   const manageDepartmentId = !oversight ? departments[0].id : (financeDept ? financeDept.id : null);
   const allowManualCreate = !!financeDept;
 
@@ -142,6 +177,7 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
       ` : ''}
     </div>
     <div data-el="report"><p class="text-sm text-slate-500">${t('common.loading')}</p></div>
+    <div data-el="drilldown"></div>
     ${manageDepartmentId ? `
       <div class="mt-6 pt-6 border-t border-slate-200">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">${t('budgetPage.manageBudgets')}</h3>
@@ -151,11 +187,12 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
   `;
 
   const reportEl = container.querySelector('[data-el="report"]');
+  const drilldownEl = container.querySelector('[data-el="drilldown"]');
   const monthFilterEl = container.querySelector('[data-el="month-filter"]');
   const deptFilterEl = container.querySelector('[data-el="department-filter"]');
 
   monthFilterEl.addEventListener('change', load);
-  deptFilterEl?.addEventListener('change', load);
+  deptFilterEl?.addEventListener('change', () => { load(); renderDrilldown(); });
 
   if (manageDepartmentId) {
     renderBudgetBoard(container.querySelector('[data-el="manage"]'), {
@@ -163,7 +200,25 @@ async function renderBudgetReport(container, { supabase, oversight, departments,
     });
   }
 
+  renderDrilldown();
   load();
+
+  function renderDrilldown() {
+    drilldownEl.innerHTML = '';
+    if (!oversight || !deptFilterEl?.value) return;
+    const dept = departments.find((d) => d.id === deptFilterEl.value);
+    drilldownEl.innerHTML = `
+      <div class="mt-6 pt-6 border-t border-slate-200">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">
+          ${t('budgetPage.departmentDetail', { department: dept ? departmentLabel(dept.key) : '' })}
+        </h3>
+        <div data-el="drilldown-board"></div>
+      </div>
+    `;
+    renderBudgetBoard(drilldownEl.querySelector('[data-el="drilldown-board"]'), {
+      supabase, departmentId: deptFilterEl.value, currentUserId, canManage: false, allowManualCreate: false,
+    });
+  }
 
   async function load() {
     reportEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;

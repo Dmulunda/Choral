@@ -7,6 +7,7 @@ import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { formatAmount } from './budgetBoard.js';
 import { printBudgetSummary } from './budgetPdf.js';
+import { hasFinanceOversight } from '../departments.js';
 
 const RECEIPT_BUCKET = 'budget-receipts';
 
@@ -47,7 +48,7 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
     const [{ data: budgetRow, error: budgetError }, { data: transactions, error: txError }] = await Promise.all([
-      supabase.from('budgets').select('id, name, description, initial_amount, status, created_at, closed_at, creator:profiles!created_by ( full_name )').eq('id', budgetId).single(),
+      supabase.from('budgets').select('id, name, description, initial_amount, status, created_at, closed_at, finance_note, creator:profiles!created_by ( full_name ), approver:profiles!approved_by ( full_name ), department:departments ( key, name )').eq('id', budgetId).single(),
       supabase.from('budget_transactions').select('id, amount, note, receipt_path, created_at, spender:profiles!created_by ( full_name )').eq('budget_id', budgetId).order('created_at', { ascending: false }),
     ]);
 
@@ -64,11 +65,13 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
   function render(transactions, txError) {
     const spent = transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
     const remaining = Number(budget.initial_amount) - spent;
+    const isOversight = hasFinanceOversight();
 
     bodyEl.innerHTML = `
       <div class="text-sm text-slate-500 mb-4 space-y-0.5">
         <div>${t('budget.createdBy')}: ${escapeHtml(budget.creator?.full_name || '—')}</div>
         <div>${t('budget.createdOn')}: ${formatDateTime(budget.created_at)}</div>
+        ${budget.approver?.full_name ? `<div>${t('budget.approvedBy')}: ${escapeHtml(budget.approver.full_name)}</div>` : ''}
         ${budget.closed_at ? `<div>${t('budget.closedOn')}: ${formatDateTime(budget.closed_at)}</div>` : ''}
       </div>
 
@@ -88,6 +91,15 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
       </div>
 
       ${budget.description ? `<p class="text-sm text-slate-600 mb-4 whitespace-pre-wrap">${escapeHtml(budget.description)}</p>` : ''}
+
+      <div class="mb-4 pb-4 border-b border-slate-200">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">${t('budget.financeNoteTitle')}</h3>
+          ${isOversight ? `<button type="button" data-action="edit-finance-note" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">${budget.finance_note ? t('budget.editNote') : t('budget.addNote')}</button>` : ''}
+        </div>
+        <div data-el="finance-note-display" class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${budget.finance_note ? escapeHtml(budget.finance_note) : `<span class="text-slate-400">${t('budget.noFinanceNote')}</span>`}</div>
+        <div data-el="finance-note-form-wrap" class="hidden mt-2"></div>
+      </div>
 
       ${canManage && remaining <= 0 ? `<p class="text-xs text-amber-600 mb-2">${t('budget.exhausted')}</p>` : ''}
       <div class="flex flex-wrap gap-2 mb-4">
@@ -168,6 +180,9 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
       bodyEl.querySelector('[data-action="new-expense"]').addEventListener('click', () => toggleExpenseForm());
       bodyEl.querySelector('[data-action="edit-budget"]').addEventListener('click', () => toggleEditForm());
       bodyEl.querySelector('[data-el="status-select"]').addEventListener('change', handleStatusChange);
+    }
+    if (isOversight) {
+      bodyEl.querySelector('[data-action="edit-finance-note"]').addEventListener('click', () => toggleFinanceNoteForm());
     }
   }
 
@@ -344,6 +359,46 @@ export function createBudgetDetailModal({ supabase, budgetId, departmentId, curr
       }
 
       toggleEditForm();
+      load();
+    });
+  }
+
+  function toggleFinanceNoteForm() {
+    const wrap = bodyEl.querySelector('[data-el="finance-note-form-wrap"]');
+    const isHidden = wrap.classList.contains('hidden');
+    if (!isHidden) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+    wrap.classList.remove('hidden');
+    wrap.innerHTML = `
+      <form data-el="finance-note-form" class="space-y-2">
+        <textarea name="finance_note" rows="2" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">${escapeHtml(budget.finance_note || '')}</textarea>
+        <div class="flex items-center gap-3">
+          <button type="submit" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('budget.saveChanges')}</button>
+          <span data-el="finance-note-status" class="text-sm text-slate-500"></span>
+        </div>
+      </form>
+    `;
+    const form = wrap.querySelector('[data-el="finance-note-form"]');
+    const statusEl = wrap.querySelector('[data-el="finance-note-status"]');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const note = form.elements.finance_note.value.trim() || null;
+
+      statusEl.className = 'text-sm text-slate-500';
+      statusEl.textContent = t('common.saving');
+
+      // Finance annotating a budget it doesn't otherwise have write
+      // access to (any department's, not just its own) -- goes through
+      // set_budget_finance_note() rather than a plain update, same
+      // reasoning as every other privilege-escalation RPC this session.
+      const { error } = await supabase.rpc('set_budget_finance_note', { p_budget_id: budgetId, p_note: note });
+      if (error) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = t('budget.updateFailed', { message: error.message });
+        return;
+      }
+
+      toggleFinanceNoteForm();
       load();
     });
   }

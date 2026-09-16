@@ -9,7 +9,6 @@ import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlob
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createUserManagerModal } from './components/userManager.js';
-import { createReimbursementRequestModal, createReimbursementInboxModal } from './components/reimbursementModal.js';
 import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
@@ -101,32 +100,10 @@ export async function renderDeptDashboardTab() {
   }
 
   // Fund Request (submit + Finance's own review) and the per-department
-  // budget board moved to the centralized Budget page (js/budgetPage.js)
-  // -- reachable only by a department admin/secretary or Pastor, with no
-  // nav trace at all for anyone else. Finance's Reimbursements inbox and
-  // every department's own "My Budget" stay here, unchanged -- that
-  // restructuring was specifically about Fund Request/Budget Report.
-  if (active.key === 'finance') {
-    if (canAdminister) {
-      const reimbursementInboxBtn = document.createElement('button');
-      reimbursementInboxBtn.type = 'button';
-      reimbursementInboxBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-      reimbursementInboxBtn.textContent = t('reimbursement.inboxTitle');
-      container.appendChild(reimbursementInboxBtn);
-      reimbursementInboxBtn.addEventListener('click', () => {
-        createReimbursementInboxModal({ supabase, adminUserId: user.id }).open();
-      });
-    }
-  } else if (canManageDept) {
-    const myBudgetBtn = document.createElement('button');
-    myBudgetBtn.type = 'button';
-    myBudgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200';
-    myBudgetBtn.textContent = t('reimbursement.myBudgetButton');
-    container.appendChild(myBudgetBtn);
-    myBudgetBtn.addEventListener('click', () => {
-      createReimbursementRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
-    });
-  }
+  // budget board, Reimbursements inbox, and "My Budget" all moved to the
+  // centralized Budget page (js/budgetPage.js) -- reachable only by a
+  // department admin/secretary or Pastor, with no nav trace at all for
+  // anyone else.
 
   if (active.key === 'intercession' && canManageDept) {
     const prayerRequestsBtn = document.createElement('button');

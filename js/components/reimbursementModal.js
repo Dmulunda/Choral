@@ -8,6 +8,7 @@
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
 import { formatAmount } from './budgetBoard.js';
+import { canApproveFinance } from '../departments.js';
 
 const RECEIPT_BUCKET = 'budget-receipts';
 
@@ -156,7 +157,7 @@ function renderFormBody(container, { supabase, departmentId, currentUserId }) {
 
     const { data, error } = await supabase
       .from('reimbursement_requests')
-      .select('id, amount, note, receipt_path, status, created_at')
+      .select('id, amount, note, receipt_path, status, created_at, review_note')
       .eq('department_id', departmentId)
       .eq('requested_by', currentUserId)
       .order('created_at', { ascending: false });
@@ -172,12 +173,15 @@ function renderFormBody(container, { supabase, departmentId, currentUserId }) {
     }
 
     listEl.innerHTML = data.map((r) => `
-      <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3">
-        <div>
-          <div class="font-medium text-slate-800">${formatAmount(r.amount)}${r.note ? ` — ${escapeHtml(r.note)}` : ''}</div>
-          <div class="text-xs text-slate-400">${escapeHtml(r.created_at.slice(0, 10))}${r.receipt_path ? '' : ` · ${t('reimbursement.noReceiptYet')}`}</div>
+      <div class="border border-slate-200 rounded-lg p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="font-medium text-slate-800">${formatAmount(r.amount)}${r.note ? ` — ${escapeHtml(r.note)}` : ''}</div>
+            <div class="text-xs text-slate-400">${escapeHtml(r.created_at.slice(0, 10))}${r.receipt_path ? '' : ` · ${t('reimbursement.noReceiptYet')}`}</div>
+          </div>
+          ${statusBadge(r.status)}
         </div>
-        ${statusBadge(r.status)}
+        ${r.review_note ? `<p class="text-sm text-slate-600 mt-2 pt-2 border-t border-slate-100 whitespace-pre-wrap">${t('finance.reviewNoteLabel')}: ${escapeHtml(r.review_note)}</p>` : ''}
       </div>
     `).join('');
   }
@@ -188,9 +192,11 @@ function renderInboxBody(container, { supabase, adminUserId }) {
   load();
 
   async function load() {
+    const canApprove = canApproveFinance();
+
     const { data, error } = await supabase
       .from('reimbursement_requests')
-      .select('id, amount, note, receipt_path, status, created_at, requester:profiles!requested_by ( full_name ), departments ( key )')
+      .select('id, amount, note, receipt_path, status, created_at, review_note, requester:profiles!requested_by ( full_name ), departments ( key )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -213,11 +219,16 @@ function renderInboxBody(container, { supabase, adminUserId }) {
           ${t('reimbursement.requestedBy')}: ${escapeHtml(r.requester?.full_name || '')} · ${r.departments ? departmentLabel(r.departments.key) : ''} · ${escapeHtml(r.created_at.slice(0, 10))}
         </div>
         ${r.note ? `<p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap">${escapeHtml(r.note)}</p>` : ''}
+        ${r.review_note ? `<p class="text-sm text-slate-600 mt-2 pt-2 border-t border-slate-100 whitespace-pre-wrap">${t('finance.reviewNoteLabel')}: ${escapeHtml(r.review_note)}</p>` : ''}
         <div class="mt-2" data-el="receipt-slot"></div>
-        ${r.status === 'pending' ? `
-          <div class="flex gap-2 mt-3">
-            <button type="button" data-action="approve" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">${t('approvals.approve')}</button>
-            <button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-sm font-medium hover:bg-rose-200">${t('approvals.reject')}</button>
+        ${r.status === 'pending' && canApprove ? `
+          <div class="mt-3 pt-3 border-t border-slate-100">
+            <input type="text" data-el="review-note-input" placeholder="${t('finance.reviewNotePlaceholder')}"
+                   class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mb-2" />
+            <div class="flex gap-2">
+              <button type="button" data-action="approve" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">${t('approvals.approve')}</button>
+              <button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-sm font-medium hover:bg-rose-200">${t('approvals.reject')}</button>
+            </div>
           </div>
         ` : ''}
       </div>
@@ -245,15 +256,16 @@ function renderInboxBody(container, { supabase, adminUserId }) {
         receiptSlot.innerHTML = `<span class="text-xs text-amber-600">${t('reimbursement.noReceiptYet')}</span>`;
       }
 
-      rowEl.querySelector('[data-action="approve"]')?.addEventListener('click', () => approve(id));
-      rowEl.querySelector('[data-action="reject"]')?.addEventListener('click', () => reject(id));
+      const noteInput = rowEl.querySelector('[data-el="review-note-input"]');
+      rowEl.querySelector('[data-action="approve"]')?.addEventListener('click', () => approve(id, noteInput?.value.trim() || null));
+      rowEl.querySelector('[data-action="reject"]')?.addEventListener('click', () => reject(id, noteInput?.value.trim() || null));
     });
   }
 
-  async function approve(id) {
+  async function approve(id, reviewNote) {
     if (!(await confirmDialog({ message: t('reimbursement.confirmApprove'), confirmLabel: t('approvals.approve'), danger: false }))) return;
 
-    const { error } = await supabase.rpc('approve_reimbursement_request', { p_request_id: id });
+    const { error } = await supabase.rpc('approve_reimbursement_request', { p_request_id: id, p_review_note: reviewNote });
     if (error) {
       window.alert(t('reimbursement.updateFailed', { message: error.message }));
       return;
@@ -261,12 +273,12 @@ function renderInboxBody(container, { supabase, adminUserId }) {
     load();
   }
 
-  async function reject(id) {
+  async function reject(id, reviewNote) {
     if (!(await confirmDialog({ message: t('reimbursement.confirmReject'), confirmLabel: t('approvals.reject'), danger: true }))) return;
 
     const { error } = await supabase
       .from('reimbursement_requests')
-      .update({ status: 'rejected', resolved_at: new Date().toISOString(), resolved_by: adminUserId })
+      .update({ status: 'rejected', resolved_at: new Date().toISOString(), resolved_by: adminUserId, review_note: reviewNote })
       .eq('id', id);
 
     if (error) {

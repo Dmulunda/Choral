@@ -201,6 +201,42 @@ which is untouched and stays on its own project). Local-only for now — this
     badge on Fund Request); Reimbursements ("My Budget") stayed nested
     per-department, unchanged, since that restructuring was specifically
     about Fund Request/Budget Report.
+17. `18_budget_v3_notes_approval_split.sql` — Budget module punch-list
+    round, ported from `main` (commit `2052f28`). `budget_requests.review_note`
+    / `reimbursement_requests.review_note` (Finance's note on an
+    approval/rejection, shown to the requester) and `budgets.finance_note`
+    (a standing annotation Finance can add/edit on any department's
+    budget at any time, via a narrow new `set_budget_finance_note()` RPC
+    rather than widening the general `budgets` write policy) plus
+    `budgets.approved_by` (set by `approve_budget_request()` to
+    `auth.uid()`, left null for Finance's own directly-created budgets).
+    New `can_approve_finance()` — identical to `can_manage_finance()`
+    minus the Finance-department-secretary branch — swapped in for the
+    actual approve/reject RLS policies (`"finance can update budget
+    requests"`, `"finance can reject reimbursement requests"`) and the
+    two approval RPCs, so a Finance secretary keeps full cross-department
+    read/audit access but can't act on a request. `approve_budget_request()`/
+    `approve_reimbursement_request()` both gain a `p_review_note`
+    parameter (old single-arg overloads dropped, so PostgREST has exactly
+    one candidate to resolve an RPC call against). Also ported client-side
+    (unchanged from `main` beyond the tenant-scoped SQL above): "My
+    Budget"/Reimbursements moved into the centralized Budget page's Fund
+    Request tab, the review-note UI, the Finance-note section in
+    `budgetDetailModal.js`, the active-department scoping fix in
+    `budgetCentralBoard.js` (follows `getActiveDepartment()` instead of an
+    arbitrary first-led-department pick), the reworked `budgetPdf.js`
+    layout (church name/address/approved-by on the left, department/budget
+    name/created-by/dates on the right — `churchAddress` uses the same
+    `t('memberCard.churchAddress')` placeholder text as `main` until a
+    real address is provided; sandbox2 has no per-tenant address field, a
+    known gap), and the Finance drill-down into a filtered department's
+    live budget board under the aggregate Budget Report totals. Verified
+    live: all four new/changed function signatures resolve to exactly one
+    overload each, the two approval policies read `can_approve_finance()`,
+    and all four new columns exist with the expected types (a live
+    impersonation approve/reject-with-note test wasn't possible — this
+    project's one populated tenant has no Finance admin/secretary
+    membership yet to test against, unlike `16`/`17` which had one).
 
 ## Other client-side fixes from this session
 
