@@ -3,12 +3,18 @@
 // real PDF via the browser's own "Save as PDF", no jsPDF/html2canvas --
 // that pattern is for image-heavy card exports, this is a text/table
 // report).
+//
+// Layout: left = church name, church address, "Approved by" (only when
+// the budget actually went through Finance approval -- Finance's own
+// directly-created budgets have no approver). Right = department name,
+// budget name, created by, created/closed dates.
 import { t, departmentLabel } from '../i18n.js';
 import { formatAmount } from './budgetBoard.js';
 
 export function printBudgetSummary(budget, transactions, { spent, remaining }) {
   const churchName = t('memberCard.churchFullName');
-  const departmentName = departmentLabel('finance');
+  const churchAddress = t('memberCard.churchAddress');
+  const departmentName = budget.department ? departmentLabel(budget.department.key) : '';
   const createdLabel = formatDateTime(budget.created_at);
   const closedLabel = budget.closed_at ? formatDateTime(budget.closed_at) : null;
 
@@ -24,7 +30,8 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
         .header .left, .header .right { font-size: 13px; line-height: 1.6; }
         .header .right { text-align: right; }
         .header .church-name { font-size: 18px; font-weight: bold; }
-        .header .budget-name { font-size: 18px; font-weight: bold; }
+        .header .department-name { font-size: 15px; font-weight: bold; }
+        .header .budget-name { font-size: 13px; }
         .summary { display: flex; gap: 32px; margin-bottom: 32px; }
         .summary .stat { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
         .summary .stat .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -41,9 +48,11 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
       <div class="header">
         <div class="left">
           <div class="church-name">${escapeHtml(churchName)}</div>
-          <div>${escapeHtml(departmentName)}</div>
+          <div>${escapeHtml(churchAddress)}</div>
+          ${budget.approver?.full_name ? `<div>${t('budget.approvedBy')}: ${escapeHtml(budget.approver.full_name)}</div>` : ''}
         </div>
         <div class="right">
+          ${departmentName ? `<div class="department-name">${escapeHtml(departmentName)}</div>` : ''}
           <div class="budget-name">${escapeHtml(budget.name)}</div>
           <div>${t('budget.createdBy')}: ${escapeHtml(budget.creator?.full_name || '—')}</div>
           <div>${t('budget.createdOn')}: ${escapeHtml(createdLabel)}</div>

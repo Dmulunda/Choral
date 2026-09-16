@@ -13,6 +13,7 @@
 //                              tab's notification badge.
 import { confirmDialog } from './confirmDialog.js';
 import { t, departmentLabel } from '../i18n.js';
+import { canApproveFinance } from '../departments.js';
 
 function currentMonthValue() {
   const now = new Date();
@@ -126,7 +127,7 @@ export async function renderMyFundRequests(container, { supabase, departmentId, 
 
     let query = supabase
       .from('budget_requests')
-      .select('id, title, amount, request_month, status, created_at')
+      .select('id, title, amount, request_month, status, created_at, review_note')
       .eq('requesting_department_id', departmentId);
     if (monthFilterEl.value) query = query.eq('request_month', `${monthFilterEl.value}-01`);
 
@@ -143,12 +144,15 @@ export async function renderMyFundRequests(container, { supabase, departmentId, 
     }
 
     listEl.innerHTML = data.map((r) => `
-      <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3">
-        <div>
-          <div class="font-medium text-slate-800">${escapeHtml(r.title)}${r.amount ? ` — ${formatAmount(r.amount)}` : ''}</div>
-          <div class="text-xs text-slate-400">${formatMonth(r.request_month)} · ${escapeHtml(r.created_at.slice(0, 10))}</div>
+      <div class="border border-slate-200 rounded-lg p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="font-medium text-slate-800">${escapeHtml(r.title)}${r.amount ? ` — ${formatAmount(r.amount)}` : ''}</div>
+            <div class="text-xs text-slate-400">${formatMonth(r.request_month)} · ${escapeHtml(r.created_at.slice(0, 10))}</div>
+          </div>
+          ${statusBadge(r.status)}
         </div>
-        ${statusBadge(r.status)}
+        ${r.review_note ? `<p class="text-sm text-slate-600 mt-2 pt-2 border-t border-slate-100 whitespace-pre-wrap">${t('finance.reviewNoteLabel')}: ${escapeHtml(r.review_note)}</p>` : ''}
       </div>
     `).join('');
   }
@@ -179,9 +183,11 @@ export function renderFundRequestsInbox(container, { supabase, adminUserId, depa
   async function load() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
+    const canApprove = canApproveFinance();
+
     let query = supabase
       .from('budget_requests')
-      .select('id, title, amount, description, request_month, status, created_at, requester:profiles!requested_by ( full_name ), departments ( key )');
+      .select('id, title, amount, description, request_month, status, created_at, review_note, requester:profiles!requested_by ( full_name ), departments ( key )');
     if (monthFilterEl.value) query = query.eq('request_month', `${monthFilterEl.value}-01`);
     if (deptFilterEl.value) query = query.eq('requesting_department_id', deptFilterEl.value);
 
@@ -207,10 +213,15 @@ export function renderFundRequestsInbox(container, { supabase, adminUserId, depa
           ${t('finance.requestedBy')}: ${escapeHtml(r.requester?.full_name || '')} · ${r.departments ? departmentLabel(r.departments.key) : ''} · ${formatMonth(r.request_month)} · ${escapeHtml(r.created_at.slice(0, 10))}
         </div>
         ${r.description ? `<p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap">${escapeHtml(r.description)}</p>` : ''}
-        ${r.status === 'pending' ? `
-          <div class="flex gap-2 mt-3">
-            <button type="button" data-action="approve" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">${t('approvals.approve')}</button>
-            <button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-sm font-medium hover:bg-rose-200">${t('approvals.reject')}</button>
+        ${r.review_note ? `<p class="text-sm text-slate-600 mt-2 pt-2 border-t border-slate-100 whitespace-pre-wrap">${t('finance.reviewNoteLabel')}: ${escapeHtml(r.review_note)}</p>` : ''}
+        ${r.status === 'pending' && canApprove ? `
+          <div class="mt-3 pt-3 border-t border-slate-100">
+            <input type="text" data-el="review-note-input" placeholder="${t('finance.reviewNotePlaceholder')}"
+                   class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mb-2" />
+            <div class="flex gap-2">
+              <button type="button" data-action="approve" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">${t('approvals.approve')}</button>
+              <button type="button" data-action="reject" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-sm font-medium hover:bg-rose-200">${t('approvals.reject')}</button>
+            </div>
           </div>
         ` : ''}
       </div>
@@ -218,8 +229,9 @@ export function renderFundRequestsInbox(container, { supabase, adminUserId, depa
 
     container.querySelectorAll('[data-row]').forEach((rowEl) => {
       const id = rowEl.dataset.row;
-      rowEl.querySelector('[data-action="approve"]')?.addEventListener('click', () => respond(id, 'approved'));
-      rowEl.querySelector('[data-action="reject"]')?.addEventListener('click', () => respond(id, 'rejected'));
+      const noteInput = rowEl.querySelector('[data-el="review-note-input"]');
+      rowEl.querySelector('[data-action="approve"]')?.addEventListener('click', () => respond(id, 'approved', noteInput?.value.trim() || null));
+      rowEl.querySelector('[data-action="reject"]')?.addEventListener('click', () => respond(id, 'rejected', noteInput?.value.trim() || null));
     });
   }
 
@@ -233,7 +245,7 @@ export function renderFundRequestsInbox(container, { supabase, adminUserId, depa
     onPendingCountChange?.(count || 0);
   }
 
-  async function respond(id, status) {
+  async function respond(id, status, reviewNote) {
     const confirmLabel = status === 'approved' ? t('approvals.approve') : t('approvals.reject');
     if (!(await confirmDialog({ message: t('finance.confirmRespond', { status: confirmLabel.toLowerCase() }), confirmLabel, danger: status === 'rejected' }))) return;
 
@@ -243,10 +255,10 @@ export function renderFundRequestsInbox(container, { supabase, adminUserId, depa
     // which runs with the privilege to do both atomically. Rejection
     // doesn't touch budgets at all, so the plain update is unchanged.
     const { error } = status === 'approved'
-      ? await supabase.rpc('approve_budget_request', { p_request_id: id })
+      ? await supabase.rpc('approve_budget_request', { p_request_id: id, p_review_note: reviewNote })
       : await supabase
           .from('budget_requests')
-          .update({ status, resolved_at: new Date().toISOString(), resolved_by: adminUserId })
+          .update({ status, resolved_at: new Date().toISOString(), resolved_by: adminUserId, review_note: reviewNote })
           .eq('id', id);
 
     if (error) {
