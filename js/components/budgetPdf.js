@@ -4,16 +4,18 @@
 // that pattern is for image-heavy card exports, this is a text/table
 // report).
 //
-// Layout: left = church name, church address, "Approved by" (only when
-// the budget actually went through Finance approval -- Finance's own
-// directly-created budgets have no approver). Right = department name,
-// budget name, created by, created/closed dates.
+// Layout: left = church name, church address, "Approved by" (the real
+// approver for a budget that came from a fund-request approval, else
+// the creator -- Finance's own directly-created budgets are
+// self-approved). Right = department name, budget name, created by,
+// created/closed dates.
 import { t, departmentLabel } from '../i18n.js';
 import { formatAmount } from './budgetBoard.js';
 
 export function printBudgetSummary(budget, transactions, { spent, remaining }) {
   const churchName = t('memberCard.churchFullName');
   const churchAddress = t('memberCard.churchAddress');
+  const approverName = budget.approver?.full_name || budget.creator?.full_name;
   const departmentName = budget.department ? departmentLabel(budget.department.key) : '';
   const createdLabel = formatDateTime(budget.created_at);
   const closedLabel = budget.closed_at ? formatDateTime(budget.closed_at) : null;
@@ -49,7 +51,7 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
         <div class="left">
           <div class="church-name">${escapeHtml(churchName)}</div>
           <div>${escapeHtml(churchAddress)}</div>
-          ${budget.approver?.full_name ? `<div>${t('budget.approvedBy')}: ${escapeHtml(budget.approver.full_name)}</div>` : ''}
+          ${approverName ? `<div>${t('budget.approvedBy')}: ${escapeHtml(approverName)}</div>` : ''}
         </div>
         <div class="right">
           ${departmentName ? `<div class="department-name">${escapeHtml(departmentName)}</div>` : ''}

@@ -91,12 +91,16 @@ export function renderBudgetBoard(container, { supabase, departmentId, currentUs
       statusEl.className = 'text-sm text-slate-500';
       statusEl.textContent = t('common.saving');
 
+      // Finance creating its own budget directly (this form only ever
+      // reaches the server with allowManualCreate: true) has no separate
+      // approval step -- self-approved, so approved_by is the creator.
       const { error } = await supabase.from('budgets').insert({
         department_id: departmentId,
         name,
         initial_amount: initialAmount,
         description,
         created_by: currentUserId,
+        approved_by: currentUserId,
       });
 
       if (error) {

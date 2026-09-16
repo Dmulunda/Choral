@@ -229,7 +229,7 @@ const TRANSLATIONS = {
 
     'memberCard.loadFailed': 'Failed to load: {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
-    'memberCard.churchAddress': '[Church address — ask Didier for the exact text]',
+    'memberCard.churchAddress': '2244 Russell Rd, Ottawa, ON K1B 5K2, Canada',
     'memberCard.cardLabel': 'CARTE DE MEMBRE — MEMBERSHIP CARD',
     'memberCard.noPhoto': 'No photo',
     'memberCard.numberShort': 'No.',
@@ -1758,7 +1758,7 @@ const TRANSLATIONS = {
 
     'memberCard.loadFailed': 'Échec du chargement : {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
-    'memberCard.churchAddress': '[Church address — ask Didier for the exact text]',
+    'memberCard.churchAddress': '2244 Russell Rd, Ottawa, ON K1B 5K2, Canada',
     'memberCard.cardLabel': 'CARTE DE MEMBRE — MEMBERSHIP CARD',
     'memberCard.noPhoto': 'Aucune photo',
     'memberCard.numberShort': 'N°',
