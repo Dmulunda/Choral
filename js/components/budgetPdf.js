@@ -4,21 +4,29 @@
 // that pattern is for image-heavy card exports, this is a text/table
 // report).
 //
-// Layout: left = church name, church address, "Approved by" (the real
-// approver for a budget that came from a fund-request approval, else
-// the creator -- Finance's own directly-created budgets are
-// self-approved). Right = department name, budget name, created by,
-// created/closed dates.
+// Layout: logo + church name, church address, "Approved by" on the
+// left; department name, budget name, created by, created/closed dates
+// on the right.
 import { t, departmentLabel } from '../i18n.js';
 import { formatAmount } from './budgetBoard.js';
-import { getChurchAddress } from '../churchBranding.js';
+import { getChurchAddress, getChurchLogoUrl } from '../churchBranding.js';
 
 export function printBudgetSummary(budget, transactions, { spent, remaining }) {
   const churchName = t('memberCard.churchFullName');
   // Falls back to the Menu-Customizer-editable string only if no
   // address has been set via churchLogoModal.js yet.
   const churchAddress = getChurchAddress() || t('memberCard.churchAddress');
-  const approverName = budget.approver?.full_name || budget.creator?.full_name;
+  const logoUrl = getChurchLogoUrl() || `${window.location.origin}/img/vpd-logo.png`;
+  // A real approver only ever exists for a budget that went through
+  // Finance's approve_budget_request() -- always a Finance admin. The
+  // creator fallback is for Finance's own directly-created budgets
+  // (self-approved, budgetBoard.js sets approved_by = creator for
+  // those specifically) -- restricted to Finance's own department, or
+  // any other department's budget with no real approver on record
+  // (stray/legacy data) would misleadingly show its own creator, who
+  // was never a Finance admin, as if they'd approved themselves.
+  const isFinanceOwnBudget = budget.department?.key === 'finance';
+  const approverName = budget.approver?.full_name || (isFinanceOwnBudget ? budget.creator?.full_name : null);
   const departmentName = budget.department ? departmentLabel(budget.department.key) : '';
   const createdLabel = formatDateTime(budget.created_at);
   const closedLabel = budget.closed_at ? formatDateTime(budget.closed_at) : null;
@@ -34,6 +42,7 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
         .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; border-bottom: 2px solid #D4AF37; padding-bottom: 16px; margin-bottom: 24px; }
         .header .left, .header .right { font-size: 13px; line-height: 1.6; }
         .header .right { text-align: right; }
+        .header .church-logo { height: 40px; width: auto; margin-bottom: 6px; }
         .header .church-name { font-size: 18px; font-weight: bold; }
         .header .department-name { font-size: 15px; font-weight: bold; }
         .header .budget-name { font-size: 13px; }
@@ -52,6 +61,7 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
     <body>
       <div class="header">
         <div class="left">
+          <img src="${logoUrl}" alt="" class="church-logo" />
           <div class="church-name">${escapeHtml(churchName)}</div>
           <div>${escapeHtml(churchAddress)}</div>
           ${approverName ? `<div>${t('budget.approvedBy')}: ${escapeHtml(approverName)}</div>` : ''}
