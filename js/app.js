@@ -45,6 +45,7 @@ import {
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
+import { loadChurchBranding } from './churchBranding.js';
 import { confirmLeaveIfProjecting } from './utils/projectionGuard.js';
 
 registerServiceWorker();
@@ -931,6 +932,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // just after a re-render.
   await loadLabelOverrides();
   await loadAppTheme();
+  await loadChurchBranding();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
 

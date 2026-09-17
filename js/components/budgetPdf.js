@@ -11,10 +11,13 @@
 // created/closed dates.
 import { t, departmentLabel } from '../i18n.js';
 import { formatAmount } from './budgetBoard.js';
+import { getChurchAddress } from '../churchBranding.js';
 
 export function printBudgetSummary(budget, transactions, { spent, remaining }) {
   const churchName = t('memberCard.churchFullName');
-  const churchAddress = t('memberCard.churchAddress');
+  // Falls back to the Menu-Customizer-editable string only if no
+  // address has been set via churchLogoModal.js yet.
+  const churchAddress = getChurchAddress() || t('memberCard.churchAddress');
   const approverName = budget.approver?.full_name || budget.creator?.full_name;
   const departmentName = budget.department ? departmentLabel(budget.department.key) : '';
   const createdLabel = formatDateTime(budget.created_at);

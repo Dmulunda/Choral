@@ -14,6 +14,7 @@ import { renderAllDepartmentApprovals } from './components/allDepartmentApproval
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { createMenuCustomizerModal } from './components/menuCustomizer.js';
+import { createChurchLogoModal } from './components/churchLogoModal.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
 import { createLoginActivityModal } from './components/loginActivity.js';
 import { createDepartmentModal } from './components/createDepartmentModal.js';
@@ -31,6 +32,7 @@ let currentReportsModal = null;
 let currentGuestHubModal = null;
 let currentMemberCaseModal = null;
 let currentMenuCustomizerModal = null;
+let currentChurchLogoModal = null;
 let currentMessageModerationModal = null;
 let currentLoginActivityModal = null;
 let currentCreateDepartmentModal = null;
@@ -93,6 +95,7 @@ export async function renderSuperAdminHomeTab() {
             <div class="flex flex-col gap-1 mt-1">
               <button type="button" data-action="open-create-department" class="${navItemClass}">${t('superHome.createDepartmentTitle')}</button>
               <button type="button" data-action="open-menu-customizer" class="${navItemClass}">${t('menuCustomizer.title')}</button>
+              <button type="button" data-action="open-church-logo" class="${navItemClass}">${t('logo.title')}</button>
               <button type="button" data-action="open-message-moderation" class="${navItemClass}">${t('messageModeration.title')}</button>
               <button type="button" data-action="open-bible-import" class="${navItemClass}">${t('bibleImport.title')}</button>
               <button type="button" data-action="open-people-import" class="${navItemClass}">${t('peopleImport.title')}</button>
@@ -126,6 +129,7 @@ export async function renderSuperAdminHomeTab() {
   currentGuestHubModal?.root.remove();
   currentMemberCaseModal?.root.remove();
   currentMenuCustomizerModal?.root.remove();
+  currentChurchLogoModal?.root.remove();
   currentMessageModerationModal?.root.remove();
   currentLoginActivityModal?.root.remove();
   currentCreateDepartmentModal?.root.remove();
@@ -183,6 +187,12 @@ export async function renderSuperAdminHomeTab() {
   if (menuCustomizerBtn) {
     currentMenuCustomizerModal = createMenuCustomizerModal({ supabase, currentUserId: user.id });
     menuCustomizerBtn.addEventListener('click', () => currentMenuCustomizerModal.open());
+  }
+
+  const churchLogoBtn = container.querySelector('[data-action="open-church-logo"]');
+  if (churchLogoBtn) {
+    currentChurchLogoModal = createChurchLogoModal({ supabase, currentUserId: user.id });
+    churchLogoBtn.addEventListener('click', () => currentChurchLogoModal.open());
   }
 
   const messageModerationBtn = container.querySelector('[data-action="open-message-moderation"]');
