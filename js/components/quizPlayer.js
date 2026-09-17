@@ -84,10 +84,11 @@ export function renderQuizPlayer(container, { supabase, lessonId, onPassed }) {
       qEl.classList.add(correct ? 'border-emerald-300' : 'border-rose-300');
     });
 
+    const percent = data.total > 0 ? Math.round((data.score / data.total) * 100) : 0;
     resultEl.innerHTML = `
       <div class="p-3 rounded-lg ${data.passed ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}">
         <p class="font-semibold">${data.passed ? t('courses.quizPassed') : t('courses.quizFailed')}</p>
-        <p class="text-sm">${t('courses.quizScore', { score: data.score, total: data.total })}</p>
+        <p class="text-sm">${t('courses.quizScorePercent', { score: data.score, total: data.total, percent })}</p>
       </div>
       ${!data.passed ? `<button type="button" data-action="retry" class="mt-3 px-4 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800">${t('courses.tryAgain')}</button>` : ''}
     `;

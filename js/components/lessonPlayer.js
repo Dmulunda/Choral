@@ -5,14 +5,21 @@
 // again server-side by submit_quiz_attempt()/mark_lesson_viewed(), this
 // is just the matching UI behavior.
 import { renderQuizPlayer } from './quizPlayer.js';
+import { confirmDialog } from './confirmDialog.js';
 import { t } from '../i18n.js';
 
 const WATCH_THRESHOLD = 0.9;
 // Avoids spamming the RPC on every timeupdate/interval tick — only
 // sends when the ratchet has moved meaningfully or just crossed 90%.
 const SEND_STEP = 0.02;
+// Below this, there's nothing meaningful to resume -- start silently at
+// 0 rather than asking. At/above WATCH_THRESHOLD, they're basically
+// done -- seek there silently too, since "restart or continue?" is a
+// strange forced choice when they've already watched nearly all of it.
+// Only the band in between is genuinely ambiguous enough to ask about.
+const RESUME_PROMPT_FLOOR = 0.05;
 
-export function renderLessonPlayer(container, { supabase, lesson, onCompleted }) {
+export function renderLessonPlayer(container, { supabase, lesson, onCompleted, onNextLesson, hasNextLesson }) {
   let maxRatio = 0;
   let lastSentRatio = -1;
   let unlocked = false;
@@ -48,15 +55,34 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
         </button>
       ` : ''}
       <div data-el="quiz-area"></div>
-      ${completed ? `<p class="text-emerald-600 font-medium text-sm mt-2">${t('courses.lessonComplete')}</p>` : ''}
+      ${completed ? `
+        <p class="text-emerald-600 font-medium text-sm mt-2 mb-3">${t('courses.lessonComplete')}</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" data-action="restart-chapter" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
+            ${t('courses.restartChapter')}
+          </button>
+          ${hasNextLesson ? `
+            <button type="button" data-action="next-lesson" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+              ${t('courses.nextLesson')}
+            </button>
+          ` : ''}
+        </div>
+      ` : ''}
     `;
 
     if (lesson.pdf_storage_path) {
       container.querySelector('[data-action="open-pdf"]').addEventListener('click', openPdf);
     }
 
+    if (completed) {
+      container.querySelector('[data-action="restart-chapter"]').addEventListener('click', () => load());
+      if (hasNextLesson) {
+        container.querySelector('[data-action="next-lesson"]').addEventListener('click', () => onNextLesson?.());
+      }
+    }
+
     quizAreaEl = container.querySelector('[data-el="quiz-area"]');
-    setupVideo(container.querySelector('[data-el="video-wrap"]'), hasQuiz);
+    setupVideo(container.querySelector('[data-el="video-wrap"]'), hasQuiz, completed);
 
     if (!completed) {
       if (hasQuiz) {
@@ -107,12 +133,31 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     checkUnlock(hasQuiz);
   }
 
-  function setupVideo(wrapEl, hasQuiz) {
+  // How many seconds into the video to start at, given prior progress
+  // (maxRatio, from lesson_progress). A completed lesson (being
+  // rewatched via "Restart Chapter" or reopened from the sidebar) never
+  // prompts -- restarting already resets to 0 on its own, and reopening
+  // a finished lesson to review it should just start clean rather than
+  // asking a "continue or restart" question that no longer makes sense.
+  async function resumeSeconds(duration, completed) {
+    if (completed || !duration) return 0;
+    if (maxRatio < RESUME_PROMPT_FLOOR) return 0;
+    if (maxRatio >= WATCH_THRESHOLD) return maxRatio * duration;
+    const shouldContinue = await confirmDialog({
+      message: t('courses.resumePrompt'),
+      confirmLabel: t('courses.resumeContinue'),
+      cancelLabel: t('courses.resumeRestart'),
+      danger: false,
+    });
+    return shouldContinue ? maxRatio * duration : 0;
+  }
+
+  function setupVideo(wrapEl, hasQuiz, completed) {
     if (!lesson.video_source) return;
     if (lesson.video_source === 'upload') {
-      setupUploadedVideo(wrapEl, hasQuiz);
+      setupUploadedVideo(wrapEl, hasQuiz, completed);
     } else {
-      setupExternalVideo(wrapEl, hasQuiz);
+      setupExternalVideo(wrapEl, hasQuiz, completed);
     }
   }
 
@@ -136,7 +181,7 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     return data.url;
   }
 
-  async function setupUploadedVideo(wrapEl, hasQuiz) {
+  async function setupUploadedVideo(wrapEl, hasQuiz, completed) {
     // video_provider (sql/079) picks which backend this particular
     // lesson's video actually lives on — 'r2' for anything uploaded
     // since Cloudflare R2 was wired in (zero egress fee, which matters
@@ -148,7 +193,6 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     if (!signedUrl) return;
 
     const videoEl = document.createElement('video');
-    videoEl.src = signedUrl;
     videoEl.controls = true;
     // Only one video is ever mounted here (the lesson the student just
     // opened, not a list of many) -- 'auto' lets the browser start
@@ -156,6 +200,14 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     // cutting the pause before playback actually starts.
     videoEl.preload = 'auto';
     videoEl.className = 'w-full rounded-lg bg-black';
+    // Attached before src is set so it's guaranteed to catch the event,
+    // and duration (needed for the resume seek) isn't available until
+    // it fires.
+    videoEl.addEventListener('loadedmetadata', async () => {
+      const seconds = await resumeSeconds(videoEl.duration, completed);
+      if (seconds > 0) videoEl.currentTime = seconds;
+    }, { once: true });
+    videoEl.src = signedUrl;
     wrapEl.appendChild(videoEl);
 
     let raf = null;
@@ -171,7 +223,7 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
     };
   }
 
-  function setupExternalVideo(wrapEl, hasQuiz) {
+  function setupExternalVideo(wrapEl, hasQuiz, completed) {
     const parsed = parseVideoUrl(lesson.video_url);
     if (!parsed) {
       wrapEl.innerHTML = `<a href="${escapeAttr(lesson.video_url)}" target="_blank" rel="noopener" class="text-indigo-600 hover:underline text-sm">${escapeHtml(lesson.video_url)}</a>`;
@@ -193,11 +245,14 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
           width: '100%',
           height: '100%',
           events: {
-            onReady: () => {
+            onReady: async () => {
+              const duration = player.getDuration?.();
+              const seconds = await resumeSeconds(duration, completed);
+              if (seconds > 0) player.seekTo(seconds, true);
               interval = setInterval(() => {
-                const duration = player.getDuration?.();
+                const dur = player.getDuration?.();
                 const current = player.getCurrentTime?.();
-                if (duration) reportRatio(current / duration, hasQuiz);
+                if (dur) reportRatio(current / dur, hasQuiz);
               }, 2000);
             },
           },
@@ -213,8 +268,11 @@ export function renderLessonPlayer(container, { supabase, lesson, onCompleted })
       iframe.frameBorder = '0';
       frameHolder.appendChild(iframe);
 
-      loadScriptOnce('https://player.vimeo.com/api/player.js', () => window.Vimeo?.Player).then((VimeoPlayerCtor) => {
+      loadScriptOnce('https://player.vimeo.com/api/player.js', () => window.Vimeo?.Player).then(async (VimeoPlayerCtor) => {
         const player = new VimeoPlayerCtor(iframe);
+        const duration = await player.getDuration().catch(() => 0);
+        const seconds = await resumeSeconds(duration, completed);
+        if (seconds > 0) await player.setCurrentTime(seconds).catch(() => {});
         const onTimeUpdate = (data) => reportRatio(data.percent, hasQuiz);
         player.on('timeupdate', onTimeUpdate);
         stopTracking = () => player.off('timeupdate', onTimeUpdate);
