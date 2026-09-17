@@ -10,6 +10,11 @@ import { t } from '../i18n.js';
 
 export function renderCoursePlayer(container, { supabase, course, currentUserId, onBack, onProgressChanged }) {
   let activeLessonId = null;
+  // Reused by goToNextLesson() below, so kept at this scope rather than
+  // local to load() -- always reflects the most recent load()'s course
+  // order, which is what "next" should mean regardless of when the
+  // button is clicked.
+  let orderedLessons = [];
 
   load();
 
@@ -35,7 +40,7 @@ export function renderCoursePlayer(container, { supabase, course, currentUserId,
 
     // Flattened in course order — module.position, then lesson.position
     // within it — is exactly the sequence completion gating follows.
-    const orderedLessons = [];
+    orderedLessons = [];
     (modules || []).forEach((m) => {
       (lessons || []).filter((l) => l.module_id === m.id).forEach((l) => orderedLessons.push(l));
     });
@@ -46,6 +51,15 @@ export function renderCoursePlayer(container, { supabase, course, currentUserId,
       lockByLessonId.set(l.id, !previousCompleted);
       previousCompleted = completedSet.has(l.id);
     });
+
+    // Auto-open a lesson so the student never lands on a blank panel
+    // needing a manual click: first unlocked-and-incomplete lesson (the
+    // natural "continue" point), or the last lesson if the whole course
+    // is already done, or nothing if the course has zero lessons.
+    if (!activeLessonId && orderedLessons.length > 0) {
+      const resumeLesson = orderedLessons.find((l) => !lockByLessonId.get(l.id) && !completedSet.has(l.id));
+      activeLessonId = (resumeLesson || orderedLessons[orderedLessons.length - 1]).id;
+    }
 
     render(modules || [], lessons || [], completedSet, lockByLessonId);
   }
@@ -110,6 +124,7 @@ export function renderCoursePlayer(container, { supabase, course, currentUserId,
 
   function selectLesson(lesson, skipReload) {
     activeLessonId = lesson.id;
+    const lessonIndex = orderedLessons.findIndex((l) => l.id === lesson.id);
     const panel = container.querySelector('[data-el="lesson-panel"]');
     renderLessonPlayer(panel, {
       supabase,
@@ -118,8 +133,20 @@ export function renderCoursePlayer(container, { supabase, course, currentUserId,
       // module/lesson list (not just the lesson panel) needs a fresh
       // load — not merely bubbling up to the catalog's own callback.
       onCompleted: () => { onProgressChanged?.(); load(); },
+      onNextLesson: goToNextLesson,
+      hasNextLesson: lessonIndex >= 0 && lessonIndex + 1 < orderedLessons.length,
     });
     if (!skipReload) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Only ever reachable once the current lesson is completed (the
+  // "Next Lesson" button that calls this doesn't render otherwise), so
+  // the next lesson is guaranteed already unlocked by the same rule the
+  // sidebar enforces -- this is a shortcut to it, not a way around it.
+  function goToNextLesson() {
+    const currentIndex = orderedLessons.findIndex((l) => l.id === activeLessonId);
+    if (currentIndex < 0 || currentIndex + 1 >= orderedLessons.length) return;
+    selectLesson(orderedLessons[currentIndex + 1]);
   }
 
   async function dropCourse() {
