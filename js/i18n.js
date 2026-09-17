@@ -229,7 +229,6 @@ const TRANSLATIONS = {
 
     'memberCard.loadFailed': 'Failed to load: {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
-    'memberCard.churchAddress': '',
     'memberCard.cardLabel': 'CARTE DE MEMBRE — MEMBERSHIP CARD',
     'memberCard.noPhoto': 'No photo',
     'memberCard.numberShort': 'No.',
@@ -337,6 +336,11 @@ const TRANSLATIONS = {
     'logo.tooLarge': 'That image is larger than 2MB — please use a smaller file.',
     'logo.uploading': 'Uploading…',
     'logo.uploadFailed': 'Upload failed: {message}',
+    'logo.addressLabel': "Church address",
+    'logo.addressPlaceholder': 'Street, city, province/state, postal code, country',
+    'logo.saveAddressButton': 'Save Address',
+    'logo.addressSaved': 'Address saved.',
+    'logo.addressSaveFailed': 'Failed to save address: {message}',
 
     'agreementSigning.title': 'Sign to Continue',
     'agreementSigning.progress': 'Document {current} of {total}',
@@ -1823,7 +1827,6 @@ const TRANSLATIONS = {
 
     'memberCard.loadFailed': 'Échec du chargement : {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
-    'memberCard.churchAddress': '',
     'memberCard.cardLabel': 'CARTE DE MEMBRE — MEMBERSHIP CARD',
     'memberCard.noPhoto': 'Aucune photo',
     'memberCard.numberShort': 'N°',
@@ -1931,6 +1934,11 @@ const TRANSLATIONS = {
     'logo.tooLarge': 'Cette image dépasse 2 Mo — utilisez un fichier plus petit.',
     'logo.uploading': 'Envoi en cours…',
     'logo.uploadFailed': "Échec de l'envoi : {message}",
+    'logo.addressLabel': "Adresse de l'église",
+    'logo.addressPlaceholder': 'Rue, ville, province/état, code postal, pays',
+    'logo.saveAddressButton': "Enregistrer l'adresse",
+    'logo.addressSaved': 'Adresse enregistrée.',
+    'logo.addressSaveFailed': "Échec de l'enregistrement de l'adresse : {message}",
 
     'agreementSigning.title': 'Signer pour continuer',
     'agreementSigning.progress': 'Document {current} sur {total}',

@@ -274,6 +274,21 @@ which is untouched and stays on its own project). Local-only for now — this
     just one row, already expanded below) that sets the filter and
     expands that department's drill-down directly beneath it, scrolled
     into view.
+20. `20_tenant_address.sql` — `tenants.address text`, editable from a new
+    section in `tenantLogoModal.js` (the same Super-Admin-only modal that
+    already handles the logo, opened from the header logo or the
+    settings menu). Not in `09_tenant_logo.sql`'s privileged-column
+    protection list, so the existing "tenant admin can update own
+    tenant" UPDATE policy already permits writing it — no RLS/trigger
+    changes needed. `tenant.js`'s `loadMyTenant()` now selects it, and
+    `budgetPdf.js`'s `churchAddress` reads `getTenant()?.address`
+    instead of the blank i18n placeholder it fell back to since the `17`
+    port — closing that "known gap" noted in `17`'s README entry. This
+    is sandbox2-only: `main` has no equivalent tenant-settings page (a
+    single hardcoded church with its real address already in `i18n.js`),
+    so there's nothing to port here. Verified live: `tenants.address`
+    exists as `text`, and a Super Admin's `UPDATE` on it succeeds under
+    the existing policy (tested against a throwaway value, rolled back).
 
 ## Other client-side fixes from this session
 

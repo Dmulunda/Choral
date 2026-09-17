@@ -17,13 +17,12 @@ export function printBudgetSummary(budget, transactions, { spent, remaining }) {
   // Falls back to the platform default only if this tenant hasn't
   // uploaded/set their own yet -- same pattern as memberIdCard.js's
   // header, the one other place in this app that prints the org's name
-  // as text rather than just showing a logo image. Unlike churchName,
-  // sandbox2 has no per-tenant address field at all -- memberCard.churchAddress
-  // is deliberately left blank here (not main's real hardcoded church
-  // address, which would otherwise leak onto every other tenant's PDFs)
-  // and the line is only rendered when a tenant does have one set.
+  // as text rather than just showing a logo image. churchAddress comes
+  // from tenants.address (set via tenantLogoModal.js's address section,
+  // sql/saas_platform/20_tenant_address.sql) -- the line is only
+  // rendered when a tenant has actually set one.
   const churchName = getTenant()?.name || t('app.brand');
-  const churchAddress = t('memberCard.churchAddress');
+  const churchAddress = getTenant()?.address || '';
   const approverName = budget.approver?.full_name || budget.creator?.full_name;
   const departmentName = budget.department ? departmentLabel(budget.department.key) : '';
   const createdLabel = formatDateTime(budget.created_at);

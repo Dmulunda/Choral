@@ -8,12 +8,12 @@
 // tenant's data, because the database never returns it in the first place.
 import { supabase } from './supabaseClient.js';
 
-let myTenant = null; // { id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id } | null
+let myTenant = null; // { id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address } | null
 
 export async function loadMyTenant(userId) {
   const { data: profile } = await supabase
     .from('profiles')
-    .select('tenant_id, tenants ( id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id )')
+    .select('tenant_id, tenants ( id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address )')
     .eq('id', userId)
     .single();
 
