@@ -29,7 +29,7 @@ import { createAttendanceManagerModal } from './components/attendanceManager.js'
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
-import { createPastorMeetingRequestModal } from './components/pastorMeetingRequests.js';
+import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { createChangePasswordModal } from './components/changePasswordModal.js';
 import { createMyProfileModal } from './components/myProfileModal.js';
@@ -101,6 +101,7 @@ const lazyTabs = {
   training: renderTrainingTab,
   'service-program': renderServiceProgramTab,
   budget: renderBudgetPageTab,
+  'pastor-meetings': renderPastorMeetingsTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -643,7 +644,9 @@ function runSidebarTool(value) {
   } else if (value === 'join-department') {
     createJoinDepartmentModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'pastor-meeting') {
-    createPastorMeetingRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
+    // Replaces the old note-only popup entirely -- opens the real
+    // scheduling page (js/pastorMeetingsPage.js) instead.
+    activateTab('pastor-meetings');
   } else if (value === 'prayer-request') {
     createPrayerRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'department-rules' && active) {
