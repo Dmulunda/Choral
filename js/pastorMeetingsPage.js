@@ -218,7 +218,7 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
   // RESTRICTIVE tenant_isolation on this table already scopes the
   // SELECT to the caller's own tenant -- no explicit filter needed, at
   // most one row exists per tenant (tenant_id is the PK).
-  const { data, error } = await supabase.from('pastor_meeting_settings').select('selection_mode').maybeSingle();
+  const { data, error } = await supabase.from('pastor_meeting_settings').select('selection_mode, min_booking_notice_hours').maybeSingle();
   if (error) {
     container.innerHTML = `<p class="text-sm text-rose-600">${t('pastorBooking.loadFailed', { message: error.message })}</p>`;
     return;
@@ -243,6 +243,16 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
         </label>
       </div>
       <p data-el="mode-status" class="text-sm mt-2"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-4">
+      <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.noticeTitle')}</h3>
+      <p class="text-sm text-slate-500 mb-2">${t('pastorBooking.noticeIntro')}</p>
+      <div class="flex items-center gap-2">
+        <input type="number" data-el="notice-input" min="0" step="1" value="${data?.min_booking_notice_hours ?? 24}" class="w-24 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        <span class="text-sm text-slate-500">${t('pastorBooking.hours')}</span>
+        <button type="button" data-action="save-notice" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('pastorBooking.saveNotice')}</button>
+      </div>
+      <p data-el="notice-status" class="text-sm mt-2"></p>
     </div>
     <div class="bg-white rounded-xl shadow p-4 sm:p-6">
       <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.publicLinkTitle')}</h3>
@@ -271,6 +281,29 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
       statusEl.className = 'text-sm text-emerald-600 mt-2';
       statusEl.textContent = t('pastorBooking.saved');
     });
+  });
+
+  const noticeStatusEl = container.querySelector('[data-el="notice-status"]');
+  container.querySelector('[data-action="save-notice"]').addEventListener('click', async () => {
+    const hours = Number(container.querySelector('[data-el="notice-input"]').value);
+    if (!Number.isFinite(hours) || hours < 0) {
+      noticeStatusEl.className = 'text-sm text-rose-600 mt-2';
+      noticeStatusEl.textContent = t('pastorBooking.invalidNotice');
+      return;
+    }
+    noticeStatusEl.className = 'text-sm text-slate-500 mt-2';
+    noticeStatusEl.textContent = t('common.saving');
+    const { error: saveError } = await supabase.from('pastor_meeting_settings').upsert(
+      { tenant_id: getTenantId(), min_booking_notice_hours: hours, updated_by: currentUserId, updated_at: new Date().toISOString() },
+      { onConflict: 'tenant_id' },
+    );
+    if (saveError) {
+      noticeStatusEl.className = 'text-sm text-rose-600 mt-2';
+      noticeStatusEl.textContent = t('pastorBooking.saveFailed', { message: saveError.message });
+      return;
+    }
+    noticeStatusEl.className = 'text-sm text-emerald-600 mt-2';
+    noticeStatusEl.textContent = t('pastorBooking.saved');
   });
 
   container.querySelector('[data-action="copy-link"]').addEventListener('click', async () => {

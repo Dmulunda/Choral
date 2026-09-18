@@ -343,6 +343,46 @@ which is untouched and stays on its own project). Local-only for now — this
     stored flag to desync); a Super Admin can write
     `pastor_meeting_settings`, a Pastor Admin can read it but is
     correctly blocked from writing it.
+22. `23_pastor_meetings_v2_schema.sql` + `24_pastor_meetings_v2_rpcs.sql` —
+    follow-up, ported from `main` (commit `6e295ae`). Three adjustable
+    settings rather than fixed behavior, per the user's own framing:
+    "we can change it due to time and circumstance."
+    - **Bulk slot generation**: `pastorAvailabilityCalendar.js` no
+      longer takes one start/end time per submit — a pastor picks a
+      time window (e.g. 5:00-6:00) and a meeting length (e.g. 10
+      minutes), and every slot in that window is generated client-side
+      and written in a single bulk upsert. Optional weekly recurrence
+      (checkbox + an end date) materializes the same window/duration
+      as concrete rows for every matching day-of-week — not an
+      abstract recurrence rule — so every existing booking/query path
+      needed zero changes.
+    - New `pastor_availability_unique_slot` constraint
+      (`pastor_id, date, start_time, end_time`) — bulk generation
+      raises real odds of accidentally regenerating an overlapping
+      window, and a genuine duplicate row would otherwise be
+      independently bookable, letting two people book what looks like
+      the same displayed slot. The generator upserts with
+      `ignoreDuplicates` against this constraint. `tenant_id` isn't
+      part of the constraint — `pastor_id` alone already disambiguates
+      tenant, since a pastor belongs to exactly one.
+    - New `pastor_meeting_settings.min_booking_notice_hours`
+      (default 24, editable in the same Settings tab as the
+      assignment-mode toggle): a slot stops being listed **and** stops
+      being bookable server-side (not just hidden client-side) once it
+      falls within that window of its start time — enforced in both
+      `get_public_pastor_slots()` and `submit_pastor_meeting_booking()`,
+      both already tenant-aware from `21`/`22` so this only needed a
+      `where tenant_id = v_tenant_id` lookup added to the existing
+      settings read, no new tenant-resolution logic.
+
+    Verified live (same temporarily-promoted test profile as `21`/`22`,
+    restored after): a slot inside the 24h notice window is hidden from
+    `get_public_pastor_slots()` and rejected by
+    `submit_pastor_meeting_booking()` even when called directly; a slot
+    beyond the window is visible and bookable; a duplicate
+    `(pastor_id, date, start_time, end_time)` insert is correctly
+    rejected by the new constraint; the no-settings-row-yet case
+    correctly coalesces to the 24-hour default rather than erroring.
 
 ## Other client-side fixes from this session
 
