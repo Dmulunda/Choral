@@ -289,6 +289,60 @@ which is untouched and stays on its own project). Local-only for now — this
     so there's nothing to port here. Verified live: `tenants.address`
     exists as `text`, and a Super Admin's `UPDATE` on it succeeds under
     the existing policy (tested against a throwaway value, rolled back).
+21. `21_pastor_meetings_schema.sql` + `22_pastor_meetings_rpcs.sql` —
+    Pastor Meeting Scheduling System, ported from `main` (commit
+    `060098b`). New `pastor_availability` (tenant-scoped, RESTRICTIVE
+    `tenant_isolation` + a plain policy restricting write to
+    `pastor_id = auth.uid()` or `is_super_admin()`); `pastor_meeting_requests`
+    extended with `pastor_id`/`availability_id`/`meeting_type`/`guest_name`/
+    `guest_email`/`guest_phone`, `user_id` now nullable (guest bookings
+    have no profile), `'cancelled'` added to `pastor_meeting_status`.
+    **One deviation from the original plan sketch, found only once
+    `tenants`' actual write policy was checked live**: settings
+    (Manual-vs-Random pastor assignment) did **not** become columns on
+    `tenants` as first planned — `tenants`' UPDATE policy is
+    super-admin-only, but this setting needs super-admin OR
+    church-secretary write access, matching `main`'s gate. Went with a
+    real per-tenant `pastor_meeting_settings` table instead
+    (`tenant_id` itself as the PK, one row per tenant, RESTRICTIVE
+    `tenant_isolation`, its own read/write policies mirroring `main`'s
+    exactly) rather than force-fitting a column that couldn't carry the
+    right access rule.
+
+    The three RPCs (`get_public_pastor_slots`/`submit_pastor_meeting_booking`
+    anon+authenticated, `cancel_pastor_meeting_booking` authenticated-only)
+    needed a real design addition beyond tenant-scoping `main`'s
+    versions: an **anonymous caller has no session at all**, so no
+    `current_tenant_id()` to resolve from. Both public RPCs gained an
+    optional `p_tenant_slug` parameter, resolved the same way
+    `get_tenant_by_slug()` (`03_signup_rpcs.sql`) already does — an
+    authenticated in-app call omits it and gets `current_tenant_id()`
+    instead, only the public `booking.html` page (genuinely anonymous)
+    supplies it. This is why `booking.html` requires a `?church=<slug>`
+    query parameter here — `main`'s single-church version needs no
+    identifier at all, since there's only one church to mean.
+    `pastorBookingCalendar.js`/`publicBooking.js`/`pastorMeetingsPage.js`
+    (the public-link generator in its Settings tab) all diverge from
+    `main`'s versions specifically to thread this slug through; every
+    other client file (`pastorAvailabilityCalendar.js`, `app.js`,
+    `index.html`, `i18n.js`'s key additions) applied as a clean,
+    unmodified patch from `main`'s commit.
+
+    Verified live end-to-end (temporarily promoted an existing test
+    profile to `pastor_admin`, ran the full flow, restored its original
+    role afterward, confirmed no leftover rows): a pastor writes only
+    their own availability; a direct anon `SELECT`/`INSERT` against
+    `pastor_availability` is rejected; an anon call to
+    `get_public_pastor_slots(slug)` sees the real slot and a bogus slug
+    raises "Church not found"; an anon guest booking succeeds with the
+    correct `tenant_id`/`pastor_id`/`meeting_room`, creates the
+    in-app notification, and is rejected on a second attempt at the
+    same slot (`FOR UPDATE SKIP LOCKED`); the assigned pastor can see
+    the booking via the new `pastor_id = auth.uid()` SELECT clause;
+    cancelling reopens the slot immediately (computed availability, no
+    stored flag to desync); a Super Admin can write
+    `pastor_meeting_settings`, a Pastor Admin can read it but is
+    correctly blocked from writing it.
 
 ## Other client-side fixes from this session
 
