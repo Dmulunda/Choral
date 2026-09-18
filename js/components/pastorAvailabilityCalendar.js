@@ -1,16 +1,23 @@
 // A pastor's own meeting-availability calendar — month grid (same
 // shape as calendar.js's) where days with at least one slot are
-// marked; clicking a day shows that date's slots as an editable list
-// (start/end time + Office/Online), same list-of-rows pattern as
-// uniformSchedule.js/preachingScheduleBoard.js. Unlike calendar.js's
-// single upsert-by-date status, a pastor can have several distinct
-// slots on one day, so this is plain insert/delete per row, not an
-// upsert. Writes straight to pastor_availability under normal RLS
-// (pastor_id = auth.uid()) — no RPC needed, this isn't a contested
-// resource the way booking is.
+// marked; clicking a day shows that date's slots as a read-only list
+// (individually deletable) plus a *generator* form: pick a time
+// window (e.g. 5:00-6:00) and a meeting length (e.g. 10 minutes), and
+// every slot in that window is created in one submit -- no more
+// entering each slot's start/end by hand. Optionally recurring
+// (weekly, until a chosen end date). Writes straight to
+// pastor_availability under normal RLS (pastor_id = auth.uid()) via a
+// single bulk upsert -- no RPC needed, this isn't a contested resource
+// the way booking is. Generated rows upsert with ignoreDuplicates
+// against the (pastor_id, date, start_time, end_time) unique
+// constraint, so re-running the generator over a window that already
+// has some slots in it never creates a duplicate, independently-
+// bookable copy of the same slot.
 import { formatDateLocal, todayLocal } from '../utils/date.js';
 import { t, tn, monthName } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
+
+const MAX_GENERATED_SLOTS = 500;
 
 export function renderPastorAvailabilityCalendar(container, { supabase, pastorId }) {
   let viewDate = new Date();
@@ -120,25 +127,41 @@ export function renderPastorAvailabilityCalendar(container, { supabase, pastorId
         <button type="button" data-action="close-panel" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
       </div>
       <div data-el="slot-list" class="space-y-2 mb-4"></div>
-      <form data-el="add-form" class="grid sm:grid-cols-4 gap-2 items-end">
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.startTime')}</label>
-          <input type="time" name="start_time" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+      <form data-el="add-form" class="space-y-3">
+        <div class="grid sm:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.windowStart')}</label>
+            <input type="time" name="window_start" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.windowEnd')}</label>
+            <input type="time" name="window_end" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.endTime')}</label>
-          <input type="time" name="end_time" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+        <div class="grid sm:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.duration')}</label>
+            <input type="number" name="duration" min="5" step="5" value="30" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.locationType')}</label>
+            <select name="location_type" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+              <option value="office">${t('pastorAvailability.office')}</option>
+              <option value="online">${t('pastorAvailability.online')}</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.locationType')}</label>
-          <select name="location_type" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
-            <option value="office">${t('pastorAvailability.office')}</option>
-            <option value="online">${t('pastorAvailability.online')}</option>
-          </select>
+        <label class="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" name="recurring" data-el="recurring-checkbox" />
+          ${t('pastorAvailability.recurring')}
+        </label>
+        <div data-el="recur-until-wrap" class="hidden">
+          <label class="block text-xs font-medium text-slate-500 mb-1">${t('pastorAvailability.repeatUntil')}</label>
+          <input type="date" name="repeat_until" min="${selectedDate}" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
         </div>
-        <button type="submit" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('pastorAvailability.addSlot')}</button>
+        <button type="submit" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('pastorAvailability.generateSlots')}</button>
       </form>
-      <p data-el="panel-status" class="text-sm text-rose-600 mt-2"></p>
+      <p data-el="panel-status" class="text-sm mt-2"></p>
     `;
 
     dayPanel.querySelector('[data-action="close-panel"]').addEventListener('click', () => {
@@ -165,25 +188,71 @@ export function renderPastorAvailabilityCalendar(container, { supabase, pastorId
 
     const addForm = dayPanel.querySelector('[data-el="add-form"]');
     const panelStatusEl = dayPanel.querySelector('[data-el="panel-status"]');
+    const recurringCheckbox = addForm.querySelector('[data-el="recurring-checkbox"]');
+    const recurUntilWrap = addForm.querySelector('[data-el="recur-until-wrap"]');
+    recurringCheckbox.addEventListener('change', () => {
+      recurUntilWrap.classList.toggle('hidden', !recurringCheckbox.checked);
+      addForm.elements.repeat_until.required = recurringCheckbox.checked;
+    });
+
     addForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      panelStatusEl.className = 'text-sm text-rose-600 mt-2';
       panelStatusEl.textContent = '';
-      const startTime = addForm.elements.start_time.value;
-      const endTime = addForm.elements.end_time.value;
+
+      const windowStart = addForm.elements.window_start.value;
+      const windowEnd = addForm.elements.window_end.value;
+      const duration = Number(addForm.elements.duration.value);
       const locationType = addForm.elements.location_type.value;
-      if (endTime <= startTime) {
+      const recurring = recurringCheckbox.checked;
+      const repeatUntil = addForm.elements.repeat_until.value;
+
+      if (windowEnd <= windowStart) {
         panelStatusEl.textContent = t('pastorAvailability.endBeforeStart');
         return;
       }
+      if (!duration || duration < 5) {
+        panelStatusEl.textContent = t('pastorAvailability.invalidDuration');
+        return;
+      }
+      if (recurring && (!repeatUntil || repeatUntil < selectedDate)) {
+        panelStatusEl.textContent = t('pastorAvailability.invalidRepeatUntil');
+        return;
+      }
 
-      const { error } = await supabase.from('pastor_availability').insert({
-        pastor_id: pastorId, date: selectedDate, start_time: startTime, end_time: endTime, location_type: locationType,
+      const rows = generateSlotRows({
+        pastorId,
+        startDateStr: selectedDate,
+        windowStart,
+        windowEnd,
+        durationMinutes: duration,
+        locationType,
+        recurring,
+        repeatUntilStr: recurring ? repeatUntil : null,
+      });
+
+      if (rows.length === 0) {
+        panelStatusEl.textContent = t('pastorAvailability.noSlotsGenerated');
+        return;
+      }
+      if (rows.length > MAX_GENERATED_SLOTS) {
+        panelStatusEl.textContent = t('pastorAvailability.tooManySlots', { count: rows.length, max: MAX_GENERATED_SLOTS });
+        return;
+      }
+
+      const { error } = await supabase.from('pastor_availability').upsert(rows, {
+        onConflict: 'pastor_id,date,start_time,end_time',
+        ignoreDuplicates: true,
       });
       if (error) {
         panelStatusEl.textContent = t('pastorAvailability.saveFailed', { message: error.message });
         return;
       }
+
+      panelStatusEl.className = 'text-sm text-emerald-600 mt-2';
+      panelStatusEl.textContent = tn('pastorAvailability.slotsGenerated', rows.length);
       addForm.reset();
+      recurUntilWrap.classList.add('hidden');
       loadMonth();
     });
   }
@@ -197,6 +266,53 @@ export function renderPastorAvailabilityCalendar(container, { supabase, pastorId
     }
     loadMonth();
   }
+}
+
+// Expands one time window into consecutive duration-length slots
+// (5:00-6:00 at 10 minutes -> six 10-minute slots), repeated weekly
+// through repeatUntilStr when recurring -- materialized as concrete
+// rows up front rather than stored as an abstract recurrence rule, so
+// every existing booking/query path keeps working against plain date
+// rows unchanged.
+function generateSlotRows({ pastorId, startDateStr, windowStart, windowEnd, durationMinutes, locationType, recurring, repeatUntilStr }) {
+  const dates = [];
+  if (recurring && repeatUntilStr) {
+    let cur = new Date(startDateStr + 'T00:00:00');
+    const until = new Date(repeatUntilStr + 'T00:00:00');
+    while (cur <= until) {
+      dates.push(formatDateLocal(cur));
+      cur.setDate(cur.getDate() + 7);
+    }
+  } else {
+    dates.push(startDateStr);
+  }
+
+  const [wsH, wsM] = windowStart.split(':').map(Number);
+  const [weH, weM] = windowEnd.split(':').map(Number);
+  const windowStartMin = wsH * 60 + wsM;
+  const windowEndMin = weH * 60 + weM;
+
+  const rows = [];
+  for (const dateStr of dates) {
+    let cursor = windowStartMin;
+    while (cursor + durationMinutes <= windowEndMin) {
+      rows.push({
+        pastor_id: pastorId,
+        date: dateStr,
+        start_time: minutesToTimeStr(cursor),
+        end_time: minutesToTimeStr(cursor + durationMinutes),
+        location_type: locationType,
+      });
+      cursor += durationMinutes;
+    }
+  }
+  return rows;
+}
+
+function minutesToTimeStr(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function formatTime(timeStr) {
