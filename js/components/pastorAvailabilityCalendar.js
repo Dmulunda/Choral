@@ -18,6 +18,7 @@ import { t, tn, monthName } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 
 const MAX_GENERATED_SLOTS = 500;
+const DEFAULT_PAUSE_MESSAGE = "We're sorry to let you know that our pastor will not be available this week. We apologize for any inconvenience this may cause, and we appreciate your patience and understanding.\nIf you need pastoral care or have an urgent matter, please contact the church office and we will do our best to assist you. Regular services and activities will resume as usual next week.\nThank you for your understanding, and may God bless you all.";
 
 export function renderPastorAvailabilityCalendar(container, { supabase, pastorId }) {
   let viewDate = new Date();
@@ -26,6 +27,7 @@ export function renderPastorAvailabilityCalendar(container, { supabase, pastorId
   let selectedDate = null;
 
   container.innerHTML = `
+    <div data-el="pause-control" class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6"></div>
     <div class="flex items-center justify-between mb-4">
       <button type="button" data-action="prev-month" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">${t('calendar.prev')}</button>
       <h2 data-el="month-label" class="text-lg font-semibold"></h2>
@@ -38,9 +40,78 @@ export function renderPastorAvailabilityCalendar(container, { supabase, pastorId
     <div data-el="day-panel" class="hidden bg-white rounded-xl shadow p-4 sm:p-6"></div>
   `;
 
+  const pauseControlEl = container.querySelector('[data-el="pause-control"]');
   const monthLabel = container.querySelector('[data-el="month-label"]');
   const grid = container.querySelector('[data-el="grid"]');
   const dayPanel = container.querySelector('[data-el="day-panel"]');
+
+  loadPauseState();
+
+  async function loadPauseState() {
+    const { data } = await supabase.from('pastor_meeting_pause').select('paused, message').eq('pastor_id', pastorId).maybeSingle();
+    renderPauseControl(data?.paused || false, data?.message || DEFAULT_PAUSE_MESSAGE);
+  }
+
+  function renderPauseControl(paused, message) {
+    if (!paused) {
+      pauseControlEl.innerHTML = `
+        <button type="button" data-action="open-pause-form" class="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-200">
+          ${t('pastorAvailability.pauseButton')}
+        </button>
+        <div data-el="pause-form-wrap" class="hidden mt-3"></div>
+      `;
+      pauseControlEl.querySelector('[data-action="open-pause-form"]').addEventListener('click', () => {
+        const wrap = pauseControlEl.querySelector('[data-el="pause-form-wrap"]');
+        wrap.classList.remove('hidden');
+        wrap.innerHTML = `
+          <p class="text-sm text-slate-500 mb-2">${t('pastorAvailability.pauseIntro')}</p>
+          <textarea data-el="pause-message" rows="5" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2">${escapeHtml(message)}</textarea>
+          <div class="flex items-center gap-2">
+            <button type="button" data-action="confirm-pause" class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700">${t('pastorAvailability.confirmPause')}</button>
+            <button type="button" data-action="cancel-pause-form" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('common.cancel')}</button>
+            <span data-el="pause-status" class="text-sm"></span>
+          </div>
+        `;
+        wrap.querySelector('[data-action="cancel-pause-form"]').addEventListener('click', () => wrap.classList.add('hidden'));
+        wrap.querySelector('[data-action="confirm-pause"]').addEventListener('click', async () => {
+          const statusEl = wrap.querySelector('[data-el="pause-status"]');
+          statusEl.className = 'text-sm text-slate-500';
+          statusEl.textContent = t('common.saving');
+          const { error } = await supabase.from('pastor_meeting_pause').upsert(
+            { pastor_id: pastorId, paused: true, message: wrap.querySelector('[data-el="pause-message"]').value.trim() || DEFAULT_PAUSE_MESSAGE, updated_at: new Date().toISOString() },
+            { onConflict: 'pastor_id' },
+          );
+          if (error) {
+            statusEl.className = 'text-sm text-rose-600';
+            statusEl.textContent = t('pastorAvailability.saveFailed', { message: error.message });
+            return;
+          }
+          loadPauseState();
+        });
+      });
+    } else {
+      pauseControlEl.innerHTML = `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p class="text-sm font-medium text-amber-800 mb-1">${t('pastorAvailability.pausedNotice')}</p>
+          <p class="text-sm text-amber-700 whitespace-pre-wrap mb-3">${escapeHtml(message)}</p>
+          <button type="button" data-action="resume" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">${t('pastorAvailability.resumeButton')}</button>
+          <span data-el="resume-status" class="text-sm ml-2"></span>
+        </div>
+      `;
+      pauseControlEl.querySelector('[data-action="resume"]').addEventListener('click', async () => {
+        const statusEl = pauseControlEl.querySelector('[data-el="resume-status"]');
+        statusEl.className = 'text-sm text-slate-500';
+        statusEl.textContent = t('common.saving');
+        const { error } = await supabase.from('pastor_meeting_pause').update({ paused: false, updated_at: new Date().toISOString() }).eq('pastor_id', pastorId);
+        if (error) {
+          statusEl.className = 'text-sm text-rose-600';
+          statusEl.textContent = t('pastorAvailability.saveFailed', { message: error.message });
+          return;
+        }
+        loadPauseState();
+      });
+    }
+  }
 
   container.querySelector('[data-action="prev-month"]').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth() - 1); loadMonth(); });
   container.querySelector('[data-action="next-month"]').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth() + 1); loadMonth(); });

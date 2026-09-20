@@ -383,6 +383,62 @@ which is untouched and stays on its own project). Local-only for now — this
     `(pastor_id, date, start_time, end_time)` insert is correctly
     rejected by the new constraint; the no-settings-row-yet case
     correctly coalesces to the 24-hour default rather than erroring.
+23. `25_pastor_meetings_v3_schema.sql` + `26_pastor_meetings_v3_rpcs.sql` —
+    follow-up, ported from `main` (commit `30962cc`). Five more
+    additions, all requested together:
+    - **Maximum booking lead time** (`pastor_meeting_settings.max_booking_lead_days`,
+      blank/0 = no limit) pairs with the existing minimum notice —
+      enforced in both `get_public_pastor_slots()` and
+      `submit_pastor_meeting_booking()`, same shape as `21`.
+    - **"Pause All Availability"**: new `pastor_meeting_pause` table
+      (`pastor_id` PK, `tenant_id` a regular indexed column — unlike
+      `pastor_meeting_settings`, where `tenant_id` itself is the PK,
+      since a tenant can have multiple pastors) lets a pastor hide
+      every slot they've entered from the booking page in one toggle,
+      without deleting any of it, with a custom message (defaults to
+      the user's exact requested wording) shown to anyone who would
+      otherwise see their slots. Excluded from both RPCs above; a
+      manual-mode booking attempt against a paused pastor gets a
+      specific error ("not currently taking bookings"), not the
+      generic slot-taken one.
+    - **Church timezone** (`pastor_meeting_settings.church_timezone`,
+      curated `<select>` of IANA zones in `pastorMeetingsPage.js`
+      matching this tenant's own congregation data) + new
+      `get_church_timezone(p_tenant_slug)` RPC — `pastorBookingCalendar.js`
+      compares it to the visitor's own browser timezone
+      (`Intl.DateTimeFormat().resolvedOptions().timeZone`) and, if they
+      differ, converts every slot's displayed time via Luxon (jsdelivr
+      `+esm`, same CDN convention as `qrcode`), keeping the original
+      church time visible alongside it. The booking submission itself
+      always uses the original, unconverted date/time — the RPC
+      compares against `pastor_availability` rows in church-time terms.
+    - **Contact name + phone** collected on every booking now, member
+      or guest (previously only guests provided them) — renamed
+      `pastor_meeting_requests.guest_name`/`guest_phone` to
+      `contact_name`/`contact_phone` rather than adding parallel
+      columns, since they already meant exactly "this booking's
+      contact info." `guest_email` stays guest-only.
+    - **Cancellation reason**: `cancel_pastor_meeting_booking(p_id, p_reason)`
+      now requires a non-empty reason, stores it, and notifies the
+      original booker (if an authenticated member) with it included.
+    - New `get_pastor_pause_notices(p_tenant_slug)` RPC surfaces active
+      pause messages to anonymous booking-page visitors.
+    - All five RPCs follow the same dual-path tenant resolution as
+      `21`/`22`/`24`: `current_tenant_id()` when `auth.uid()` is
+      present, otherwise resolved from `p_tenant_slug` the same way
+      `get_tenant_by_slug()` does.
+
+    Verified live (temporarily promoted an existing test profile —
+    Anael Kapinga — to `pastor_admin`, restored afterward, all test
+    rows deleted): a slot within a 3-day max-lead cap is visible, one
+    beyond it is hidden; pausing the pastor hides both slots from
+    `get_public_pastor_slots()` and surfaces the message via
+    `get_pastor_pause_notices()` to an anon caller; booking against a
+    paused pastor is rejected with the specific message; a booking
+    missing `contact_name`/`contact_phone` is rejected; a booking with
+    them succeeds and the columns are stored correctly; cancelling
+    without a reason is rejected; cancelling with one stores and
+    returns it.
 
 ## Other client-side fixes from this session
 
