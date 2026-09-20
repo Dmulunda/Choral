@@ -18,6 +18,26 @@ import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeet
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'church_secretary'];
 
+// Curated rather than a free-text field -- a typo'd IANA zone would
+// silently break every time conversion in pastorBookingCalendar.js.
+// Covers the regions this app's actual congregation data spans
+// (Canada/US, Western/Central Europe, Central/West/East/Southern
+// Africa) rather than the full ~400-zone IANA list.
+const TIMEZONE_CHOICES = [
+  { value: 'America/Toronto', label: 'Eastern Time (Toronto/Ottawa)' },
+  { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
+  { value: 'America/New_York', label: 'Eastern Time (US)' },
+  { value: 'America/Chicago', label: 'Central Time (US)' },
+  { value: 'America/Denver', label: 'Mountain Time (US)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (US)' },
+  { value: 'Europe/London', label: 'London' },
+  { value: 'Europe/Paris', label: 'Paris/Brussels' },
+  { value: 'Africa/Kinshasa', label: 'Kinshasa' },
+  { value: 'Africa/Lagos', label: 'Lagos' },
+  { value: 'Africa/Nairobi', label: 'Nairobi' },
+  { value: 'Africa/Johannesburg', label: 'Johannesburg' },
+];
+
 export async function renderPastorMeetingsTab() {
   const supabase = getEffectiveSupabase();
   const container = document.querySelector('#pastor-meetings-content');
@@ -29,7 +49,7 @@ export async function renderPastorMeetingsTab() {
     return;
   }
 
-  const { data: profile } = await supabase.from('profiles').select('id, full_name').eq('id', user.id).single();
+  const { data: profile } = await supabase.from('profiles').select('id, full_name, phone').eq('id', user.id).single();
   const role = getGlobalRole();
   const isPastor = role === 'pastor_admin';
   const isAdminTeam = PASTORAL_TEAM_ROLES.includes(role);
@@ -106,7 +126,7 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
 
   let query = supabase
     .from('pastor_meeting_requests')
-    .select('id, note, status, meeting_room, created_at, guest_name, guest_email, guest_phone, meeting_type, requester:profiles!user_id(full_name), pastor:profiles!pastor_id(full_name)')
+    .select('id, note, status, meeting_room, created_at, contact_name, contact_phone, guest_email, cancellation_reason, meeting_type, requester:profiles!user_id(full_name), pastor:profiles!pastor_id(full_name)')
     .order('created_at', { ascending: false });
   Object.entries(filter).forEach(([col, val]) => { query = query.eq(col, val); });
 
@@ -126,7 +146,7 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
   container.appendChild(list);
 
   data.forEach((row) => {
-    const who = row.requester?.full_name || row.guest_name || t('pastorBooking.unknownRequester');
+    const who = row.requester?.full_name || row.contact_name || t('pastorBooking.unknownRequester');
     const el = document.createElement('div');
     el.className = 'bg-white rounded-xl shadow p-3 sm:p-4 text-sm';
     el.innerHTML = `
@@ -138,8 +158,13 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
         ${statusBadge(row.status)}
       </div>
       <div class="text-xs text-slate-500 mt-1">${escapeHtml(new Date(row.created_at).toLocaleString())} · ${row.meeting_type === 'online' ? t('pastorBooking.online') : t('pastorBooking.office')}</div>
-      ${row.guest_email ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(row.guest_email)}${row.guest_phone ? ` · ${escapeHtml(row.guest_phone)}` : ''}</div>` : ''}
+      ${row.contact_name || row.contact_phone || row.guest_email ? `
+        <div class="text-xs text-slate-500 mt-1">
+          ${[row.contact_name, row.contact_phone, row.guest_email].filter(Boolean).map(escapeHtml).join(' · ')}
+        </div>
+      ` : ''}
       ${row.note ? `<p class="text-slate-700 mt-2">${escapeHtml(row.note)}</p>` : ''}
+      ${row.status === 'cancelled' && row.cancellation_reason ? `<p class="text-xs text-rose-600 mt-2">${t('pastorBooking.cancellationReasonLabel')}: ${escapeHtml(row.cancellation_reason)}</p>` : ''}
       <div class="flex items-center gap-2 mt-2">
         ${row.meeting_room && row.status === 'confirmed' ? `<button type="button" data-action="join" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : ''}
         ${canCancel && row.status === 'confirmed' ? `<button type="button" data-action="cancel" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-medium hover:bg-rose-200">${t('pastorBooking.cancel')}</button>` : ''}
@@ -153,8 +178,18 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
     });
 
     el.querySelector('[data-action="cancel"]')?.addEventListener('click', async () => {
+      // window.prompt for the single required text field -- same
+      // lightweight pattern already used elsewhere in this app
+      // (courseBuilder.js) rather than building a whole modal for one
+      // input.
+      const reason = window.prompt(t('pastorBooking.cancelReasonPrompt'));
+      if (reason === null) return; // user cancelled the prompt itself
+      if (!reason.trim()) {
+        window.alert(t('pastorBooking.cancelReasonRequired'));
+        return;
+      }
       if (!(await confirmDialog({ message: t('pastorBooking.confirmCancel') }))) return;
-      const { error: cancelError } = await supabase.rpc('cancel_pastor_meeting_booking', { p_id: row.id });
+      const { error: cancelError } = await supabase.rpc('cancel_pastor_meeting_booking', { p_id: row.id, p_reason: reason.trim() });
       if (cancelError) {
         window.alert(t('pastorBooking.cancelFailed', { message: cancelError.message }));
         return;
@@ -214,7 +249,9 @@ async function renderStaffTab(container, { supabase }) {
 async function renderSettingsTab(container, { supabase, currentUserId }) {
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-  const { data, error } = await supabase.from('pastor_meeting_settings').select('selection_mode, min_booking_notice_hours').eq('id', true).maybeSingle();
+  const { data, error } = await supabase.from('pastor_meeting_settings')
+    .select('selection_mode, min_booking_notice_hours, max_booking_lead_days, church_timezone')
+    .eq('id', true).maybeSingle();
   if (error) {
     container.innerHTML = `<p class="text-sm text-rose-600">${t('pastorBooking.loadFailed', { message: error.message })}</p>`;
     return;
@@ -246,6 +283,27 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
         <button type="button" data-action="save-notice" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('pastorBooking.saveNotice')}</button>
       </div>
       <p data-el="notice-status" class="text-sm mt-2"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-4">
+      <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.maxLeadTitle')}</h3>
+      <p class="text-sm text-slate-500 mb-2">${t('pastorBooking.maxLeadIntro')}</p>
+      <div class="flex items-center gap-2">
+        <input type="number" data-el="max-lead-input" min="0" step="1" value="${data?.max_booking_lead_days ?? ''}" placeholder="${t('pastorBooking.noLimit')}" class="w-24 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        <span class="text-sm text-slate-500">${t('pastorBooking.days')}</span>
+        <button type="button" data-action="save-max-lead" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('pastorBooking.saveMaxLead')}</button>
+      </div>
+      <p data-el="max-lead-status" class="text-sm mt-2"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-4">
+      <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.timezoneTitle')}</h3>
+      <p class="text-sm text-slate-500 mb-2">${t('pastorBooking.timezoneIntro')}</p>
+      <div class="flex items-center gap-2">
+        <select data-el="timezone-select" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          ${TIMEZONE_CHOICES.map((z) => `<option value="${z.value}" ${data?.church_timezone === z.value ? 'selected' : ''}>${escapeHtml(z.label)}</option>`).join('')}
+        </select>
+        <button type="button" data-action="save-timezone" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('pastorBooking.saveNotice')}</button>
+      </div>
+      <p data-el="timezone-status" class="text-sm mt-2"></p>
     </div>
     <div class="bg-white rounded-xl shadow p-4 sm:p-6">
       <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.publicLinkTitle')}</h3>
@@ -297,6 +355,48 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
     }
     noticeStatusEl.className = 'text-sm text-emerald-600 mt-2';
     noticeStatusEl.textContent = t('pastorBooking.saved');
+  });
+
+  const maxLeadStatusEl = container.querySelector('[data-el="max-lead-status"]');
+  container.querySelector('[data-action="save-max-lead"]').addEventListener('click', async () => {
+    const raw = container.querySelector('[data-el="max-lead-input"]').value.trim();
+    const days = raw === '' ? null : Number(raw);
+    if (raw !== '' && (!Number.isFinite(days) || days < 0)) {
+      maxLeadStatusEl.className = 'text-sm text-rose-600 mt-2';
+      maxLeadStatusEl.textContent = t('pastorBooking.invalidMaxLead');
+      return;
+    }
+    maxLeadStatusEl.className = 'text-sm text-slate-500 mt-2';
+    maxLeadStatusEl.textContent = t('common.saving');
+    const { error: saveError } = await supabase.from('pastor_meeting_settings').upsert(
+      { id: true, max_booking_lead_days: days, updated_by: currentUserId, updated_at: new Date().toISOString() },
+      { onConflict: 'id' },
+    );
+    if (saveError) {
+      maxLeadStatusEl.className = 'text-sm text-rose-600 mt-2';
+      maxLeadStatusEl.textContent = t('pastorBooking.saveFailed', { message: saveError.message });
+      return;
+    }
+    maxLeadStatusEl.className = 'text-sm text-emerald-600 mt-2';
+    maxLeadStatusEl.textContent = t('pastorBooking.saved');
+  });
+
+  const timezoneStatusEl = container.querySelector('[data-el="timezone-status"]');
+  container.querySelector('[data-action="save-timezone"]').addEventListener('click', async () => {
+    const tz = container.querySelector('[data-el="timezone-select"]').value;
+    timezoneStatusEl.className = 'text-sm text-slate-500 mt-2';
+    timezoneStatusEl.textContent = t('common.saving');
+    const { error: saveError } = await supabase.from('pastor_meeting_settings').upsert(
+      { id: true, church_timezone: tz, updated_by: currentUserId, updated_at: new Date().toISOString() },
+      { onConflict: 'id' },
+    );
+    if (saveError) {
+      timezoneStatusEl.className = 'text-sm text-rose-600 mt-2';
+      timezoneStatusEl.textContent = t('pastorBooking.saveFailed', { message: saveError.message });
+      return;
+    }
+    timezoneStatusEl.className = 'text-sm text-emerald-600 mt-2';
+    timezoneStatusEl.textContent = t('pastorBooking.saved');
   });
 
   container.querySelector('[data-action="copy-link"]').addEventListener('click', async () => {

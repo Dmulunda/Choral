@@ -4,28 +4,48 @@
 // submit_pastor_meeting_booking); a logged-in call naturally carries
 // auth.uid(), a guest call doesn't, and the RPC branches accordingly --
 // so there's no separate "member" vs "guest" booking logic here, only
-// currentUserProfile deciding whether to show the name/email/phone
-// fields. Manual vs random assignment mode is inferred purely from
-// whether get_public_pastor_slots() returned a pastor_name for a row
-// (populated in manual mode, null in random) -- no separate settings
-// fetch needed.
+// currentUserProfile deciding whether to show the email field (name +
+// phone are collected either way now). Manual vs random assignment
+// mode is inferred purely from whether get_public_pastor_slots()
+// returned a pastor_name for a row (populated in manual mode, null in
+// random) -- no separate settings fetch needed.
+//
+// Timezone: pastor_availability's date/start_time/end_time are plain
+// wall-clock values in the church's own configured timezone
+// (get_church_timezone()) -- there's no other sense of "when" baked
+// into them. A visitor whose browser reports a different IANA zone
+// sees each slot's time converted for display (with the original
+// church-time kept alongside it), but the booking itself is still
+// submitted using the original, unconverted date/time -- the RPC
+// compares against pastor_availability rows in church-time terms, so
+// converting before submitting would silently book the wrong slot.
+// Luxon (via the same jsdelivr "+esm" CDN convention already used for
+// qrcode in memberIdCard.js) does the actual IANA conversion --
+// hand-rolled DST-aware timezone math is exactly the kind of thing
+// this app doesn't otherwise attempt anywhere, and getting it wrong
+// here means showing someone the wrong meeting time.
 import { formatDateLocal, todayLocal } from '../utils/date.js';
 import { t, tn, monthName } from '../i18n.js';
 import { openMeetingWindow, navigateMeetingWindow } from './videoMeeting.js';
+import { DateTime } from 'https://cdn.jsdelivr.net/npm/luxon@3.5.0/+esm';
 
 export function renderPastorBookingCalendar(container, { supabase, currentUserProfile, onBooked }) {
   let viewDate = new Date();
   viewDate.setDate(1);
   let slotsByDate = new Map();
   let selectedDate = null;
+  let churchTimezone = 'America/Toronto';
+  const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   container.innerHTML = `
     <div data-el="calendar-view">
+      <div data-el="pause-banner" class="hidden mb-4"></div>
       <div class="flex items-center justify-between mb-4">
         <button type="button" data-action="prev-month" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">${t('calendar.prev')}</button>
         <h2 data-el="month-label" class="text-lg font-semibold"></h2>
         <button type="button" data-action="next-month" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">${t('calendar.next')}</button>
       </div>
+      <div data-el="tz-note" class="hidden text-xs text-slate-500 mb-2"></div>
       <div class="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500 mb-1">
         <div>${t('calendar.days.sun')}</div><div>${t('calendar.days.mon')}</div><div>${t('calendar.days.tue')}</div><div>${t('calendar.days.wed')}</div><div>${t('calendar.days.thu')}</div><div>${t('calendar.days.fri')}</div><div>${t('calendar.days.sat')}</div>
       </div>
@@ -37,6 +57,8 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
 
   const calendarView = container.querySelector('[data-el="calendar-view"]');
   const confirmationView = container.querySelector('[data-el="confirmation"]');
+  const pauseBannerEl = container.querySelector('[data-el="pause-banner"]');
+  const tzNoteEl = container.querySelector('[data-el="tz-note"]');
   const monthLabel = container.querySelector('[data-el="month-label"]');
   const grid = container.querySelector('[data-el="grid"]');
   const dayPanel = container.querySelector('[data-el="day-panel"]');
@@ -44,12 +66,26 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
   container.querySelector('[data-action="prev-month"]').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth() - 1); loadSlots(); });
   container.querySelector('[data-action="next-month"]').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth() + 1); loadSlots(); });
 
-  loadSlots();
+  init();
+
+  async function init() {
+    const { data: tz } = await supabase.rpc('get_church_timezone');
+    if (tz) churchTimezone = tz;
+    if (churchTimezone !== browserTimezone) {
+      tzNoteEl.classList.remove('hidden');
+      tzNoteEl.textContent = t('pastorBooking.tzNote', { tz: browserTimezone });
+    }
+    loadSlots();
+  }
 
   async function loadSlots() {
     monthLabel.textContent = `${monthName(viewDate.getMonth())} ${viewDate.getFullYear()}`;
 
-    const { data, error } = await supabase.rpc('get_public_pastor_slots');
+    const [{ data, error }, { data: notices }] = await Promise.all([
+      supabase.rpc('get_public_pastor_slots'),
+      supabase.rpc('get_pastor_pause_notices'),
+    ]);
+
     slotsByDate = new Map();
     if (!error) {
       (data || []).forEach((row) => {
@@ -57,6 +93,7 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
         slotsByDate.get(row.date).push(row);
       });
     }
+    renderPauseBanner(notices || []);
 
     renderGrid();
     if (selectedDate && isInMonth(selectedDate)) {
@@ -65,6 +102,37 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
       dayPanel.classList.add('hidden');
       selectedDate = null;
     }
+  }
+
+  function renderPauseBanner(notices) {
+    if (!notices || notices.length === 0) {
+      pauseBannerEl.classList.add('hidden');
+      pauseBannerEl.innerHTML = '';
+      return;
+    }
+    pauseBannerEl.classList.remove('hidden');
+    pauseBannerEl.innerHTML = notices.map((n) => `
+      <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm mb-2 whitespace-pre-wrap">${escapeHtml(n.message || t('pastorBooking.defaultPauseMessage'))}</div>
+    `).join('');
+  }
+
+  // Converts a church-timezone wall-clock date+time to the browser's
+  // own timezone for display only -- never used for what gets
+  // submitted. dayShift flags when the conversion lands on a different
+  // calendar date than the one this slot is grouped under.
+  function convertForDisplay(dateStr, timeStr) {
+    if (churchTimezone === browserTimezone) {
+      return { display: formatTime(timeStr), churchTime: null, dayShift: null };
+    }
+    const churchDt = DateTime.fromFormat(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm:ss', { zone: churchTimezone });
+    if (!churchDt.isValid) return { display: formatTime(timeStr), churchTime: null, dayShift: null };
+    const localDt = churchDt.setZone(browserTimezone);
+    const localDateStr = localDt.toFormat('yyyy-MM-dd');
+    return {
+      display: localDt.toFormat('h:mm a'),
+      churchTime: t('pastorBooking.churchTimeLabel', { time: formatTime(timeStr) }),
+      dayShift: localDateStr === dateStr ? null : (localDateStr > dateStr ? t('pastorBooking.nextDayForYou') : t('pastorBooking.prevDayForYou')),
+    };
   }
 
   function isInMonth(dateStr) {
@@ -124,13 +192,16 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
 
     const listEl = dayPanel.querySelector('[data-el="slot-list"]');
     slots.forEach((slot) => {
+      const { display, churchTime, dayShift } = convertForDisplay(selectedDate, slot.start_time);
+      const endTimeConverted = convertForDisplay(selectedDate, slot.end_time).display;
       const row = document.createElement('div');
       row.className = 'flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm';
       row.innerHTML = `
         <span>
-          ${formatTime(slot.start_time)} – ${formatTime(slot.end_time)}
+          ${display} – ${endTimeConverted}
           <span class="ml-2 px-1.5 py-0.5 rounded text-[11px] font-medium ${slot.location_type === 'online' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}">${slot.location_type === 'online' ? t('pastorBooking.online') : t('pastorBooking.office')}</span>
           ${slot.pastor_name ? `<span class="text-slate-500 ml-2">${t('pastorBooking.withPastor', { name: escapeHtml(slot.pastor_name) })}</span>` : ''}
+          ${churchTime ? `<div class="text-xs text-slate-400 mt-0.5">${churchTime}${dayShift ? ` · ${dayShift}` : ''}</div>` : ''}
         </span>
         <button type="button" data-action="select-slot" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700">${t('pastorBooking.book')}</button>
       `;
@@ -143,20 +214,23 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
     const wrap = dayPanel.querySelector('[data-el="book-form-wrap"]');
     wrap.classList.remove('hidden');
     const isGuest = !currentUserProfile;
+    const { display, churchTime, dayShift } = convertForDisplay(selectedDate, slot.start_time);
+    const endTimeConverted = convertForDisplay(selectedDate, slot.end_time).display;
 
     wrap.innerHTML = `
       <h4 class="font-medium text-slate-800 mb-2">${t('pastorBooking.confirmTitle')}</h4>
       <p class="text-sm text-slate-600 mb-3">
-        ${escapeHtml(selectedDate)} · ${formatTime(slot.start_time)} – ${formatTime(slot.end_time)}
+        ${escapeHtml(selectedDate)} · ${display} – ${endTimeConverted}
         ${slot.pastor_name ? ` · ${escapeHtml(slot.pastor_name)}` : ''}
+        ${churchTime ? `<br /><span class="text-xs text-slate-400">${churchTime}${dayShift ? ` · ${dayShift}` : ''}</span>` : ''}
       </p>
       <form data-el="book-form" class="space-y-3">
+        <div class="grid sm:grid-cols-2 gap-2">
+          <input type="text" name="contact_name" required placeholder="${t('pastorBooking.yourName')}" value="${escapeAttr(currentUserProfile?.full_name || '')}" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="tel" name="contact_phone" required placeholder="${t('pastorBooking.yourPhone')}" value="${escapeAttr(currentUserProfile?.phone || '')}" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
         ${isGuest ? `
-          <div class="grid sm:grid-cols-3 gap-2">
-            <input type="text" name="guest_name" required placeholder="${t('pastorBooking.yourName')}" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-            <input type="email" name="guest_email" required placeholder="${t('pastorBooking.yourEmail')}" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-            <input type="tel" name="guest_phone" required placeholder="${t('pastorBooking.yourPhone')}" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
+          <input type="email" name="guest_email" required placeholder="${t('pastorBooking.yourEmail')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         ` : ''}
         <textarea name="note" rows="2" placeholder="${t('pastorBooking.notePlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></textarea>
         <div class="flex items-center gap-3">
@@ -180,11 +254,11 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
         p_start_time: slot.start_time,
         p_end_time: slot.end_time,
         p_location_type: slot.location_type,
+        p_contact_name: form.elements.contact_name.value.trim(),
+        p_contact_phone: form.elements.contact_phone.value.trim(),
         p_pastor_id: slot.pastor_id || null,
         p_note: form.elements.note.value.trim() || null,
-        p_guest_name: isGuest ? form.elements.guest_name.value.trim() : null,
         p_guest_email: isGuest ? form.elements.guest_email.value.trim() : null,
-        p_guest_phone: isGuest ? form.elements.guest_phone.value.trim() : null,
       });
 
       submitBtn.disabled = false;
@@ -204,11 +278,14 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
   function showConfirmation(slot, booking) {
     calendarView.classList.add('hidden');
     confirmationView.classList.remove('hidden');
+    const { display, churchTime, dayShift } = convertForDisplay(selectedDate, slot.start_time);
+    const endTimeConverted = convertForDisplay(selectedDate, slot.end_time).display;
     confirmationView.innerHTML = `
       <div class="text-emerald-600 text-lg font-semibold mb-2">${t('pastorBooking.bookedTitle')}</div>
       <p class="text-slate-700 mb-4">
-        ${escapeHtml(selectedDate)} · ${formatTime(slot.start_time)} – ${formatTime(slot.end_time)}
+        ${escapeHtml(selectedDate)} · ${display} – ${endTimeConverted}
         ${booking?.pastor_name ? ` · ${escapeHtml(booking.pastor_name)}` : ''}
+        ${churchTime ? `<br /><span class="text-xs text-slate-400">${churchTime}${dayShift ? ` · ${dayShift}` : ''}</span>` : ''}
       </p>
       ${booking?.meeting_room ? `<button type="button" data-action="join-now" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : `<p class="text-sm text-slate-500">${t('pastorBooking.officeReminder')}</p>`}
       <div class="mt-4">
@@ -243,4 +320,8 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replaceAll('"', '&quot;');
 }
