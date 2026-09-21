@@ -494,6 +494,26 @@ which is untouched and stays on its own project). Local-only for now — this
     for-pastor wasn't re-verified against this tenant specifically —
     no Church Secretary profile exists in the test tenant — but the
     policy text is byte-identical to `main`'s, which was verified.)
+25. `29_tenant_contact_info.sql` — follow-up, ported from `main`
+    (commit `ab20059`). `tenants.email`/`phone` (self-service, same
+    blocklist-not-allowlist protection as `logo_url`/`address`), plus:
+    - `tenantLogoModal.js`'s title changes from "Church Logo" to
+      "Change Info" (`logo.title`/`sidebar.churchLogo`), with email/
+      phone inputs added alongside the existing address field, all
+      three saved together under one "Save Contact Info" action.
+    - `send-booking-email` now sets `reply_to` to that tenant's own
+      `email` when configured (so a guest's reply reaches the actual
+      church, not the platform's shared sender) and mentions the
+      tenant's phone/email in the confirmation footer instead of a
+      generic "contact the church office" line. The visible `from`
+      stays one shared Resend-verified sender across every tenant —
+      falls back to `onboarding@resend.dev` if `BOOKING_EMAIL_FROM`
+      isn't set — since Resend requires DNS-level domain verification
+      per sending address, not realistic to ask of every church.
+
+    Verified live: a Super Admin can write `tenants.email`/`phone`
+    under the existing "tenant admin can update own tenant" policy,
+    no trigger changes needed.
 
 ## Other client-side fixes from this session
 
