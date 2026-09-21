@@ -1,14 +1,17 @@
 // Pastor Meetings tab -- replaces the old note-only "Request meeting
 // with pastor" popup. Visible to every signed-in user (everyone can
 // book), with extra sections layered in by role:
-//   - Pastor Admin: "My Availability" (self-service calendar) + "My
-//     Bookings" (people who booked with them -- this didn't exist at
-//     all before; a Pastor Admin previously had zero visibility into
-//     pastor meeting requests).
+//   - Pastor Admin, or anyone designated a meeting host in the Staff
+//     tab (department admin, visiting pastor, etc. -- see
+//     is_pastor_meeting_host()): "My Availability" (self-service
+//     calendar) + "My Bookings" (people who booked with them).
 //   - Super Admin / Church Secretary: "All Bookings" (every booking,
-//     with contact info), "Staff" (roster of bookable pastors), and
-//     "Settings" (Manual/Random assignment mode + the public booking
-//     link to share with non-members).
+//     with contact info), "Staff" (roster of bookable pastors/hosts,
+//     with the ability to manage a pastor's availability on their
+//     behalf and add/remove meeting hosts).
+//   - Super Admin / Church Secretary / Pastor Admin: "Settings"
+//     (assignment mode, notice/lead time, timezone, online meeting
+//     link, public booking link).
 import { getEffectiveSupabase, getGlobalRole } from './departments.js';
 import { renderPastorBookingCalendar } from './components/pastorBookingCalendar.js';
 import { renderPastorAvailabilityCalendar } from './components/pastorAvailabilityCalendar.js';
@@ -51,7 +54,14 @@ export async function renderPastorMeetingsTab() {
 
   const { data: profile } = await supabase.from('profiles').select('id, full_name, phone').eq('id', user.id).single();
   const role = getGlobalRole();
-  const isPastor = role === 'pastor_admin';
+  const isPastorAdminRole = role === 'pastor_admin';
+  // A meeting host who isn't a Pastor Admin (a department admin or
+  // visiting pastor added via the Staff tab) needs the same
+  // "My Availability"/"My Bookings" access -- is_pastor_meeting_host()
+  // is the single source of truth this whole feature already uses
+  // server-side for who can actually write pastor_availability rows.
+  const { data: isHost } = await supabase.rpc('is_pastor_meeting_host');
+  const isPastor = isPastorAdminRole || !!isHost;
   const isAdminTeam = PASTORAL_TEAM_ROLES.includes(role);
 
   const tabs = [{ key: 'book', label: t('pastorBooking.tabBook') }, { key: 'my-requests', label: t('pastorBooking.tabMyRequests') }];
@@ -62,6 +72,8 @@ export async function renderPastorMeetingsTab() {
   if (isAdminTeam) {
     tabs.push({ key: 'all-bookings', label: t('pastorBooking.tabAllBookings') });
     tabs.push({ key: 'staff', label: t('pastorBooking.tabStaff') });
+  }
+  if (isAdminTeam || isPastorAdminRole) {
     tabs.push({ key: 'settings', label: t('pastorBooking.tabSettings') });
   }
 
@@ -126,7 +138,7 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
 
   let query = supabase
     .from('pastor_meeting_requests')
-    .select('id, note, status, meeting_room, created_at, contact_name, contact_phone, guest_email, cancellation_reason, meeting_type, requester:profiles!user_id(full_name), pastor:profiles!pastor_id(full_name)')
+    .select('id, note, status, meeting_room, meeting_link, meeting_date, meeting_start_time, meeting_end_time, created_at, contact_name, contact_phone, guest_email, cancellation_reason, meeting_type, requester:profiles!user_id(full_name), pastor:profiles!pastor_id(full_name)')
     .order('created_at', { ascending: false });
   Object.entries(filter).forEach(([col, val]) => { query = query.eq(col, val); });
 
@@ -147,6 +159,7 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
 
   data.forEach((row) => {
     const who = row.requester?.full_name || row.contact_name || t('pastorBooking.unknownRequester');
+    const joinUrl = row.meeting_link || null;
     const el = document.createElement('div');
     el.className = 'bg-white rounded-xl shadow p-3 sm:p-4 text-sm';
     el.innerHTML = `
@@ -157,7 +170,10 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
         </div>
         ${statusBadge(row.status)}
       </div>
-      <div class="text-xs text-slate-500 mt-1">${escapeHtml(new Date(row.created_at).toLocaleString())} · ${row.meeting_type === 'online' ? t('pastorBooking.online') : t('pastorBooking.office')}</div>
+      ${row.meeting_date ? `
+        <div class="text-sm font-medium text-indigo-700 mt-1">${escapeHtml(formatMeetingDate(row.meeting_date))} · ${escapeHtml(formatTime(row.meeting_start_time))}–${escapeHtml(formatTime(row.meeting_end_time))}</div>
+      ` : ''}
+      <div class="text-xs text-slate-500 mt-1">${t('pastorBooking.bookedOn', { date: escapeHtml(new Date(row.created_at).toLocaleString()) })} · ${row.meeting_type === 'online' ? t('pastorBooking.online') : t('pastorBooking.office')}</div>
       ${row.contact_name || row.contact_phone || row.guest_email ? `
         <div class="text-xs text-slate-500 mt-1">
           ${[row.contact_name, row.contact_phone, row.guest_email].filter(Boolean).map(escapeHtml).join(' · ')}
@@ -166,12 +182,16 @@ async function renderBookingsList(container, { supabase, filter, canCancel, curr
       ${row.note ? `<p class="text-slate-700 mt-2">${escapeHtml(row.note)}</p>` : ''}
       ${row.status === 'cancelled' && row.cancellation_reason ? `<p class="text-xs text-rose-600 mt-2">${t('pastorBooking.cancellationReasonLabel')}: ${escapeHtml(row.cancellation_reason)}</p>` : ''}
       <div class="flex items-center gap-2 mt-2">
-        ${row.meeting_room && row.status === 'confirmed' ? `<button type="button" data-action="join" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : ''}
+        ${row.status === 'confirmed' && (joinUrl || row.meeting_room) ? `<button type="button" data-action="join" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : ''}
         ${canCancel && row.status === 'confirmed' ? `<button type="button" data-action="cancel" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-medium hover:bg-rose-200">${t('pastorBooking.cancel')}</button>` : ''}
       </div>
     `;
 
     el.querySelector('[data-action="join"]')?.addEventListener('click', async () => {
+      if (joinUrl) {
+        window.open(joinUrl, '_blank', 'noopener');
+        return;
+      }
       const win = openMeetingWindow();
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
       navigateMeetingWindow(win, { roomName: row.meeting_room, displayName: myProfile?.full_name || '' });
@@ -214,43 +234,126 @@ function statusBadge(status) {
 async function renderStaffTab(container, { supabase }) {
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-  const [{ data: pastors, error }, { data: openSlots }] = await Promise.all([
-    supabase.from('profiles').select('id, full_name').eq('global_role', 'pastor_admin'),
-    supabase.from('pastor_availability').select('pastor_id').gte('date', new Date().toISOString().slice(0, 10)),
-  ]);
+  const { data: pastors, error } = await supabase.rpc('list_bookable_pastors');
   if (error) {
     container.innerHTML = `<p class="text-sm text-rose-600">${t('pastorBooking.loadFailed', { message: error.message })}</p>`;
     return;
   }
 
-  const slotCountByPastor = new Map();
-  (openSlots || []).forEach((r) => slotCountByPastor.set(r.pastor_id, (slotCountByPastor.get(r.pastor_id) || 0) + 1));
+  container.innerHTML = `
+    <div data-el="staff-list-view">
+      <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-4">
+        <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.addHostTitle')}</h3>
+        <p class="text-sm text-slate-500 mb-2">${t('pastorBooking.addHostIntro')}</p>
+        <input type="text" data-el="host-search" placeholder="${t('pastorBooking.addHostSearchPlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        <div data-el="host-results" class="border border-slate-200 rounded-lg mt-1 divide-y divide-slate-100 hidden"></div>
+        <p data-el="add-host-status" class="text-sm mt-2"></p>
+      </div>
+      <div data-el="staff-list" class="space-y-2"></div>
+    </div>
+    <div data-el="staff-availability-view" class="hidden"></div>
+  `;
 
-  if (!pastors || pastors.length === 0) {
-    container.innerHTML = `<p class="text-sm text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6">${t('pastorBooking.noStaff')}</p>`;
-    return;
+  const listViewEl = container.querySelector('[data-el="staff-list-view"]');
+  const availabilityViewEl = container.querySelector('[data-el="staff-availability-view"]');
+  const listEl = container.querySelector('[data-el="staff-list"]');
+  const searchInput = container.querySelector('[data-el="host-search"]');
+  const resultsEl = container.querySelector('[data-el="host-results"]');
+  const addStatusEl = container.querySelector('[data-el="add-host-status"]');
+
+  function renderList(rows) {
+    if (!rows || rows.length === 0) {
+      listEl.innerHTML = `<p class="text-sm text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6">${t('pastorBooking.noStaff')}</p>`;
+      return;
+    }
+    listEl.innerHTML = '';
+    rows.forEach((p) => {
+      const el = document.createElement('div');
+      el.className = 'bg-white rounded-xl shadow p-3 sm:p-4 flex items-center justify-between gap-2 flex-wrap';
+      el.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-slate-800">${escapeHtml(p.full_name)}</span>
+          <span class="px-1.5 py-0.5 rounded text-[11px] font-medium ${p.is_host ? 'bg-sky-100 text-sky-700' : 'bg-indigo-100 text-indigo-700'}">${p.is_host ? t('pastorBooking.hostBadge') : t('pastorBooking.pastorBadge')}</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-slate-500">${tn('pastorBooking.upcomingSlots', p.upcoming_slot_count || 0)}</span>
+          <button type="button" data-action="manage-availability" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">${t('pastorBooking.manageAvailability')}</button>
+          ${p.is_host ? `<button type="button" data-action="remove-host" class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-medium hover:bg-rose-200">${t('pastorBooking.removeHost')}</button>` : ''}
+        </div>
+      `;
+      el.querySelector('[data-action="manage-availability"]').addEventListener('click', () => openAvailabilityFor(p));
+      el.querySelector('[data-action="remove-host"]')?.addEventListener('click', async () => {
+        if (!(await confirmDialog({ message: t('pastorBooking.confirmRemoveHost', { name: p.full_name }) }))) return;
+        const { error: removeError } = await supabase.rpc('remove_pastor_meeting_host', { p_user_id: p.id });
+        if (removeError) {
+          window.alert(t('pastorBooking.saveFailed', { message: removeError.message }));
+          return;
+        }
+        renderStaffTab(container, { supabase });
+      });
+      listEl.appendChild(el);
+    });
+  }
+  renderList(pastors);
+
+  function openAvailabilityFor(p) {
+    listViewEl.classList.add('hidden');
+    availabilityViewEl.classList.remove('hidden');
+    availabilityViewEl.innerHTML = `
+      <button type="button" data-action="back-to-staff" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-4">${t('pastorBooking.backToStaff')}</button>
+      <h3 class="font-semibold text-slate-800 mb-4">${t('pastorBooking.manageAvailabilityFor', { name: p.full_name })}</h3>
+      <div data-el="availability-body"></div>
+    `;
+    availabilityViewEl.querySelector('[data-action="back-to-staff"]').addEventListener('click', () => {
+      availabilityViewEl.classList.add('hidden');
+      listViewEl.classList.remove('hidden');
+    });
+    renderPastorAvailabilityCalendar(availabilityViewEl.querySelector('[data-el="availability-body"]'), { supabase, pastorId: p.id });
   }
 
-  container.innerHTML = '';
-  const list = document.createElement('div');
-  list.className = 'space-y-2';
-  container.appendChild(list);
-  pastors.forEach((p) => {
-    const el = document.createElement('div');
-    el.className = 'bg-white rounded-xl shadow p-3 sm:p-4 flex items-center justify-between';
-    el.innerHTML = `
-      <span class="font-medium text-slate-800">${escapeHtml(p.full_name)}</span>
-      <span class="text-sm text-slate-500">${tn('pastorBooking.upcomingSlots', slotCountByPastor.get(p.id) || 0)}</span>
-    `;
-    list.appendChild(el);
+  let searchTimeout = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(searchMembers, 200);
   });
+
+  async function searchMembers() {
+    const query = searchInput.value.trim();
+    if (!query) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; return; }
+
+    const existingIds = new Set((pastors || []).map((p) => p.id));
+    const { data } = await supabase.from('profiles').select('id, full_name').ilike('full_name', `%${query}%`).order('full_name').limit(8);
+    const rows = (data || []).filter((r) => !existingIds.has(r.id));
+    if (rows.length === 0) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; return; }
+
+    resultsEl.classList.remove('hidden');
+    resultsEl.innerHTML = rows.map((r) => `<button type="button" data-user-id="${r.id}" class="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50">${escapeHtml(r.full_name)}</button>`).join('');
+    resultsEl.querySelectorAll('[data-user-id]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const selected = rows.find((r) => r.id === btn.dataset.userId);
+        addStatusEl.className = 'text-sm text-slate-500 mt-2';
+        addStatusEl.textContent = t('common.saving');
+        const { error: addError } = await supabase.rpc('add_pastor_meeting_host', { p_user_id: selected.id });
+        if (addError) {
+          addStatusEl.className = 'text-sm text-rose-600 mt-2';
+          addStatusEl.textContent = t('pastorBooking.saveFailed', { message: addError.message });
+          return;
+        }
+        addStatusEl.className = 'text-sm text-emerald-600 mt-2';
+        addStatusEl.textContent = t('pastorBooking.hostAdded', { name: selected.full_name });
+        searchInput.value = '';
+        resultsEl.classList.add('hidden');
+        renderStaffTab(container, { supabase });
+      });
+    });
+  }
 }
 
 async function renderSettingsTab(container, { supabase, currentUserId }) {
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
   const { data, error } = await supabase.from('pastor_meeting_settings')
-    .select('selection_mode, min_booking_notice_hours, max_booking_lead_days, church_timezone')
+    .select('selection_mode, min_booking_notice_hours, max_booking_lead_days, church_timezone, online_meeting_link')
     .eq('id', true).maybeSingle();
   if (error) {
     container.innerHTML = `<p class="text-sm text-rose-600">${t('pastorBooking.loadFailed', { message: error.message })}</p>`;
@@ -304,6 +407,15 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
         <button type="button" data-action="save-timezone" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('pastorBooking.saveNotice')}</button>
       </div>
       <p data-el="timezone-status" class="text-sm mt-2"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-4">
+      <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.onlineLinkTitle')}</h3>
+      <p class="text-sm text-slate-500 mb-2">${t('pastorBooking.onlineLinkIntro')}</p>
+      <div class="flex items-center gap-2">
+        <input type="url" data-el="online-link-input" placeholder="${t('pastorBooking.onlineLinkPlaceholder')}" value="${escapeAttr(data?.online_meeting_link || '')}" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        <button type="button" data-action="save-online-link" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('pastorBooking.saveNotice')}</button>
+      </div>
+      <p data-el="online-link-status" class="text-sm mt-2"></p>
     </div>
     <div class="bg-white rounded-xl shadow p-4 sm:p-6">
       <h3 class="font-semibold text-slate-800 mb-2">${t('pastorBooking.publicLinkTitle')}</h3>
@@ -399,6 +511,24 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
     timezoneStatusEl.textContent = t('pastorBooking.saved');
   });
 
+  const onlineLinkStatusEl = container.querySelector('[data-el="online-link-status"]');
+  container.querySelector('[data-action="save-online-link"]').addEventListener('click', async () => {
+    const link = container.querySelector('[data-el="online-link-input"]').value.trim();
+    onlineLinkStatusEl.className = 'text-sm text-slate-500 mt-2';
+    onlineLinkStatusEl.textContent = t('common.saving');
+    const { error: saveError } = await supabase.from('pastor_meeting_settings').upsert(
+      { id: true, online_meeting_link: link || null, updated_by: currentUserId, updated_at: new Date().toISOString() },
+      { onConflict: 'id' },
+    );
+    if (saveError) {
+      onlineLinkStatusEl.className = 'text-sm text-rose-600 mt-2';
+      onlineLinkStatusEl.textContent = t('pastorBooking.saveFailed', { message: saveError.message });
+      return;
+    }
+    onlineLinkStatusEl.className = 'text-sm text-emerald-600 mt-2';
+    onlineLinkStatusEl.textContent = t('pastorBooking.saved');
+  });
+
   container.querySelector('[data-action="copy-link"]').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(publicUrl);
@@ -410,6 +540,18 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
       window.prompt(t('pastorBooking.copyLinkManual'), publicUrl);
     }
   });
+}
+
+function formatMeetingDate(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatTime(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 function escapeHtml(str) {

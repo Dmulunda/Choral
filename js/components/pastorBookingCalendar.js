@@ -270,6 +270,15 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
       }
 
       const booking = data?.[0];
+      // Best-effort: the booking itself already succeeded, so a guest's
+      // confirmation email is a nice-to-have, not something to block or
+      // surface errors for. Member bookings have no guest email at all
+      // (they already see it in-app), and the function itself no-ops
+      // when guest_email is null -- but skipping the call for members
+      // avoids an unnecessary round trip.
+      if (isGuest && booking?.booking_id) {
+        supabase.functions.invoke('send-booking-email', { body: { booking_id: booking.booking_id } }).catch(() => {});
+      }
       showConfirmation(slot, booking);
       onBooked?.();
     });
@@ -280,6 +289,7 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
     confirmationView.classList.remove('hidden');
     const { display, churchTime, dayShift } = convertForDisplay(selectedDate, slot.start_time);
     const endTimeConverted = convertForDisplay(selectedDate, slot.end_time).display;
+    const canJoin = booking?.meeting_room || booking?.meeting_link;
     confirmationView.innerHTML = `
       <div class="text-emerald-600 text-lg font-semibold mb-2">${t('pastorBooking.bookedTitle')}</div>
       <p class="text-slate-700 mb-4">
@@ -287,14 +297,18 @@ export function renderPastorBookingCalendar(container, { supabase, currentUserPr
         ${booking?.pastor_name ? ` · ${escapeHtml(booking.pastor_name)}` : ''}
         ${churchTime ? `<br /><span class="text-xs text-slate-400">${churchTime}${dayShift ? ` · ${dayShift}` : ''}</span>` : ''}
       </p>
-      ${booking?.meeting_room ? `<button type="button" data-action="join-now" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : `<p class="text-sm text-slate-500">${t('pastorBooking.officeReminder')}</p>`}
+      ${canJoin ? `<button type="button" data-action="join-now" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700">${t('meeting.join')}</button>` : `<p class="text-sm text-slate-500">${t('pastorBooking.officeReminder')}</p>`}
       <div class="mt-4">
         <button type="button" data-action="book-another" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">${t('pastorBooking.bookAnother')}</button>
       </div>
     `;
 
-    if (booking?.meeting_room) {
+    if (canJoin) {
       confirmationView.querySelector('[data-action="join-now"]').addEventListener('click', () => {
+        if (booking.meeting_link) {
+          window.open(booking.meeting_link, '_blank', 'noopener');
+          return;
+        }
         const win = openMeetingWindow();
         navigateMeetingWindow(win, { roomName: booking.meeting_room, displayName: currentUserProfile?.full_name || '' });
       });
