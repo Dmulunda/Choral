@@ -439,6 +439,61 @@ which is untouched and stays on its own project). Local-only for now — this
     them succeeds and the columns are stored correctly; cancelling
     without a reason is rejected; cancelling with one stores and
     returns it.
+24. `27_pastor_meetings_v4_schema.sql` + `28_pastor_meetings_v4_rpcs.sql` —
+    follow-up, ported from `main` (commit `55ca7d6`). Five more
+    additions, all requested together:
+    - **Visible meeting date/time**: every booking now stores its own
+      `meeting_date`/`meeting_start_time`/`meeting_end_time` directly
+      (denormalized at booking time in `submit_pastor_meeting_booking()`)
+      so the bookings list can show "when is this happening" without
+      joining back through `availability_id`, which could be deleted
+      later. Shown prominently above the "booked on" timestamp.
+    - **Church Secretary can manage a pastor's availability/pause on
+      their behalf** (was pastor-self/Super Admin only). Closes the
+      same pre-existing RLS gap fixed on `main`: previously ANY
+      authenticated user could insert `pastor_availability` rows for
+      themselves regardless of role — the `RESTRICTIVE tenant_isolation`
+      layer still scoped it to their own tenant, but nothing checked
+      whether they actually counted as a pastor. Self writes now also
+      require `is_pastor_meeting_host(auth.uid())`.
+    - **Meeting hosts without a Pastor title**: new
+      `pastor_meeting_hosts` table (`user_id` PK, `tenant_id` a
+      regular indexed column plus `RESTRICTIVE tenant_isolation`, same
+      shape as `pastor_meeting_pause` from `21`) + `is_pastor_meeting_host()`
+      lets Super Admin/Church Secretary designate someone bookable —
+      a department admin or a visiting pastor — without granting the
+      `pastor_admin` role. New `list_bookable_pastors()`,
+      `add_pastor_meeting_host()`, `remove_pastor_meeting_host()` RPCs
+      back a name-search picker in the reworked Staff tab;
+      `add`/`remove` both verify the target profile belongs to the
+      caller's own tenant.
+    - **External meeting link**: `pastor_meeting_settings.online_meeting_link`
+      (Zoom/Teams, editable by Pastor Admin/Super Admin/Church
+      Secretary — the settings write policy gained `is_pastor_admin()`)
+      is used for every online booking instead of the internal Jitsi
+      room when set.
+    - **Guest confirmation email**: new `send-booking-email` edge
+      function (deployed to this project separately from `main`'s, own
+      `RESEND_API_KEY`/`BOOKING_EMAIL_FROM` secrets) emails an outside
+      (guest) booker their confirmation right after booking — members
+      already see it in-app. Re-derives `tenant_id`, the tenant's own
+      name (for the email subject/greeting) and `church_timezone` from
+      the booking row itself via the service-role client, so one
+      function serves every tenant on this platform with one shared
+      sender. Idempotent via `confirmation_email_sent_at`.
+
+    Verified live (temporarily promoted an existing test profile —
+    Eva Tshimankinda — to a meeting host, restored afterward, all test
+    rows deleted): a random member can no longer write fake
+    availability for themselves; a newly-designated meeting host can
+    manage their own availability and appears in
+    `list_bookable_pastors()`, and loses that ability once removed; a
+    booking correctly denormalizes its date/time and resolves the
+    external meeting link over the internal Jitsi fallback; a Pastor
+    Admin can now write `pastor_meeting_settings`. (Secretary-writes-
+    for-pastor wasn't re-verified against this tenant specifically —
+    no Church Secretary profile exists in the test tenant — but the
+    policy text is byte-identical to `main`'s, which was verified.)
 
 ## Other client-side fixes from this session
 
