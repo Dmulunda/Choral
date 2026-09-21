@@ -15,11 +15,20 @@
 // the first successful send, so this can't be used to spam the same
 // guest repeatedly either.
 //
-// Deploy: `supabase functions deploy send-booking-email`. Needs two
-// secrets set manually -- Dashboard -> Edge Functions ->
-// send-booking-email -> Secrets:
-//   RESEND_API_KEY    - from resend.com
-//   BOOKING_EMAIL_FROM - verified sender, e.g. "Church Name <bookings@yourdomain.org>"
+// The visible "From" address is one shared platform sender (Resend
+// requires DNS-level domain verification per sending address, which
+// isn't realistic to ask of every church) -- but Reply-To is set to
+// the church's OWN contact email (church_branding.email, set via
+// churchLogoModal.js's "Change Info" panel) when one is configured, so
+// a guest's reply goes straight to the church, not the platform. The
+// footer line also mentions the church's phone/email when set.
+//
+// Deploy: `supabase functions deploy send-booking-email`. Needs
+// RESEND_API_KEY (from resend.com) set manually -- Dashboard -> Edge
+// Functions -> send-booking-email -> Secrets. BOOKING_EMAIL_FROM is
+// optional -- falls back to Resend's test sender (onboarding@resend.dev)
+// if unset, which works immediately but should be swapped for a
+// verified domain before relying on this for real guests.
 // SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -83,6 +92,9 @@ Deno.serve(async (req) => {
 
   const { data: settings } = await admin.from('pastor_meeting_settings').select('church_timezone').eq('id', true).maybeSingle();
   const churchTimezone = settings?.church_timezone || 'America/Toronto';
+  const { data: branding } = await admin.from('church_branding').select('email, phone').eq('id', true).maybeSingle();
+  const churchEmail = branding?.email || null;
+  const churchPhone = branding?.phone || null;
 
   const isOnline = booking.meeting_type === 'online';
   let accessLine;
@@ -97,20 +109,24 @@ Deno.serve(async (req) => {
 
   const dateLine = `${formatDate(booking.meeting_date)} at ${formatTime(booking.meeting_start_time)}–${formatTime(booking.meeting_end_time)} (${churchTimezone})`;
   const pastorName = booking.pastor?.full_name || 'your pastor';
+  const contactBits = [churchPhone, churchEmail].filter(Boolean).map(escapeHtml).join(' or ');
+  const contactLine = contactBits
+    ? `If you need to cancel or have questions, please contact us at ${contactBits}.`
+    : 'If you need to cancel or have questions, please contact the church office.';
 
   const html = `
     <p>Hi ${escapeHtml(booking.contact_name || '')},</p>
     <p>Your meeting with ${escapeHtml(pastorName)} is confirmed.</p>
     <p><strong>${escapeHtml(dateLine)}</strong></p>
     <p>${accessLine}</p>
-    <p>If you need to cancel or have questions, please contact the church office.</p>
+    <p>${contactLine}</p>
   `;
 
   const resendKey = Deno.env.get('RESEND_API_KEY');
-  const fromAddress = Deno.env.get('BOOKING_EMAIL_FROM');
-  if (!resendKey || !fromAddress) {
-    return json({ error: 'RESEND_API_KEY/BOOKING_EMAIL_FROM are not configured on this function' }, 500);
+  if (!resendKey) {
+    return json({ error: 'RESEND_API_KEY is not configured on this function' }, 500);
   }
+  const fromAddress = Deno.env.get('BOOKING_EMAIL_FROM') || 'onboarding@resend.dev';
 
   const resendResp = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -118,6 +134,7 @@ Deno.serve(async (req) => {
     body: JSON.stringify({
       from: fromAddress,
       to: [booking.guest_email],
+      ...(churchEmail ? { reply_to: churchEmail } : {}),
       subject: `Your meeting with ${pastorName} is confirmed`,
       html,
     }),

@@ -1,4 +1,7 @@
-// Church logo + address — Super Admin only. Mirrors sandbox2's
+// Church logo + contact info (address/email/phone) — Super Admin
+// only. Displayed as "Change Info" (logo.title) since it's no longer
+// just the logo. The contact email/phone feed send-booking-email's
+// reply-to and footer text. Mirrors sandbox2's
 // tenantLogoModal.js, but this app has only one church, not many
 // tenants: writes to church_branding (a singleton row, id = true) with
 // upsert instead of a tenant-scoped update, and the storage path has no
@@ -33,15 +36,15 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
-    const { data, error } = await supabase.from('church_branding').select('logo_url, address').eq('id', true).maybeSingle();
+    const { data, error } = await supabase.from('church_branding').select('logo_url, address, email, phone').eq('id', true).maybeSingle();
     if (error) {
       bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('logo.failedToLoad', { message: error.message })}</p>`;
       return;
     }
-    render(data?.logo_url || null, data?.address || '');
+    render(data?.logo_url || null, data?.address || '', data?.email || '', data?.phone || '');
   }
 
-  function render(logoUrl, address) {
+  function render(logoUrl, address, email, phone) {
     bodyEl.innerHTML = '';
 
     if (logoUrl) {
@@ -74,33 +77,42 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
     const uploadBtn = section.querySelector('[data-action="upload"]');
     uploadBtn.addEventListener('click', () => uploadFile(fileInput, statusEl, uploadBtn));
 
-    const addressSection = document.createElement('div');
-    addressSection.className = 'mt-6 pt-6 border-t border-slate-200';
-    addressSection.innerHTML = `
+    const contactSection = document.createElement('div');
+    contactSection.className = 'mt-6 pt-6 border-t border-slate-200';
+    contactSection.innerHTML = `
+      <h3 class="text-sm font-semibold text-slate-700 mb-2">${t('logo.contactInfoTitle')}</h3>
       <label class="block text-sm font-medium text-slate-600 mb-1">${t('logo.addressLabel')}</label>
       <textarea data-el="address-input" rows="2" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${t('logo.addressPlaceholder')}">${escapeHtml(address)}</textarea>
+      <label class="block text-sm font-medium text-slate-600 mb-1">${t('logo.emailLabel')}</label>
+      <input type="email" data-el="email-input" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${t('logo.emailPlaceholder')}" value="${escapeAttr(email)}" />
+      <label class="block text-sm font-medium text-slate-600 mb-1">${t('logo.phoneLabel')}</label>
+      <input type="tel" data-el="phone-input" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${t('logo.phonePlaceholder')}" value="${escapeAttr(phone)}" />
       <p data-el="address-status" class="text-sm mb-2"></p>
       <button type="button" data-action="save-address" class="w-full px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 disabled:opacity-50">
         ${t('logo.saveAddressButton')}
       </button>
     `;
-    bodyEl.appendChild(addressSection);
+    bodyEl.appendChild(contactSection);
 
-    const addressInput = addressSection.querySelector('[data-el="address-input"]');
-    const addressStatusEl = addressSection.querySelector('[data-el="address-status"]');
-    const saveAddressBtn = addressSection.querySelector('[data-action="save-address"]');
-    saveAddressBtn.addEventListener('click', () => saveAddress(addressInput, addressStatusEl, saveAddressBtn));
+    const addressInput = contactSection.querySelector('[data-el="address-input"]');
+    const emailInput = contactSection.querySelector('[data-el="email-input"]');
+    const phoneInput = contactSection.querySelector('[data-el="phone-input"]');
+    const addressStatusEl = contactSection.querySelector('[data-el="address-status"]');
+    const saveAddressBtn = contactSection.querySelector('[data-action="save-address"]');
+    saveAddressBtn.addEventListener('click', () => saveContactInfo(addressInput, emailInput, phoneInput, addressStatusEl, saveAddressBtn));
   }
 
-  async function saveAddress(input, statusEl, button) {
-    const address = input.value.trim() || null;
+  async function saveContactInfo(addressInput, emailInput, phoneInput, statusEl, button) {
+    const address = addressInput.value.trim() || null;
+    const email = emailInput.value.trim() || null;
+    const phone = phoneInput.value.trim() || null;
 
     button.disabled = true;
     statusEl.className = 'text-sm text-slate-500 mb-2';
     statusEl.textContent = t('common.saving');
 
     const { error } = await supabase.from('church_branding').upsert(
-      { id: true, address, updated_by: currentUserId, updated_at: new Date().toISOString() },
+      { id: true, address, email, phone, updated_by: currentUserId, updated_at: new Date().toISOString() },
       { onConflict: 'id' },
     );
     button.disabled = false;
@@ -193,4 +205,8 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replaceAll('"', '&quot;');
 }

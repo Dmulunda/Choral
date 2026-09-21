@@ -10,7 +10,7 @@ import { supabase } from './supabaseClient.js';
 let branding = null;
 
 export async function loadChurchBranding() {
-  const { data } = await supabase.from('church_branding').select('logo_url, address').eq('id', true).maybeSingle();
+  const { data } = await supabase.from('church_branding').select('logo_url, address, email, phone').eq('id', true).maybeSingle();
   branding = data || null;
   return branding;
 }
@@ -21,4 +21,12 @@ export function getChurchLogoUrl() {
 
 export function getChurchAddress() {
   return branding?.address || null;
+}
+
+export function getChurchEmail() {
+  return branding?.email || null;
+}
+
+export function getChurchPhone() {
+  return branding?.phone || null;
 }
