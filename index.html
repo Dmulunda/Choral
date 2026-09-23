@@ -318,6 +318,23 @@
       </div>
     </div>
 
+    <!-- Quick Access dialog -- opened by the mobile bottom bar's 3-line
+         icon (data-mobile-nav="quick-access"). Content is built
+         dynamically in js/app.js rather than listed statically here,
+         since Budget must leave zero trace for anyone without
+         department leadership (same rule as the sidebar's own Budget
+         nav button) and Dashboard depends on whichever department is
+         currently active. -->
+    <div id="quick-access-dialog" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-xl font-bold text-slate-800" data-i18n="nav.quickAccess">Quick Access</h2>
+          <button type="button" data-action="close-quick-access" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="space-y-1 mt-4" data-el="quick-access-list"></div>
+      </div>
+    </div>
+
     <div class="flex flex-1 flex-col md:flex-row min-h-0">
 
     <!-- Backdrop (mobile only, shown while the drawer is open) -->
@@ -678,7 +695,7 @@
       <button type="button" data-tab-target="super-home" data-i18n-aria-label="nav.home" aria-label="Home" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">🏠</button>
       <button type="button" data-mobile-nav="directory" data-i18n-aria-label="directory.title" aria-label="Directory" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">👤</button>
       <button type="button" data-mobile-nav="schedule" data-i18n-aria-label="nav.scheduling" aria-label="Schedule" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">📅</button>
-      <button type="button" data-mobile-nav="notifications" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">🔔</button>
+      <button type="button" data-mobile-nav="quick-access" data-i18n-aria-label="nav.quickAccess" aria-label="Quick Access" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">☰</button>
       <button type="button" data-mobile-nav="settings" data-i18n-aria-label="nav.tools" aria-label="Settings" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">⚙️</button>
     </nav>
   </div>

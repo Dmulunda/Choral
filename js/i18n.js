@@ -1460,6 +1460,7 @@ const TRANSLATIONS = {
 
     'nav.home': 'Home',
     'nav.tools': 'Tools',
+    'nav.quickAccess': 'Quick Access',
     'directory.title': 'User Directory',
     'directory.intro': 'Every user across every department, in one place.',
 
@@ -3187,6 +3188,7 @@ const TRANSLATIONS = {
 
     'nav.home': 'Accueil',
     'nav.tools': 'Outils',
+    'nav.quickAccess': 'Accès rapide',
     'directory.title': 'Annuaire des utilisateurs',
     'directory.intro': 'Tous les utilisateurs, tous départements confondus, en un seul endroit.',
 

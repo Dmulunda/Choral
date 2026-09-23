@@ -76,6 +76,8 @@ const previewAsMemberBtn = document.querySelector('#preview-as-member-btn');
 const signOutBtnDesktop = document.querySelector('#sign-out-btn-desktop');
 const accountMenuBtn = document.querySelector('#account-menu-btn');
 const accountMenuDialog = document.querySelector('#account-menu-dialog');
+const quickAccessDialog = document.querySelector('#quick-access-dialog');
+const quickAccessListEl = document.querySelector('[data-el="quick-access-list"]');
 const notificationsBtn = document.querySelector('#notifications-btn');
 const headerNewMemberBtn = document.querySelector('#header-new-member-btn');
 const loginSplashEl = document.querySelector('#login-splash');
@@ -519,6 +521,50 @@ accountMenuDialog.addEventListener('click', (e) => {
 
 notificationsBtn.addEventListener('click', () => runSidebarTool('notifications'));
 
+// ---- Quick Access dialog (mobile bottom bar's 3-line icon) ----
+// VPD Academy and Service Program are unconditional (same as their
+// sidebar nav entries); Budget only appears for department leadership
+// (mirrors updateBudgetNavVisibility()'s "zero trace" rule -- built
+// fresh each time this opens rather than once at load, same reason);
+// Dashboard only appears while a department is actually active, since
+// there's nothing to jump to on Home/Tools.
+const QUICK_ACCESS_ITEMS_CLASS = 'w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2.5';
+function buildQuickAccessItems() {
+  const active = getActiveDepartment();
+  const items = [
+    { icon: '🎓', label: t('nav.training'), tab: 'training' },
+    { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
+  ];
+  if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
+  if (active) items.push({ icon: '📊', label: t('nav.dashboard'), tab: active.key === 'choir' ? 'dashboard' : 'dept-dashboard' });
+  return items;
+}
+
+function openQuickAccess() {
+  quickAccessListEl.innerHTML = buildQuickAccessItems().map((item) => `
+    <button type="button" data-quick-access-tab="${item.tab}" class="${QUICK_ACCESS_ITEMS_CLASS}">
+      <span class="text-lg">${item.icon}</span> <span>${item.label}</span>
+    </button>
+  `).join('');
+  quickAccessDialog.classList.remove('hidden');
+  quickAccessDialog.classList.add('flex');
+}
+
+function closeQuickAccess() {
+  quickAccessDialog.classList.add('hidden');
+  quickAccessDialog.classList.remove('flex');
+}
+
+quickAccessDialog.querySelector('[data-action="close-quick-access"]').addEventListener('click', closeQuickAccess);
+quickAccessDialog.addEventListener('click', (e) => {
+  if (e.target === quickAccessDialog) { closeQuickAccess(); return; }
+  const tabBtn = e.target.closest('[data-quick-access-tab]');
+  if (tabBtn) {
+    activateTab(tabBtn.dataset.quickAccessTab);
+    closeQuickAccess();
+  }
+});
+
 headerNewMemberBtn.addEventListener('click', () => {
   activateTab('super-home');
   openGuestOnboardingHub();
@@ -877,14 +923,11 @@ document.querySelector('[data-mobile-nav="schedule"]')?.addEventListener('click'
   closeSidebar();
 });
 
-// Notifications: the actual in-app notifications/messages inbox (same
-// modal the desktop header's inbox button opens) -- not the push-
-// permission settings modal 'notifications' opened via runSidebarTool,
-// which is a different, easily-confused thing.
-document.querySelector('[data-mobile-nav="notifications"]')?.addEventListener('click', () => {
-  const inboxUserId = getViewAsTarget()?.id || currentUserId;
-  createInboxModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId, onRead: refreshInboxBadge }).open();
-});
+// Quick Access: opens quick-access-dialog (defined above, near the
+// Account dialog it's modeled on) -- VPD Academy, Service Program,
+// Budget (department leadership only), and the active department's
+// Dashboard.
+document.querySelector('[data-mobile-nav="quick-access"]')?.addEventListener('click', openQuickAccess);
 
 // Settings: the Tools tab, for everyone -- not just global-reach roles
 // (unlike the sidebar's own Tools nav entry, which stays admin-only;
