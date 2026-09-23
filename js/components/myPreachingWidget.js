@@ -29,8 +29,8 @@ export async function renderMyPreachingWidget(container, { supabase, userId }) {
   const role = data.preacher_id === userId ? t('preaching.preacher') : t('preaching.moderator');
 
   container.innerHTML = `
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-2">${t('preaching.yourUpcomingAssignment')}</h2>
+    <div class="bg-white rounded-xl border border-indigo-100 p-4">
+      <h2 class="text-[12.5px] font-bold text-slate-900 mb-2">🎙️ ${t('preaching.yourUpcomingAssignment')}</h2>
       <div class="text-slate-800 font-medium">
         ${escapeHtml(data.sermon_theme || t('preaching.noSermonTheme'))}
         <span class="text-slate-400 font-normal">— ${escapeHtml(data.date)} · ${escapeHtml(role)}</span>

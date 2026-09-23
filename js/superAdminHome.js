@@ -1,13 +1,17 @@
 // Super Admin Home tab entry point: where a global-role holder
 // (Super Admin, Super Viewer, Pastor Admin, Church Secretary) lands
-// first — clickable metrics, every pending membership request across
-// every department (the actual fix for "Super Admin can't approve" —
-// the RLS already allowed it, there was just no cross-department view
-// to find them in), and pop-up buttons for the per-department report
-// table and the full cross-department User Directory (same pattern as
-// the budget-request/board pop-ups — nothing this heavy stays inline).
-// Department views only load once explicitly picked from the
-// switcher/nav.
+// first — a stat strip, a widget grid answering "what needs my
+// attention today" (events, pending requests, birthdays, prayer,
+// attendance, announcements), and every pending membership request
+// across every department below it (the actual fix for "Super Admin
+// can't approve" — the RLS already allowed it, there was just no
+// cross-department view to find them in). The flat "System tools" link
+// list that used to live here moved to its own Tools tab
+// (js/toolsPage.js) — every modal it opens is still created and torn
+// down right here, exactly as before, and exposed via the openX()
+// exports below so Tools' buttons (and the header's own "New Member"
+// button, via openGuestOnboardingHub) can reach them without
+// duplicating the create/teardown logic in a second file.
 import { getEffectiveSupabase, getGlobalRole } from './departments.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { renderAllDepartmentApprovals } from './components/allDepartmentApprovals.js';
@@ -22,10 +26,15 @@ import { createBibleImportModal } from './components/bibleImportTool.js';
 import { createPeopleImportModal } from './components/peopleImportModal.js';
 import { createPastorMeetingQueueModal } from './components/pastorMeetingRequests.js';
 import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
-import { renderDateHeader } from './components/dateHeader.js';
-import { t, departmentLabel } from './i18n.js';
+import { renderUpcomingChurchEvents } from './components/upcomingChurchEvents.js';
+import { renderBirthdaysWidget, renderPrayerRequestsWidget, renderPendingRequestsWidget, renderAttendanceWidget, renderAnnouncementsWidget } from './components/homeWidgets.js';
+import { createAttendanceManagerModal } from './components/attendanceManager.js';
+import { t, departmentLabel, getLang } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+// Matches dateHeader.js's own mapping -- not exported from there, and
+// this is the only other place that needs it.
+const LOCALE_BY_LANG = { en: 'en-US', fr: 'fr-FR' };
 
 let currentDirectoryModal = null;
 let currentReportsModal = null;
@@ -40,14 +49,67 @@ let currentBibleImportModal = null;
 let currentPeopleImportModal = null;
 let currentPastorMeetingQueueModal = null;
 let currentPrayerRequestQueueModal = null;
+let currentAttendanceModal = null;
 
-// Lets the header's global "New member" button reach the Guest
-// Onboarding Hub without duplicating it — the modal only exists once
-// this tab has rendered at least once (pastoral-team roles only), so
-// this renders it first if needed instead of assuming it's already there.
+// Every open*() below follows the same shape: if Home hasn't rendered
+// yet in this session (e.g. the user opened Tools directly, or the
+// header's "New Member" button fires before any tab has loaded), the
+// modal doesn't exist yet — render Home first so it does, then open it.
 export async function openGuestOnboardingHub() {
   if (!currentGuestHubModal) await renderSuperAdminHomeTab();
   currentGuestHubModal?.open();
+}
+export async function openDirectory() {
+  if (!currentDirectoryModal) await renderSuperAdminHomeTab();
+  currentDirectoryModal?.open();
+}
+export async function openMemberCases() {
+  if (!currentMemberCaseModal) await renderSuperAdminHomeTab();
+  currentMemberCaseModal?.open();
+}
+export async function openPrayerRequests() {
+  if (!currentPrayerRequestQueueModal) await renderSuperAdminHomeTab();
+  currentPrayerRequestQueueModal?.open();
+}
+export async function openPastorMeetings() {
+  if (!currentPastorMeetingQueueModal) await renderSuperAdminHomeTab();
+  currentPastorMeetingQueueModal?.open();
+}
+export async function openReports() {
+  if (!currentReportsModal) await renderSuperAdminHomeTab();
+  currentReportsModal?.open();
+}
+export async function openLoginActivity() {
+  if (!currentLoginActivityModal) await renderSuperAdminHomeTab();
+  currentLoginActivityModal?.open();
+}
+export async function openCreateDepartment() {
+  if (!currentCreateDepartmentModal) await renderSuperAdminHomeTab();
+  currentCreateDepartmentModal?.open();
+}
+export async function openMenuCustomizer() {
+  if (!currentMenuCustomizerModal) await renderSuperAdminHomeTab();
+  currentMenuCustomizerModal?.open();
+}
+export async function openChurchLogo() {
+  if (!currentChurchLogoModal) await renderSuperAdminHomeTab();
+  currentChurchLogoModal?.open();
+}
+export async function openMessageModeration() {
+  if (!currentMessageModerationModal) await renderSuperAdminHomeTab();
+  currentMessageModerationModal?.open();
+}
+export async function openBibleImport() {
+  if (!currentBibleImportModal) await renderSuperAdminHomeTab();
+  currentBibleImportModal?.open();
+}
+export async function openPeopleImport() {
+  if (!currentPeopleImportModal) await renderSuperAdminHomeTab();
+  currentPeopleImportModal?.open();
+}
+export async function openAttendanceManager() {
+  if (!currentAttendanceModal) await renderSuperAdminHomeTab();
+  currentAttendanceModal?.open();
 }
 
 export async function renderSuperAdminHomeTab() {
@@ -61,62 +123,37 @@ export async function renderSuperAdminHomeTab() {
     return;
   }
 
-  const navItemClass = 'text-left px-3 py-2 rounded-lg hover:bg-white/10 whitespace-nowrap';
-  const navGroupLabelClass = 'px-3 pb-1 text-[11px] uppercase tracking-wide text-white/40 whitespace-nowrap';
   const isPastoralTeam = PASTORAL_TEAM_ROLES.includes(getGlobalRole());
   const canSeeMeetings = ['super_admin', 'church_secretary'].includes(getGlobalRole());
   const isSuperAdmin = getGlobalRole() === 'super_admin';
 
+  const displayName = document.querySelector('[data-nav-group="current-user-name"]')?.textContent?.trim() || '';
+  const todayFormatted = new Date().toLocaleDateString(LOCALE_BY_LANG[getLang()] || 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
   container.innerHTML = `
-    <div data-el="date-header"></div>
+    <div class="flex items-baseline justify-between flex-wrap gap-1 mb-1">
+      <h2 class="text-lg sm:text-xl font-bold text-slate-900">${t('superHome.welcomeBack', { name: escapeHtml(displayName) })}</h2>
+      <span class="text-xs sm:text-sm text-slate-400">${escapeHtml(todayFormatted)}</span>
+    </div>
 
-    <div class="flex flex-col md:flex-row gap-4 mt-4">
-      <nav class="w-full md:w-56 shrink-0 bg-black text-white rounded-xl p-3 flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible">
-        <div class="px-3 py-2 rounded-lg bg-white/10 font-medium whitespace-nowrap">${t('superHome.navHome')}</div>
-        <button type="button" data-action="open-directory" class="${navItemClass}">${t('directory.title')}</button>
-        ${isPastoralTeam ? `<button type="button" data-action="open-member-cases" class="${navItemClass}">${t('memberCase.title')}</button>` : ''}
+    <div class="mt-4" data-el="metrics"></div>
 
-        ${isPastoralTeam || canSeeMeetings ? `
-          <div class="mt-3 pt-3 border-t border-white/10 ${navGroupLabelClass}">${t('superHome.groupRequests')}</div>
-          ${isPastoralTeam ? `
-            <button type="button" data-action="open-guest-hub" class="${navItemClass}">${t('guestHub.title')}</button>
-            <button type="button" data-action="open-prayer-requests" class="${navItemClass}">${t('prayerRequest.queueTitle')}</button>
-          ` : ''}
-          ${canSeeMeetings ? `<button type="button" data-action="open-pastor-meetings" class="${navItemClass}">${t('pastorMeeting.queueTitle')}</button>` : ''}
-        ` : ''}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div data-el="w-events"></div>
+      <div data-el="w-pending"></div>
+      <div data-el="w-birthdays"></div>
+      <div data-el="w-prayer"></div>
+      <div data-el="w-attendance" class="md:col-span-2"></div>
+      <div data-el="w-announcements"></div>
+    </div>
 
-        <div class="mt-3 pt-3 border-t border-white/10 ${navGroupLabelClass}">${t('superHome.groupReports')}</div>
-        <button type="button" data-action="open-reports" class="${navItemClass}">${t('superHome.reportsTitle')}</button>
-        ${isSuperAdmin ? `<button type="button" data-action="open-login-activity" class="${navItemClass}">${t('loginActivity.title')}</button>` : ''}
-
-        ${isSuperAdmin ? `
-          <details class="mt-3 pt-3 border-t border-white/10">
-            <summary class="cursor-pointer select-none ${navGroupLabelClass}">${t('superHome.groupSystemTools')}</summary>
-            <div class="flex flex-col gap-1 mt-1">
-              <button type="button" data-action="open-create-department" class="${navItemClass}">${t('superHome.createDepartmentTitle')}</button>
-              <button type="button" data-action="open-menu-customizer" class="${navItemClass}">${t('menuCustomizer.title')}</button>
-              <button type="button" data-action="open-church-logo" class="${navItemClass}">${t('logo.title')}</button>
-              <button type="button" data-action="open-message-moderation" class="${navItemClass}">${t('messageModeration.title')}</button>
-              <button type="button" data-action="open-bible-import" class="${navItemClass}">${t('bibleImport.title')}</button>
-              <button type="button" data-action="open-people-import" class="${navItemClass}">${t('peopleImport.title')}</button>
-            </div>
-          </details>
-        ` : ''}
-      </nav>
-
-      <div class="flex-1 min-w-0">
-        <div data-el="metrics"></div>
-
-        <div id="super-home-pending" class="bg-black text-white rounded-xl p-4 sm:p-6 mt-6">
-          <h2 class="text-lg font-semibold mb-4">${t('superHome.pendingTitle')}</h2>
-          <div data-el="pending"></div>
-        </div>
-      </div>
+    <div id="super-home-pending" class="bg-black text-white rounded-xl p-4 sm:p-6 mt-6">
+      <h2 class="text-lg font-semibold mb-4">${t('superHome.pendingTitle')}</h2>
+      <div data-el="pending"></div>
     </div>
   `;
 
-  renderDateHeader(container.querySelector('[data-el="date-header"]'));
-  renderMetrics(container.querySelector('[data-el="metrics"]'), supabase);
+  renderMetrics(container.querySelector('[data-el="metrics"]'), supabase, isPastoralTeam);
   renderAllDepartmentApprovals(container.querySelector('[data-el="pending"]'), { supabase, adminUserId: user.id });
 
   // This tab re-renders on things unrelated to a real page navigation —
@@ -137,7 +174,13 @@ export async function renderSuperAdminHomeTab() {
   currentPeopleImportModal?.root.remove();
   currentPastorMeetingQueueModal?.root.remove();
   currentPrayerRequestQueueModal?.root.remove();
+  currentAttendanceModal?.root.remove();
 
+  // Modals are still created here unconditionally-per-role (not gated
+  // on a button existing in this tab's own DOM anymore, since the
+  // buttons that open most of these now live on the Tools tab) — every
+  // openX() export above depends on the corresponding current*Modal
+  // existing once this function has run.
   currentReportsModal = createDepartmentReportsModal({ supabase });
   currentDirectoryModal = createUserManagerModal({
     supabase,
@@ -146,95 +189,76 @@ export async function renderSuperAdminHomeTab() {
     title: t('directory.title'),
   });
 
-  container.querySelector('[data-action="open-reports"]').addEventListener('click', () => currentReportsModal.open());
-  container.querySelector('[data-action="open-directory"]').addEventListener('click', () => currentDirectoryModal.open());
-
-  const guestHubBtn = container.querySelector('[data-action="open-guest-hub"]');
-  if (guestHubBtn) {
+  if (isPastoralTeam) {
     currentGuestHubModal = createGuestOnboardingModal({ supabase, currentUserId: user.id });
-    guestHubBtn.addEventListener('click', () => currentGuestHubModal.open());
-  }
-
-  const memberCasesBtn = container.querySelector('[data-action="open-member-cases"]');
-  if (memberCasesBtn) {
     currentMemberCaseModal = createMemberCaseModal({ supabase, currentUserId: user.id, scope: { type: 'pastoral' } });
-    memberCasesBtn.addEventListener('click', () => currentMemberCaseModal.open());
-  }
-
-  const pastorMeetingsBtn = container.querySelector('[data-action="open-pastor-meetings"]');
-  if (pastorMeetingsBtn) {
-    currentPastorMeetingQueueModal = createPastorMeetingQueueModal({ supabase });
-    pastorMeetingsBtn.addEventListener('click', () => currentPastorMeetingQueueModal.open());
-  }
-
-  const prayerRequestsBtn = container.querySelector('[data-action="open-prayer-requests"]');
-  if (prayerRequestsBtn) {
     currentPrayerRequestQueueModal = createPrayerRequestQueueModal({ supabase });
-    prayerRequestsBtn.addEventListener('click', () => currentPrayerRequestQueueModal.open());
+    currentAttendanceModal = createAttendanceManagerModal({ supabase, currentUserId: user.id });
   }
 
-  const createDepartmentBtn = container.querySelector('[data-action="open-create-department"]');
-  if (createDepartmentBtn) {
+  if (canSeeMeetings) {
+    currentPastorMeetingQueueModal = createPastorMeetingQueueModal({ supabase });
+  }
+
+  if (isSuperAdmin) {
+    currentLoginActivityModal = createLoginActivityModal({ supabase });
     currentCreateDepartmentModal = createDepartmentModal({
       supabase,
       currentUserId: user.id,
-      onCreated: () => renderMetrics(container.querySelector('[data-el="metrics"]'), supabase),
+      onCreated: () => renderMetrics(container.querySelector('[data-el="metrics"]'), supabase, isPastoralTeam),
     });
-    createDepartmentBtn.addEventListener('click', () => currentCreateDepartmentModal.open());
-  }
-
-  const menuCustomizerBtn = container.querySelector('[data-action="open-menu-customizer"]');
-  if (menuCustomizerBtn) {
     currentMenuCustomizerModal = createMenuCustomizerModal({ supabase, currentUserId: user.id });
-    menuCustomizerBtn.addEventListener('click', () => currentMenuCustomizerModal.open());
-  }
-
-  const churchLogoBtn = container.querySelector('[data-action="open-church-logo"]');
-  if (churchLogoBtn) {
     currentChurchLogoModal = createChurchLogoModal({ supabase, currentUserId: user.id });
-    churchLogoBtn.addEventListener('click', () => currentChurchLogoModal.open());
-  }
-
-  const messageModerationBtn = container.querySelector('[data-action="open-message-moderation"]');
-  if (messageModerationBtn) {
     currentMessageModerationModal = createMessageModerationModal({ supabase });
-    messageModerationBtn.addEventListener('click', () => currentMessageModerationModal.open());
-  }
-
-  const loginActivityBtn = container.querySelector('[data-action="open-login-activity"]');
-  if (loginActivityBtn) {
-    currentLoginActivityModal = createLoginActivityModal({ supabase });
-    loginActivityBtn.addEventListener('click', () => currentLoginActivityModal.open());
-  }
-
-  const bibleImportBtn = container.querySelector('[data-action="open-bible-import"]');
-  if (bibleImportBtn) {
     currentBibleImportModal = createBibleImportModal({ supabase });
-    bibleImportBtn.addEventListener('click', () => currentBibleImportModal.open());
+    currentPeopleImportModal = createPeopleImportModal({ supabase, currentUserId: user.id });
   }
 
-  const peopleImportBtn = container.querySelector('[data-action="open-people-import"]');
-  if (peopleImportBtn) {
-    currentPeopleImportModal = createPeopleImportModal({ supabase, currentUserId: user.id });
-    peopleImportBtn.addEventListener('click', () => currentPeopleImportModal.open());
-  }
+  renderUpcomingChurchEvents(container.querySelector('[data-el="w-events"]'), { supabase });
+  renderPendingRequestsWidget(container.querySelector('[data-el="w-pending"]'), {
+    supabase,
+    onScrollToPending: () => document.querySelector('#super-home-pending')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+  });
+  renderBirthdaysWidget(container.querySelector('[data-el="w-birthdays"]'), {
+    supabase,
+    onOpenDirectory: () => currentDirectoryModal?.open(),
+  });
+  renderPrayerRequestsWidget(container.querySelector('[data-el="w-prayer"]'), {
+    supabase,
+    onOpenQueue: isPastoralTeam ? () => currentPrayerRequestQueueModal?.open() : null,
+  });
+  renderAttendanceWidget(container.querySelector('[data-el="w-attendance"]'), {
+    supabase,
+    onOpenAttendance: isPastoralTeam ? () => currentAttendanceModal?.open() : null,
+  });
+  renderAnnouncementsWidget(container.querySelector('[data-el="w-announcements"]'), { supabase });
 }
 
-async function renderMetrics(container, supabase) {
+async function renderMetrics(container, supabase, isPastoralTeam) {
   container.innerHTML = `<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">${[1, 2, 3, 4].map(() => metricCardHtml(null, '—', '')).join('')}</div>`;
 
-  const [{ count: userCount }, { count: departmentCount }, { count: pendingCount }, { count: approvedCount }] = await Promise.all([
-    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+  const [
+    { count: userCount },
+    { count: departmentCount },
+    { count: openCaseCount },
+    { count: pendingMemberships },
+    { count: pendingMeetings },
+    { count: pendingBudgets },
+  ] = await Promise.all([
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).is('removed_at', null),
     supabase.from('departments').select('id', { count: 'exact', head: true }),
+    supabase.from('member_cases').select('id', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
     supabase.from('department_memberships').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('department_memberships').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+    supabase.from('pastor_meeting_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('budget_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
   ]);
+  const pendingCount = (pendingMemberships || 0) + (pendingMeetings || 0) + (pendingBudgets || 0);
 
   container.innerHTML = `
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
       ${metricCardHtml('directory', userCount ?? '—', t('superHome.metricUsers'))}
       ${metricCardHtml(null, departmentCount ?? '—', t('superHome.metricDepartments'))}
-      ${metricCardHtml('directory', approvedCount ?? '—', t('superHome.metricMemberships'))}
+      ${metricCardHtml(isPastoralTeam ? 'cases' : null, openCaseCount ?? '—', t('superHome.metricOpenCases'), openCaseCount > 0)}
       ${metricCardHtml('pending', pendingCount ?? '—', t('superHome.metricPending'), pendingCount > 0)}
     </div>
   `;
@@ -242,6 +266,7 @@ async function renderMetrics(container, supabase) {
   container.querySelectorAll('[data-action]').forEach((card) => {
     card.addEventListener('click', () => {
       if (card.dataset.action === 'directory') currentDirectoryModal?.open();
+      else if (card.dataset.action === 'cases') currentMemberCaseModal?.open();
       else if (card.dataset.action === 'pending') document.querySelector('#super-home-pending')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
@@ -252,12 +277,12 @@ function metricCardHtml(action, value, label, highlight = false) {
   const tag = clickable ? 'button' : 'div';
   const typeAttr = clickable ? 'type="button"' : '';
   const actionAttr = clickable ? `data-action="${action}"` : '';
-  const clickableClasses = clickable ? 'hover:bg-white/10 transition-colors cursor-pointer' : '';
+  const clickableClasses = clickable ? 'hover:border-indigo-200 hover:-translate-y-0.5 cursor-pointer' : '';
   return `
     <${tag} ${typeAttr} ${actionAttr}
-        class="bg-black rounded-xl p-4 sm:p-6 text-center w-full ${highlight ? 'ring-2 ring-amber-400' : ''} ${clickableClasses}">
-      <div class="text-2xl sm:text-3xl font-bold text-white">${value}</div>
-      <div class="text-xs sm:text-sm text-white/60 mt-1">${label}</div>
+        class="bg-white border border-slate-100 rounded-xl p-3.5 sm:p-4 text-left w-full transition-all ${highlight ? 'ring-2 ring-amber-400' : ''} ${clickableClasses}">
+      <div class="text-[22px] font-extrabold text-slate-900 tabular-nums tracking-tight leading-none">${value}</div>
+      <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mt-1.5">${label}</div>
     </${tag}>
   `;
 }

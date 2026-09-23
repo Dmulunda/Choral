@@ -70,6 +70,10 @@ export function createMyProfileModal({ supabase, userId }) {
           </div>
         </div>
         <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthDate')}</label>
+          <input type="date" name="birth_date" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.signature')}</label>
           <p class="text-xs text-slate-400 mb-1">${t('myProfile.signatureHint')}</p>
           <canvas data-el="signature-pad" width="360" height="120" class="w-full border border-slate-300 rounded-lg bg-white touch-none" style="max-width:360px;height:120px;"></canvas>
@@ -108,10 +112,11 @@ export function createMyProfileModal({ supabase, userId }) {
     root.classList.remove('hidden');
     root.classList.add('flex');
 
-    const { data: profile } = await supabase.from('profiles').select('address, sex, parish, birth_country, birth_city, signature_data').eq('id', userId).single();
+    const { data: profile } = await supabase.from('profiles').select('address, sex, parish, birth_date, birth_country, birth_city, signature_data').eq('id', userId).single();
     form.elements.address.value = profile?.address || '';
     form.elements.sex.value = profile?.sex || '';
     form.elements.parish.value = profile?.parish || '';
+    form.elements.birth_date.value = profile?.birth_date || '';
     form.elements.birth_country.value = profile?.birth_country || '';
     form.elements.birth_city.value = profile?.birth_city || '';
     signaturePad.clear();
@@ -141,6 +146,7 @@ export function createMyProfileModal({ supabase, userId }) {
       address: form.elements.address.value.trim() || null,
       sex: form.elements.sex.value || null,
       parish: form.elements.parish.value.trim() || null,
+      birth_date: form.elements.birth_date.value || null,
       birth_country: form.elements.birth_country.value.trim() || null,
       birth_city: form.elements.birth_city.value.trim() || null,
       signature_data: signaturePad.isEmpty() ? null : signaturePad.toDataUrl(),

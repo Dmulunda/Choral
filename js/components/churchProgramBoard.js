@@ -8,8 +8,18 @@
 // program also triggers a pop-up elsewhere (specialProgramPopup.js,
 // wired from app.js) independent of whether someone ever opens this
 // tab.
+//
+// The list below is shared with upcomingChurchEvents.js's widget
+// (fetchUpcomingChurchEvents) rather than querying church_programs
+// alone, so anything a department admin posts to their own public
+// calendar (department_shifts, is_public_calendar) shows up here too --
+// this page doubles as the one place to see everything coming up
+// church-wide without a department admin having to re-enter it as a
+// separate program. Those department-sourced entries render read-only
+// (no delete/flyer), tagged with the department they came from.
 import { confirmDialog } from './confirmDialog.js';
-import { t } from '../i18n.js';
+import { fetchUpcomingChurchEvents } from './upcomingChurchEvents.js';
+import { t, departmentLabel } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
 const FLYER_BUCKET = 'church-program-flyers';
@@ -165,40 +175,29 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
   async function loadPrograms() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
-    const { data, error } = await supabase
-      .from('church_program_dates')
-      .select('date, program:church_programs!program_id ( id, title, description, is_special, flyer_storage_path )')
-      .gte('date', todayLocal())
-      .order('date', { ascending: true });
-
-    if (error) {
+    let items;
+    try {
+      items = await fetchUpcomingChurchEvents(supabase);
+    } catch (error) {
       listEl.innerHTML = `<p class="text-sm text-rose-600">${t('churchProgram.loadFailed', { message: error.message })}</p>`;
       return;
     }
 
-    const byProgram = new Map();
-    (data || []).forEach((row) => {
-      if (!row.program) return;
-      if (!byProgram.has(row.program.id)) byProgram.set(row.program.id, { program: row.program, dates: [] });
-      byProgram.get(row.program.id).dates.push(row.date);
-    });
-
-    const programs = Array.from(byProgram.values());
-    if (programs.length === 0) {
+    if (items.length === 0) {
       listEl.innerHTML = `<p class="text-sm text-slate-500">${t('churchProgram.none')}</p>`;
       return;
     }
 
     listEl.innerHTML = '';
-    for (const entry of programs) {
-      listEl.appendChild(await buildCard(entry.program, entry.dates));
+    for (const item of items) {
+      listEl.appendChild(item.kind === 'program' ? await buildProgramCard(item) : buildDepartmentCard(item));
     }
   }
 
-  async function buildCard(program, dates) {
+  async function buildProgramCard(item) {
     let flyerUrl = null;
-    if (program.flyer_storage_path) {
-      const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(program.flyer_storage_path, 3600);
+    if (item.flyerPath) {
+      const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(item.flyerPath, 3600);
       flyerUrl = signed?.signedUrl || null;
     }
 
@@ -208,25 +207,40 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
       <div class="flex items-start justify-between gap-3">
         <div>
           <div class="font-semibold text-slate-800">
-            ${escapeHtml(program.title)}
-            ${program.is_special ? `<span class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">${t('churchProgram.specialBadge')}</span>` : ''}
+            ${escapeHtml(item.title)}
+            ${item.isSpecial ? `<span class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">${t('churchProgram.specialBadge')}</span>` : ''}
           </div>
-          <div class="text-sm text-slate-500">${dates.map(escapeHtml).join(', ')}</div>
+          <div class="text-sm text-slate-500">${item.dates.map(escapeHtml).join(', ')}</div>
         </div>
         ${canAdminister ? `<button type="button" data-action="delete" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('churchProgram.delete')}</button>` : ''}
       </div>
-      ${program.description ? `<p class="text-sm text-slate-600 mt-2">${escapeHtml(program.description)}</p>` : ''}
-      ${flyerUrl ? `<img src="${flyerUrl}" alt="${escapeAttr(program.title)}" class="mt-2 rounded-lg max-h-48 object-contain" />` : ''}
+      ${item.description ? `<p class="text-sm text-slate-600 mt-2">${escapeHtml(item.description)}</p>` : ''}
+      ${flyerUrl ? `<img src="${flyerUrl}" alt="${escapeAttr(item.title)}" class="mt-2 rounded-lg max-h-48 object-contain" />` : ''}
     `;
 
-    card.querySelector('[data-action="delete"]')?.addEventListener('click', () => deleteProgram(program));
+    card.querySelector('[data-action="delete"]')?.addEventListener('click', () => deleteProgram(item));
     return card;
   }
 
-  async function deleteProgram(program) {
-    if (!(await confirmDialog({ message: t('churchProgram.confirmDelete', { title: program.title }) }))) return;
+  // Read-only — sourced from another department's own public calendar
+  // (department_shifts), managed on that department's own Scheduling
+  // tab, not here.
+  function buildDepartmentCard(item) {
+    const card = document.createElement('div');
+    card.className = 'border border-slate-200 rounded-lg p-3';
+    card.innerHTML = `
+      <div class="font-semibold text-slate-800">${escapeHtml(item.title)}</div>
+      <div class="text-sm text-slate-500">${item.dates.map(escapeHtml).join(', ')}</div>
+      ${item.notes ? `<p class="text-sm text-slate-600 mt-2">${escapeHtml(item.notes)}</p>` : ''}
+      <span class="inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">${escapeHtml(t('churchProgram.fromDepartment', { dept: departmentLabel(item.departmentKey) }))}</span>
+    `;
+    return card;
+  }
 
-    const { error } = await supabase.from('church_programs').delete().eq('id', program.id);
+  async function deleteProgram(item) {
+    if (!(await confirmDialog({ message: t('churchProgram.confirmDelete', { title: item.title }) }))) return;
+
+    const { error } = await supabase.from('church_programs').delete().eq('id', item.id);
     if (error) {
       window.alert(t('churchProgram.deleteFailed', { message: error.message }));
       return;

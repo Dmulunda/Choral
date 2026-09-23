@@ -1,9 +1,11 @@
 // Digital Member ID Card — a two-sided official-style card (front:
 // photo, name, sex, member_code, function, parish, issue/expiration
-// dates, QR; back: birth info, join date, address, signatures) in this
-// app's own navy/gold branding — modeled on a reference design the
-// user provided, with our own colors/logo rather than copying its
-// color scheme.
+// dates, QR; back: birth country/city, birthday, address, signatures)
+// in this app's own navy/gold branding — modeled on a reference design
+// the user provided, with our own colors/logo rather than copying its
+// color scheme. The back used to show "Member since" (profiles.created_at)
+// in that slot; this is the first place profiles.birth_date is
+// actually collected/shown, so it replaced it.
 //
 // member_code (sql/083) is used instead of the raw profile UUID since
 // this gets printed/shared. sex/parish/member_title/card_issued_at/
@@ -54,7 +56,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
       .from('profiles')
       .select(`
         full_name, member_code, photo_path, address, sex, member_title, parish,
-        birth_country, birth_city, global_role, created_at,
+        birth_date, birth_country, birth_city, global_role,
         card_issued_at, card_revoked_at, signature_data
       `)
       .eq('id', userId)
@@ -79,7 +81,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   const issuedDate = profile.card_issued_at || new Date().toISOString().slice(0, 10);
   const expirationDate = new Date(issuedDate);
   expirationDate.setFullYear(expirationDate.getFullYear() + CARD_VALID_YEARS);
-  const joinedDate = dateFmt(profile.created_at);
+  const birthDateFmt = dateFmt(profile.birth_date);
   const birthLine = [profile.birth_city, profile.birth_country].filter(Boolean).join(', ') || '—';
   const sexLabel = profile.sex === 'M' ? t('memberCard.male') : profile.sex === 'F' ? t('memberCard.female') : '—';
   // Falls back to the default asset only if no church logo has been
@@ -100,7 +102,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
           <div style="flex:1;font-size:11px;line-height:1.55;">
             ${fieldRow(t('memberCard.fullName'), profile.full_name)}
             ${fieldRow(t('memberCard.sex'), sexLabel)}
-            ${fieldRow(t('memberCard.matricule'), profile.member_code)}
+            ${fieldRow(t('memberCard.birthDate'), birthDateFmt)}
             ${fieldRow(t('memberCard.function'), functionLabel(profile.member_title))}
             ${fieldRow(t('memberCard.parish'), profile.parish || '—')}
             ${fieldRow(t('memberCard.issuedOn'), dateFmt(issuedDate))}
@@ -115,7 +117,6 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
         <div style="display:flex;gap:12px;padding:12px 16px;flex:1;">
           <div style="flex:1;font-size:11px;line-height:1.55;">
             ${fieldRow(t('memberCard.birthInfo'), birthLine)}
-            ${fieldRow(t('memberCard.joinedOn'), joinedDate)}
             ${fieldRow(t('memberCard.address'), profile.address || '—')}
             <div style="display:flex;gap:24px;margin-top:12px;">
               ${signatureBlock(t('memberCard.memberSignature'), profile.signature_data)}
