@@ -12,8 +12,8 @@ import { todayLocal, formatDateLocal } from '../utils/date.js';
 
 export function renderHeadcountBoard(container, { supabase, departmentId }) {
   container.innerHTML = `
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('headcount.addTitle')}</h2>
+    <div class="bg-white rounded-xl border border-slate-100 p-4 mb-4">
+      <h2 class="text-[13px] font-bold text-slate-900 mb-3">📋 ${t('headcount.addTitle')}</h2>
       <form data-el="form" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('requests.date')}</label>
@@ -43,12 +43,12 @@ export function renderHeadcountBoard(container, { supabase, departmentId }) {
         </div>
       </form>
     </div>
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('headcount.progressionTitle')}</h2>
-      <div data-el="progression" class="grid sm:grid-cols-3 gap-4"></div>
+    <div class="bg-white rounded-xl border border-slate-100 p-4 mb-4">
+      <h2 class="text-[13px] font-bold text-slate-900 mb-3">📈 ${t('headcount.progressionTitle')}</h2>
+      <div data-el="progression" class="grid sm:grid-cols-3 gap-3"></div>
     </div>
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6">
-      <h2 class="text-lg font-semibold mb-4">${t('headcount.history')}</h2>
+    <div class="bg-white rounded-xl border border-slate-100 p-4">
+      <h2 class="text-[13px] font-bold text-slate-900 mb-3">🗂️ ${t('headcount.history')}</h2>
       <div data-el="history" class="overflow-x-auto"></div>
     </div>
   `;
@@ -113,7 +113,7 @@ export function renderHeadcountBoard(container, { supabase, departmentId }) {
     renderProgression(data || []);
 
     if (!data || data.length === 0) {
-      historyEl.innerHTML = `<p class="text-sm text-slate-500">${t('headcount.none')}</p>`;
+      historyEl.innerHTML = `<p class="text-[11.5px] text-slate-400">${t('headcount.none')}</p>`;
       return;
     }
 
@@ -199,7 +199,7 @@ function sumInRange(rows, [start, end]) {
 
 function buildPeriodCard(label, current, previous) {
   return `
-    <div class="border border-slate-200 rounded-lg p-3">
+    <div class="border border-slate-100 rounded-lg p-3">
       <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">${escapeHtml(label)}</div>
       <div class="text-sm text-slate-600">${t('headcount.men')}: <span class="font-semibold text-slate-800">${current.men}</span> ${trendHtml(current.men, previous.men)}</div>
       <div class="text-sm text-slate-600">${t('headcount.women')}: <span class="font-semibold text-slate-800">${current.women}</span> ${trendHtml(current.women, previous.women)}</div>

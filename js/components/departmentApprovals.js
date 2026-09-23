@@ -24,7 +24,12 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
     }
 
     if (data.length === 0) {
-      container.innerHTML = `<p class="text-sm text-slate-500">${t('approvals.none')}</p>`;
+      container.innerHTML = `
+        <div class="flex flex-col items-start gap-1.5 py-0.5">
+          <div class="text-xl opacity-60">✅</div>
+          <p class="text-[11.5px] text-slate-400 leading-snug">${t('approvals.none')}</p>
+        </div>
+      `;
       return;
     }
 
@@ -38,15 +43,15 @@ export function renderDepartmentApprovals(container, { supabase, departmentId, a
       ` : ''}
       <div class="space-y-2">
         ${data.map((row) => `
-          <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg p-3">
-            <span class="text-sm font-medium text-slate-800">${escapeHtml(row.applicant?.full_name || '')}</span>
-            <div class="flex gap-2">
+          <div class="flex items-center justify-between gap-2 border border-slate-100 rounded-lg p-2.5">
+            <span class="text-[12px] font-semibold text-slate-700 truncate">${escapeHtml(row.applicant?.full_name || '')}</span>
+            <div class="flex gap-1.5 shrink-0">
               <button type="button" data-action="approve" data-id="${row.id}"
-                      class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
+                      class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700">
                 ${t('approvals.approve')}
               </button>
               <button type="button" data-action="reject" data-id="${row.id}"
-                      class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-sm font-medium hover:bg-rose-200">
+                      class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 text-[11px] font-semibold hover:bg-rose-100">
                 ${t('approvals.reject')}
               </button>
             </div>
