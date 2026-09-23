@@ -6,13 +6,14 @@
 // before .open() is called on it -- no modal is created or torn down
 // in this file, it's purely a second set of doorways into the same
 // instances Home owns.
-import { getGlobalRole } from './departments.js';
+import { getGlobalRole, hasGlobalReach, isViewingAs } from './departments.js';
 import {
   openDirectory, openMemberCases, openPrayerRequests, openPastorMeetings,
   openReports, openLoginActivity, openCreateDepartment, openMenuCustomizer,
   openChurchLogo, openMessageModeration, openBibleImport, openPeopleImport,
   openGuestOnboardingHub, openAttendanceManager,
 } from './superAdminHome.js';
+import { runSidebarTool } from './app.js';
 import { t } from './i18n.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -23,12 +24,34 @@ export function renderToolsTab() {
   const isPastoralTeam = PASTORAL_TEAM_ROLES.includes(role);
   const canSeeMeetings = ['super_admin', 'church_secretary'].includes(role);
   const isSuperAdmin = role === 'super_admin';
+  // The Tools tab itself is reachable by every signed-in user now (the
+  // mobile bottom bar's Settings icon), unlike its sidebar nav entry
+  // (still admin-only) -- Directory/Reports need their own explicit
+  // gate here since they used to rely entirely on that outer one.
+  const isGlobalReach = hasGlobalReach();
+  const canEditOwnIdentity = !isViewingAs();
 
   const categories = [
+    // Everyone's own account -- mirrors the sidebar's "Tools" <select>
+    // (updateSidebarToolsSelect() in app.js), reusing the exact same
+    // runSidebarTool(value) dispatch so there's one place, not two,
+    // deciding what each of these actually opens.
+    {
+      label: t('tools.catMyAccount'),
+      items: [
+        canEditOwnIdentity && { icon: '🪪', color: '#4f46e5', name: t('sidebar.myProfile'), desc: t('tools.myProfileDesc'), onClick: () => runSidebarTool('my-profile') },
+        canEditOwnIdentity && { icon: '✉️', color: '#4f46e5', name: t('sidebar.myLetters'), desc: t('tools.myLettersDesc'), onClick: () => runSidebarTool('my-letters') },
+        canEditOwnIdentity && { icon: '🔒', color: '#4f46e5', name: t('sidebar.changePassword'), desc: t('tools.changePasswordDesc'), onClick: () => runSidebarTool('change-password') },
+        { icon: '📜', color: '#334155', name: t('sidebar.churchRules'), desc: t('tools.churchRulesDesc'), onClick: () => runSidebarTool('church-rules') },
+        { icon: '🚪', color: '#334155', name: t('sidebar.joinDepartment'), desc: t('tools.joinDepartmentDesc'), onClick: () => runSidebarTool('join-department') },
+        { icon: '🗓️', color: '#b45309', name: t('sidebar.pastorMeeting'), desc: t('tools.pastorMeetingRequestDesc'), onClick: () => runSidebarTool('pastor-meeting') },
+        { icon: '🙏', color: '#7c3aed', name: t('sidebar.prayerRequest'), desc: t('tools.prayerRequestSubmitDesc'), onClick: () => runSidebarTool('prayer-request') },
+      ].filter(Boolean),
+    },
     {
       label: t('tools.catPeopleCare'),
       items: [
-        { icon: '👤', color: '#4f46e5', name: t('directory.title'), desc: t('tools.directoryDesc'), onClick: openDirectory },
+        isGlobalReach && { icon: '👤', color: '#4f46e5', name: t('directory.title'), desc: t('tools.directoryDesc'), onClick: openDirectory },
         isPastoralTeam && { icon: '📋', color: '#0369a1', name: t('memberCase.title'), desc: t('tools.casesDesc'), onClick: openMemberCases },
         isPastoralTeam && { icon: '🙌', color: '#059669', name: t('guestHub.title'), desc: t('tools.guestHubDesc'), onClick: openGuestOnboardingHub },
         isPastoralTeam && { icon: '🙏', color: '#7c3aed', name: t('prayerRequest.queueTitle'), desc: t('tools.prayerDesc'), onClick: openPrayerRequests },
@@ -41,7 +64,7 @@ export function renderToolsTab() {
         { icon: '⏳', color: '#b45309', name: t('pastorMeeting.queueTitle'), desc: t('tools.pastorMeetingsDesc'), onClick: openPastorMeetings },
       ],
     },
-    {
+    isGlobalReach && {
       label: t('tools.catReports'),
       items: [
         { icon: '📈', color: '#0369a1', name: t('superHome.reportsTitle'), desc: t('tools.reportsDesc'), onClick: openReports },
@@ -59,7 +82,7 @@ export function renderToolsTab() {
         { icon: '📥', color: '#334155', name: t('peopleImport.title'), desc: t('tools.peopleImportDesc'), onClick: openPeopleImport },
       ],
     },
-  ].filter(Boolean);
+  ].filter((cat) => cat && cat.items.length > 0);
 
   container.innerHTML = categories.map((cat, catIndex) => `
     <div class="mb-8">

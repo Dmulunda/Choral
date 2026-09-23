@@ -664,21 +664,22 @@
     </main>
     </div>
 
-    <!-- Mobile bottom tab bar -- global-reach roles only (same
-         data-nav-group="global" gating as the sidebar's Home/Tools),
-         hidden entirely on desktop via md:hidden regardless of role.
-         Home/Members reuse the real data-tab-target buttons elsewhere
-         on the page (so they share styling/gating/click-handling
-         automatically, see js/app.js's `tabs` loop); Cases/
-         Notifications/More are wired directly in js/app.js since
-         they're not tabs. -->
-    <nav data-nav-group="global" class="hidden md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 flex items-center justify-around h-16"
+    <!-- Mobile bottom tab bar -- every signed-in user, all breakpoints
+         below md (visible by default, hidden only at md: and up), NOT
+         gated by data-nav-group="global" (that group is for
+         global-reach-only sidebar entries and doesn't belong here).
+         Home reuses the real data-tab-target button elsewhere on the
+         page (so it shares styling/gating/click-handling automatically,
+         see js/app.js's `tabs` loop); Directory/Schedule/Notifications/
+         Settings are wired directly in js/app.js since they're not
+         plain tabs (their target depends on role/active department). -->
+    <nav class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 flex items-center justify-around h-16"
          style="padding-bottom: env(safe-area-inset-bottom)">
       <button type="button" data-tab-target="super-home" data-i18n-aria-label="nav.home" aria-label="Home" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">🏠</button>
-      <button type="button" data-tab-target="members" data-i18n-aria-label="nav.members" aria-label="Members" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">👤</button>
-      <button type="button" data-mobile-nav="cases" data-i18n-aria-label="memberCase.title" aria-label="Member Cases" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">📋</button>
+      <button type="button" data-mobile-nav="directory" data-i18n-aria-label="directory.title" aria-label="Directory" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">👤</button>
+      <button type="button" data-mobile-nav="schedule" data-i18n-aria-label="nav.scheduling" aria-label="Schedule" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">📅</button>
       <button type="button" data-mobile-nav="notifications" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">🔔</button>
-      <button type="button" data-mobile-nav="more" data-i18n-aria-label="sidebar.more" aria-label="More" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">☰</button>
+      <button type="button" data-mobile-nav="settings" data-i18n-aria-label="nav.tools" aria-label="Settings" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">⚙️</button>
     </nav>
   </div>
 

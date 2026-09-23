@@ -12,7 +12,8 @@ import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab } from './deptDashboard.js';
 import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
-import { renderSuperAdminHomeTab, openGuestOnboardingHub, openMemberCases } from './superAdminHome.js';
+import { renderSuperAdminHomeTab, openGuestOnboardingHub, openDirectory } from './superAdminHome.js';
+import { createUserManagerModal } from './components/userManager.js';
 import { renderToolsTab } from './toolsPage.js';
 import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
@@ -632,7 +633,7 @@ function handleToolsSelectChange(selectEl) {
 
 sidebarToolsSelect.addEventListener('change', () => handleToolsSelectChange(sidebarToolsSelect));
 
-function runSidebarTool(value) {
+export function runSidebarTool(value) {
   const active = getActiveDepartment();
   const effectiveSupabase = getEffectiveSupabase();
 
@@ -836,14 +837,67 @@ menuCloseBtn.addEventListener('click', closeSidebar);
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
 // ---- Mobile bottom tab bar ----
-// Home/Members reuse real data-tab-target buttons (see the `tabs`
-// click handler above), so they already share styling/gating/
-// click-handling with the sidebar's own versions. Only Cases/
-// Notifications/More need their own wiring here, proxying to the
-// exact same actions their sidebar/Tools equivalents already use.
-document.querySelector('[data-mobile-nav="cases"]')?.addEventListener('click', () => openMemberCases());
-document.querySelector('[data-mobile-nav="notifications"]')?.addEventListener('click', () => runSidebarTool('notifications'));
-document.querySelector('[data-mobile-nav="more"]')?.addEventListener('click', openSidebar);
+// Home reuses the real data-tab-target button (see the `tabs` click
+// handler above), so it already shares styling/gating/click-handling
+// with the sidebar's own version. The other four need their own
+// wiring here since each one's actual destination depends on role
+// and/or the currently active department, not a fixed tab name.
+
+// Directory: a global-reach role (Super Admin/Pastor Admin/Church
+// Secretary/etc.) gets the real cross-department Directory (same one
+// Tools' own Directory tile opens); everyone else gets the roster for
+// whichever department they're currently viewing -- same modal
+// deptDashboard.js's own "Manage Roster" button opens, just triggered
+// from here too instead of requiring a trip to that tab first.
+document.querySelector('[data-mobile-nav="directory"]')?.addEventListener('click', () => {
+  if (hasGlobalReach()) {
+    openDirectory();
+    return;
+  }
+  const active = getActiveDepartment();
+  if (!active) return;
+  createUserManagerModal({
+    supabase: getEffectiveSupabase(),
+    scope: { type: 'department', departmentId: active.id, departmentKey: active.key },
+    currentUserId,
+    title: t('nav.members'),
+  }).open();
+});
+
+// Schedule: jumps straight to whichever scheduling tab is correct for
+// the active department (Choir's own vs. the shared dept-scheduling
+// tab), reusing resolveLandingTab()'s existing Finance/Church Program
+// exclusion (those two have no scheduling at all) rather than
+// duplicating that check here.
+document.querySelector('[data-mobile-nav="schedule"]')?.addEventListener('click', () => {
+  const active = getActiveDepartment();
+  if (!active) return;
+  const isChoir = active.key === 'choir';
+  activateTab(resolveLandingTab('scheduling', active, isChoir) || (isChoir ? 'dashboard' : 'dept-dashboard'));
+  closeSidebar();
+});
+
+// Notifications: the actual in-app notifications/messages inbox (same
+// modal the desktop header's inbox button opens) -- not the push-
+// permission settings modal 'notifications' opened via runSidebarTool,
+// which is a different, easily-confused thing.
+document.querySelector('[data-mobile-nav="notifications"]')?.addEventListener('click', () => {
+  const inboxUserId = getViewAsTarget()?.id || currentUserId;
+  createInboxModal({ supabase: getEffectiveSupabase(), currentUserId: inboxUserId, onRead: refreshInboxBadge }).open();
+});
+
+// Settings: the Tools tab, for everyone -- not just global-reach roles
+// (unlike the sidebar's own Tools nav entry, which stays admin-only;
+// see toolsPage.js's "My Account" category for what an ordinary member
+// finds here: profile, church rules, change password, etc.).
+document.querySelector('[data-mobile-nav="settings"]')?.addEventListener('click', () => {
+  if (!isHomeActive()) {
+    setActiveDepartmentKey(HOME_KEY);
+    populateDepartmentSwitcher();
+  }
+  activateTab('tools');
+  closeSidebar();
+});
 
 // ---- Auth gating ----
 const authScreenEl = document.querySelector('#auth-screen');
