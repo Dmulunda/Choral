@@ -541,21 +541,27 @@ accountMenuDialog.addEventListener('click', (e) => {
 notificationsBtn.addEventListener('click', () => runSidebarTool('notifications'));
 
 // ---- Quick Access dialog (mobile bottom bar's 3-line icon) ----
-// VPD Academy and Service Program are unconditional (same as their
-// sidebar nav entries); Budget only appears for department leadership
-// (mirrors updateBudgetNavVisibility()'s "zero trace" rule -- built
-// fresh each time this opens rather than once at load, same reason);
-// Dashboard only appears while a department is actually active, since
-// there's nothing to jump to on Home/Tools.
+// Everything that isn't Home/Tools/a department's own nav lives here --
+// VPD Academy, Service Program, and Tax are unconditional (same as
+// their sidebar nav entries); Budget only appears for department
+// leadership (mirrors updateBudgetNavVisibility()'s "zero trace" rule
+// -- built fresh each time this opens rather than once at load, same
+// reason); Dashboard only appears while a department is actually
+// active, since there's nothing to jump to on Home/Tools; Headcount
+// Tally only appears while a headcount-eligible department (Ushers/
+// Welcoming & Socialisation/Ecodem) is active, same gate as its own
+// sidebar nav entry.
 const QUICK_ACCESS_ITEMS_CLASS = 'w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2.5';
 function buildQuickAccessItems() {
   const active = getActiveDepartment();
   const items = [
     { icon: '🎓', label: t('nav.training'), tab: 'training' },
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
+    { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
   ];
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
   if (active) items.push({ icon: '📊', label: t('nav.dashboard'), tab: active.key === 'choir' ? 'dashboard' : 'dept-dashboard' });
+  if (active && HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
   return items;
 }
 
