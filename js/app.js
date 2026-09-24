@@ -9,7 +9,8 @@ import { renderAuthScreen } from './components/authScreen.js';
 import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
-import { renderDeptDashboardTab } from './deptDashboard.js';
+import { renderDeptDashboardTab, HEADCOUNT_DEPARTMENT_KEYS } from './deptDashboard.js';
+import { renderHeadcountTallyTab } from './headcountTallyPage.js';
 import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab, openGuestOnboardingHub, openDirectory } from './superAdminHome.js';
@@ -17,6 +18,7 @@ import { createUserManagerModal } from './components/userManager.js';
 import { renderToolsTab } from './toolsPage.js';
 import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
+import { renderTaxTab } from './taxPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
@@ -102,15 +104,27 @@ const lazyTabs = {
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
   'dept-projection': renderDeptProjectionTab,
+  'headcount-tally': renderHeadcountTallyTab,
   'super-home': renderSuperAdminHomeTab,
   tools: renderToolsTab,
   training: renderTrainingTab,
   'service-program': renderServiceProgramTab,
+  tax: renderTaxTab,
   budget: renderBudgetPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
+
+// activateTab() only toggles a panel's visibility -- it never unmounts
+// or re-renders an already-loaded tab's DOM, so a tab whose data was
+// changed from somewhere ELSE (e.g. a Headcount Tally submission
+// changing what the Dashboard's headcount history table already
+// rendered) stays stale until this is called for it, forcing the next
+// visit to actually re-fetch instead of just un-hiding the old DOM.
+export function invalidateTabCache(name) {
+  loadedTabs.delete(name);
+}
 
 // Mirrors departments.js's ACTIVE_DEPT_STORAGE_KEY pattern -- lets a page
 // refresh land back on the tab the user was actually viewing instead of
@@ -309,6 +323,10 @@ function applyActiveDepartment() {
   forEachNavGroup('uniform-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers')));
   // Projection: its own page, Media & Tech only.
   forEachNavGroup('dept-projection-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
+  // Headcount Tally: Ushers/Welcoming & Socialisation/Ecodem, every
+  // approved member (not just admin/secretary) -- counting people at
+  // the door isn't an admin-only task.
+  forEachNavGroup('headcount-tally-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && HEADCOUNT_DEPARTMENT_KEYS.includes(active.key))));
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
@@ -325,6 +343,7 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
     loadedTabs.delete('dept-projection');
+    loadedTabs.delete('headcount-tally');
     activateTab(resolveLandingTab(previousTabName, active, false) || 'dept-dashboard');
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
@@ -352,7 +371,7 @@ function applyActiveDepartment() {
 // now there's just one list. No value to revert on cancel the way a
 // <select> needed -- nothing visually changes until this actually
 // commits, so a cancelled switch just returns without touching state.
-async function handleDepartmentSwitch(nextKey) {
+export async function handleDepartmentSwitch(nextKey) {
   const active = getActiveDepartment();
   const previousKey = active ? active.key : (isHomeActive() ? HOME_KEY : '');
 
@@ -1034,6 +1053,28 @@ function showStayConnectedPrompt() {
   });
 }
 
+// Deep-link support for a shared link/QR code (?open=<tab>&dept=<key>)
+// — the Headcount Tally tool's "Share Link" button encodes one of
+// these so scanning it, once signed in, lands straight on the right
+// department's tool instead of wherever normal landing logic would
+// otherwise choose. Only consulted once per page load (the query
+// string is stripped from the URL afterward) so a later refresh in
+// the same tab doesn't keep re-applying it over whatever the user has
+// since navigated to themselves.
+async function applyDeepLinkFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const openTab = params.get('open');
+  if (!openTab) return;
+
+  const deptKey = params.get('dept');
+  if (deptKey && getMyDepartments().some((d) => d.key === deptKey)) {
+    await handleDepartmentSwitch(deptKey);
+  }
+  if (lazyTabs[openTab]) activateTab(openTab);
+
+  history.replaceState(null, '', window.location.pathname + window.location.hash);
+}
+
 async function showApp(session, { isFreshSignIn = false } = {}) {
   if (isRecovering) return;
 
@@ -1099,6 +1140,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 
   populateDepartmentSwitcher();
   applyActiveDepartment();
+  await applyDeepLinkFromUrl();
   updateRoleSwitcherUI();
   updateViewAsUI();
   updatePreviewAsMemberUI();

@@ -23,7 +23,7 @@ import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { renderMeetingControls } from './components/videoMeeting.js';
 import { t, departmentLabel, departmentIcon, getLang } from './i18n.js';
 
-const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
+export const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
 // Matched by displayed label, not the raw departments.name column —
 // these are admin-created departments (the Create Department tool
 // generates the key from the name, so it's not guaranteed stable/

@@ -24,6 +24,7 @@ import { hasFinanceOversight, canApproveFinance, getMyDepartments, getActiveDepa
 import { renderMyFundRequests, renderFundRequestsInbox } from './budgetRequests.js';
 import { renderBudgetBoard } from './budgetBoard.js';
 import { createReimbursementRequestModal, createReimbursementInboxModal } from './reimbursementModal.js';
+import { renderTaxReceiptsAdminBoard } from './taxReceiptsAdminBoard.js';
 
 export async function renderBudgetCentralBoard(container, { supabase, currentUserId }) {
   const oversight = hasFinanceOversight();
@@ -68,6 +69,7 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
         <span data-el="pending-badge" class="hidden ml-1.5 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-xs font-bold"></span>
       </button>
       <button type="button" data-action="tab-report" class="px-4 py-2 rounded-lg text-sm font-medium">${t('budgetPage.budgetReportTab')}</button>
+      ${oversight ? `<button type="button" data-action="tab-tax" class="px-4 py-2 rounded-lg text-sm font-medium">${t('budgetPage.taxReceiptsTab')}</button>` : ''}
     </div>
     <div data-el="body"></div>
   `;
@@ -75,6 +77,7 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
   const bodyEl = container.querySelector('[data-el="body"]');
   const tabRequestsBtn = container.querySelector('[data-action="tab-requests"]');
   const tabReportBtn = container.querySelector('[data-action="tab-report"]');
+  const tabTaxBtn = container.querySelector('[data-action="tab-tax"]');
   const badgeEl = container.querySelector('[data-el="pending-badge"]');
 
   function setTabStyle(btn, isActive) {
@@ -87,12 +90,15 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
   function activate(tab) {
     setTabStyle(tabRequestsBtn, tab === 'requests');
     setTabStyle(tabReportBtn, tab === 'report');
+    if (tabTaxBtn) setTabStyle(tabTaxBtn, tab === 'tax');
     if (tab === 'requests') renderRequestsTab();
+    else if (tab === 'tax') renderTaxReceiptsAdminBoard(bodyEl, { supabase, currentUserId });
     else renderReportTab();
   }
 
   tabRequestsBtn.addEventListener('click', () => activate('requests'));
   tabReportBtn.addEventListener('click', () => activate('report'));
+  tabTaxBtn?.addEventListener('click', () => activate('tax'));
   activate('requests');
 
   function renderRequestsTab() {

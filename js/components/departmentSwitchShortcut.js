@@ -2,9 +2,11 @@
 // back to the main department switcher (top of the sidebar) to create
 // a schedule in a different department, jump straight there from
 // wherever you already are. Doesn't grant any new access — it drives
-// the exact same #department-switcher element the sidebar already has,
-// so it only ever offers departments this account can already reach.
+// the exact same handleDepartmentSwitch() the sidebar's own department
+// list uses, so it only ever offers departments this account can
+// already reach.
 import { getMyDepartments, getGlobalRole } from '../departments.js';
+import { handleDepartmentSwitch } from '../app.js';
 import { t, departmentLabel } from '../i18n.js';
 
 export function renderDepartmentSwitchShortcut(container, { activeKey }) {
@@ -29,10 +31,7 @@ export function renderDepartmentSwitchShortcut(container, { activeKey }) {
   `;
 
   container.querySelector('[data-el="switch-select"]').addEventListener('change', (e) => {
-    const globalSwitcher = document.querySelector('#department-switcher');
-    if (!globalSwitcher) return;
-    globalSwitcher.value = e.target.value;
-    globalSwitcher.dispatchEvent(new Event('change'));
+    handleDepartmentSwitch(e.target.value);
   });
 }
 

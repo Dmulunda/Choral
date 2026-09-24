@@ -415,6 +415,13 @@
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Service Program
           </button>
+          <!-- Donation totals + official year-end receipt, same
+               unconditional/everyone-gets-it placement as Academy and
+               Service Program above. See js/taxPage.js. -->
+          <button data-tab-target="tax" data-i18n="nav.tax"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Tax / Impôts
+          </button>
           <!-- Budget nav button is intentionally NOT here — unlike
                Academy/Service Program above, this one must leave zero
                trace for anyone who isn't a department admin/secretary or
@@ -482,6 +489,16 @@
           <button data-tab-target="dept-projection" data-i18n="nav.projection" id="dept-projection-nav-btn" data-nav-group="dept-projection-nav"
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Projection
+          </button>
+          <!-- Ushers/Welcoming & Socialisation/Ecodem only (see
+               HEADCOUNT_DEPARTMENT_KEYS in deptDashboard.js) — open to
+               every approved member of the department, not just an
+               admin/secretary, unlike every other nav item here, since
+               counting people at the door isn't an admin-only task.
+               See applyActiveDepartment() in app.js. -->
+          <button data-tab-target="headcount-tally" data-i18n="nav.headcountTally" id="headcount-tally-nav-btn" data-nav-group="headcount-tally-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Headcount Tally
           </button>
         </div>
       </nav>
@@ -570,6 +587,13 @@
         <div id="uniform-content"></div>
       </section>
 
+      <section data-tab-panel="headcount-tally" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.headcountTally">Headcount Tally</h1>
+        <div id="headcount-tally-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
       <section data-tab-panel="members" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-i18n="nav.members">Members</h1>
         <div id="members-content" class="bg-white rounded-xl shadow p-4 sm:p-6">
@@ -616,6 +640,15 @@
       <section data-tab-panel="service-program" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-i18n="nav.serviceProgram">Service Program</h1>
         <div id="service-program-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Tax / Impôts: running donation totals + official year-end
+           receipt once Finance finalizes a year. -->
+      <section data-tab-panel="tax" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.tax">Tax / Impôts</h1>
+        <div id="tax-content">
           <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
         </div>
       </section>
