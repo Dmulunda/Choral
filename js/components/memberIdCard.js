@@ -77,9 +77,15 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
 
   const isRevoked = !!profile.card_revoked_at;
 
-  const dateFmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+  // A plain "YYYY-MM-DD" string (birth_date, card_issued_at) gets parsed
+  // by `new Date(...)` as UTC midnight -- formatting that back in any
+  // timezone behind UTC rolls it back a day (e.g. entering March 24
+  // shows March 23). Appending a local (no "Z") time-of-day makes the
+  // Date constructor parse it in the browser's own timezone instead.
+  const parseLocalDate = (d) => (d instanceof Date ? d : new Date(`${d}T00:00:00`));
+  const dateFmt = (d) => d ? parseLocalDate(d).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
   const issuedDate = profile.card_issued_at || new Date().toISOString().slice(0, 10);
-  const expirationDate = new Date(issuedDate);
+  const expirationDate = parseLocalDate(issuedDate);
   expirationDate.setFullYear(expirationDate.getFullYear() + CARD_VALID_YEARS);
   const birthDateFmt = dateFmt(profile.birth_date);
   const birthLine = [profile.birth_city, profile.birth_country].filter(Boolean).join(', ') || '—';
