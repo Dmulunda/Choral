@@ -25,6 +25,7 @@ import { renderMyFundRequests, renderFundRequestsInbox } from './budgetRequests.
 import { renderBudgetBoard } from './budgetBoard.js';
 import { createReimbursementRequestModal, createReimbursementInboxModal } from './reimbursementModal.js';
 import { renderTaxReceiptsAdminBoard } from './taxReceiptsAdminBoard.js';
+import { renderDepartmentSwitchShortcut } from './departmentSwitchShortcut.js';
 
 export async function renderBudgetCentralBoard(container, { supabase, currentUserId }) {
   const oversight = hasFinanceOversight();
@@ -63,6 +64,7 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
   }
 
   container.innerHTML = `
+    <div data-el="dept-switch"></div>
     <div class="flex gap-2 mb-4">
       <button type="button" data-action="tab-requests" class="px-4 py-2 rounded-lg text-sm font-medium">
         ${t('budgetPage.fundRequestTab')}
@@ -73,6 +75,8 @@ export async function renderBudgetCentralBoard(container, { supabase, currentUse
     </div>
     <div data-el="body"></div>
   `;
+
+  renderDepartmentSwitchShortcut(container.querySelector('[data-el="dept-switch"]'), { activeKey: active?.key });
 
   const bodyEl = container.querySelector('[data-el="body"]');
   const tabRequestsBtn = container.querySelector('[data-action="tab-requests"]');

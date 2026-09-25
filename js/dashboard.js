@@ -7,6 +7,7 @@ import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { renderMeetingControls } from './components/videoMeeting.js';
 import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
+import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -25,6 +26,10 @@ export async function renderDashboardTab() {
   if (active) await ensureAgreementsSigned({ supabase, userId: user.id, departmentId: active.id });
 
   container.innerHTML = '';
+
+  const deptSwitchEl = document.createElement('div');
+  container.appendChild(deptSwitchEl);
+  renderDepartmentSwitchShortcut(deptSwitchEl, { activeKey: 'choir' });
 
   const dateHeaderEl = document.createElement('div');
   container.appendChild(dateHeaderEl);

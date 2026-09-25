@@ -21,6 +21,7 @@ import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
 import { renderHeadcountBoard } from './components/headcountBoard.js';
 import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { renderMeetingControls } from './components/videoMeeting.js';
+import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
 import { t, departmentLabel, departmentIcon, getLang } from './i18n.js';
 
 export const HEADCOUNT_DEPARTMENT_KEYS = ['ushers', 'welcoming_socialisation', 'ecodem'];
@@ -66,6 +67,8 @@ export async function renderDeptDashboardTab() {
       <div class="flex items-center gap-2 flex-wrap" data-el="header-actions"></div>
     </div>
 
+    <div data-el="dept-switch"></div>
+
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 max-w-xl" data-el="stats"></div>
 
     <div data-el="my-preaching"></div>
@@ -80,6 +83,7 @@ export async function renderDeptDashboardTab() {
   const widgetGridEl = container.querySelector('[data-el="widget-grid"]');
   const fullWidthEl = container.querySelector('[data-el="full-width"]');
 
+  renderDepartmentSwitchShortcut(container.querySelector('[data-el="dept-switch"]'), { activeKey: active.key });
   renderStats(statsEl, supabase, active.id);
 
   if (showMeeting) {
