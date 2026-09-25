@@ -46,6 +46,7 @@ import {
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
+  hasFinanceOversight,
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
@@ -182,6 +183,21 @@ function resolveLandingTab(previousTabName, active, isChoir) {
   if (target === 'uniform' && !(isChoir || active.key === 'ushers')) return null;
   if (target === 'dept-scheduling' && (active.key === 'finance' || active.key === 'church_program')) return null;
   return target;
+}
+
+// Budget isn't a choir/other pair like TAB_KIND_MAP's other entries —
+// it's the same single tab regardless of department, but only
+// actually meaningful for whoever can manage the newly-active
+// department's own budget (admin/secretary, mirrors
+// budgetCentralBoard.js's own activeIsLeader check) or someone with
+// cross-department finance oversight (Pastor/Church Secretary/Super
+// Admin/Finance admin, who see the same oversight view no matter
+// which department is active). Anyone else switching away from Budget
+// lands on Home instead of a Budget page they can't do anything with.
+function resolveBudgetLanding(active) {
+  if (hasFinanceOversight()) return 'budget';
+  if (active.role === 'admin' || active.role === 'secretary') return 'budget';
+  return 'super-home';
 }
 
 // Applies a visibility/state rule to every element sharing a given
@@ -328,10 +344,12 @@ function applyActiveDepartment() {
   // the door isn't an admin-only task.
   forEachNavGroup('headcount-tally-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && HEADCOUNT_DEPARTMENT_KEYS.includes(active.key))));
 
+  loadedTabs.delete('budget');
+
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     loadedTabs.delete('uniform');
-    activateTab(resolveLandingTab(previousTabName, active, true) || 'dashboard');
+    activateTab(previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, true) || 'dashboard'));
   } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
@@ -344,7 +362,7 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-scheduling');
     loadedTabs.delete('dept-projection');
     loadedTabs.delete('headcount-tally');
-    activateTab(resolveLandingTab(previousTabName, active, false) || 'dept-dashboard');
+    activateTab(previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, false) || 'dept-dashboard'));
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
     // 'custom') is handled above; kept as a fallback in case a future
