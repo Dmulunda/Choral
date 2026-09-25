@@ -564,22 +564,30 @@ notificationsBtn.addEventListener('click', () => runSidebarTool('notifications')
 // their sidebar nav entries); Budget only appears for department
 // leadership (mirrors updateBudgetNavVisibility()'s "zero trace" rule
 // -- built fresh each time this opens rather than once at load, same
-// reason); Dashboard only appears while a department is actually
-// active, since there's nothing to jump to on Home/Tools; Headcount
-// Tally only appears while a headcount-eligible department (Ushers/
-// Welcoming & Socialisation/Ecodem) is active, same gate as its own
-// sidebar nav entry.
+// reason); everything else here only appears while the relevant
+// department is active, mirroring each one's own sidebar nav-group
+// gate exactly (applyActiveDepartment() above): Dashboard/Scheduling
+// for any department, Uniform for Choir/Ushers, Projection for Media &
+// Tech, Headcount Tally for Ushers/Welcoming & Socialisation/Ecodem.
 const QUICK_ACCESS_ITEMS_CLASS = 'w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2.5';
 function buildQuickAccessItems() {
   const active = getActiveDepartment();
+  const isChoir = active?.key === 'choir';
   const items = [
     { icon: '🎓', label: t('nav.training'), tab: 'training' },
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
     { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
   ];
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
-  if (active) items.push({ icon: '📊', label: t('nav.dashboard'), tab: active.key === 'choir' ? 'dashboard' : 'dept-dashboard' });
-  if (active && HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
+  if (active) {
+    items.push({ icon: '📊', label: t('nav.dashboard'), tab: isChoir ? 'dashboard' : 'dept-dashboard' });
+    if (!(active.key === 'finance' || active.key === 'church_program')) {
+      items.push({ icon: '📅', label: t('nav.scheduling'), tab: isChoir ? 'scheduling' : 'dept-scheduling' });
+    }
+    if (isChoir || active.key === 'ushers') items.push({ icon: '🎽', label: t('nav.uniform'), tab: 'uniform' });
+    if (active.key === 'media_tech') items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
+    if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
+  }
   return items;
 }
 
