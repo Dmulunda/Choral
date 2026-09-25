@@ -567,8 +567,9 @@ notificationsBtn.addEventListener('click', () => runSidebarTool('notifications')
 // reason); everything else here only appears while the relevant
 // department is active, mirroring each one's own sidebar nav-group
 // gate exactly (applyActiveDepartment() above): Dashboard/Scheduling
-// for any department, Uniform for Choir/Ushers, Projection for Media &
-// Tech, Headcount Tally for Ushers/Welcoming & Socialisation/Ecodem.
+// for any department, Songbook/Voice Exercises/Uniform for Choir
+// (Uniform for Ushers too), Projection for Media & Tech, Headcount
+// Tally for Ushers/Welcoming & Socialisation/Ecodem.
 const QUICK_ACCESS_ITEMS_CLASS = 'w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2.5';
 function buildQuickAccessItems() {
   const active = getActiveDepartment();
@@ -584,6 +585,8 @@ function buildQuickAccessItems() {
     if (!(active.key === 'finance' || active.key === 'church_program')) {
       items.push({ icon: '📅', label: t('nav.scheduling'), tab: isChoir ? 'scheduling' : 'dept-scheduling' });
     }
+    if (isChoir) items.push({ icon: '🎵', label: t('nav.songbook'), tab: 'songbook' });
+    if (isChoir) items.push({ icon: '🎤', label: t('nav.voiceExercises'), tab: 'voice-exercises' });
     if (isChoir || active.key === 'ushers') items.push({ icon: '🎽', label: t('nav.uniform'), tab: 'uniform' });
     if (active.key === 'media_tech') items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
     if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
