@@ -2,10 +2,15 @@
 // (app.js's showApp), independent of which department tab is active,
 // since it needs to reach every member regardless of whether they
 // ever visit Church Program. Shows the flyer if one's been uploaded,
-// otherwise a "mark your calendar" placeholder — either way, it
-// reappears on every app load until the program's nearest upcoming
-// date passes (a multi-date program keeps popping up across all of
-// its dates, not just the first one).
+// otherwise a "mark your calendar" placeholder. Every special program
+// with an upcoming date gets its own pop-up, shown one after another
+// (soonest date first) -- not just the single nearest one -- each
+// advancing to the next only once the current one is dismissed. A
+// multi-date program still only queues once, using its own nearest
+// upcoming date, not once per date. No dismissal tracking (no
+// localStorage/seen-at) -- by design, the whole queue reappears on
+// every app load until a program's nearest date passes, same as
+// before.
 import { t } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
@@ -19,30 +24,42 @@ export async function checkSpecialProgramPopup(supabase) {
 
   if (!specialPrograms || specialPrograms.length === 0) return;
 
-  const { data: nextDate } = await supabase
+  const { data: dates } = await supabase
     .from('church_program_dates')
     .select('program_id, date')
     .in('program_id', specialPrograms.map((p) => p.id))
     .gte('date', todayLocal())
-    .order('date', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order('date', { ascending: true });
 
-  if (!nextDate) return;
+  if (!dates || dates.length === 0) return;
 
-  const program = specialPrograms.find((p) => p.id === nextDate.program_id);
-  if (!program) return;
+  const queuedProgramIds = new Set();
+  const queue = [];
+  for (const row of dates) {
+    if (queuedProgramIds.has(row.program_id)) continue;
+    const program = specialPrograms.find((p) => p.id === row.program_id);
+    if (!program) continue;
+    queuedProgramIds.add(row.program_id);
+    queue.push({ program, date: row.date });
+  }
+
+  showNextInQueue(supabase, queue);
+}
+
+async function showNextInQueue(supabase, queue) {
+  const next = queue.shift();
+  if (!next) return;
 
   let flyerUrl = null;
-  if (program.flyer_storage_path) {
-    const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(program.flyer_storage_path, 3600);
+  if (next.program.flyer_storage_path) {
+    const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(next.program.flyer_storage_path, 3600);
     flyerUrl = signed?.signedUrl || null;
   }
 
-  showPopup({ title: program.title, date: nextDate.date }, flyerUrl);
+  showPopup({ title: next.program.title, date: next.date }, flyerUrl, () => showNextInQueue(supabase, queue));
 }
 
-function showPopup(program, flyerUrl) {
+function showPopup(program, flyerUrl, onClose) {
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4';
   root.innerHTML = `
@@ -65,8 +82,9 @@ function showPopup(program, flyerUrl) {
     </div>
   `;
   document.body.appendChild(root);
-  root.querySelector('[data-action="close"]').addEventListener('click', () => root.remove());
-  root.addEventListener('click', (e) => { if (e.target === root) root.remove(); });
+  const advance = () => { root.remove(); onClose?.(); };
+  root.querySelector('[data-action="close"]').addEventListener('click', advance);
+  root.addEventListener('click', (e) => { if (e.target === root) advance(); });
 }
 
 function escapeHtml(str) {
