@@ -1,9 +1,11 @@
 // Digital Member ID Card — a two-sided official-style card (front:
 // photo, name, sex, member_code, function, parish, issue/expiration
-// dates, QR; back: birth info, join date, address, signatures) in this
-// app's own navy/gold branding — modeled on a reference design the
-// user provided, with our own colors/logo rather than copying its
-// color scheme.
+// dates, QR; back: birth country/city, birthday, address, signatures)
+// in this app's own navy/gold branding — modeled on a reference design
+// the user provided, with our own colors/logo rather than copying its
+// color scheme. The back used to show "Member since" (profiles.created_at)
+// in that slot; this is the first place profiles.birth_date is
+// actually collected/shown, so it replaced it.
 //
 // member_code (sql/083) is used instead of the raw profile UUID since
 // this gets printed/shared. sex/parish/member_title/card_issued_at/
@@ -54,7 +56,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
       .from('profiles')
       .select(`
         full_name, member_code, photo_path, address, sex, member_title, parish,
-        birth_country, birth_city, global_role, created_at,
+        birth_date, birth_country, birth_city, global_role,
         card_issued_at, card_revoked_at, signature_data
       `)
       .eq('id', userId)
@@ -75,11 +77,17 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
 
   const isRevoked = !!profile.card_revoked_at;
 
-  const dateFmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+  // A plain "YYYY-MM-DD" string (birth_date, card_issued_at) gets parsed
+  // by `new Date(...)` as UTC midnight -- formatting that back in any
+  // timezone behind UTC rolls it back a day (e.g. entering March 24
+  // shows March 23). Appending a local (no "Z") time-of-day makes the
+  // Date constructor parse it in the browser's own timezone instead.
+  const parseLocalDate = (d) => (d instanceof Date ? d : new Date(`${d}T00:00:00`));
+  const dateFmt = (d) => d ? parseLocalDate(d).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
   const issuedDate = profile.card_issued_at || new Date().toISOString().slice(0, 10);
-  const expirationDate = new Date(issuedDate);
+  const expirationDate = parseLocalDate(issuedDate);
   expirationDate.setFullYear(expirationDate.getFullYear() + CARD_VALID_YEARS);
-  const joinedDate = dateFmt(profile.created_at);
+  const birthDateFmt = dateFmt(profile.birth_date);
   const birthLine = [profile.birth_city, profile.birth_country].filter(Boolean).join(', ') || '—';
   const sexLabel = profile.sex === 'M' ? t('memberCard.male') : profile.sex === 'F' ? t('memberCard.female') : '—';
   // Falls back to the platform default only if this tenant hasn't
@@ -101,7 +109,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
           <div style="flex:1;font-size:11px;line-height:1.55;">
             ${fieldRow(t('memberCard.fullName'), profile.full_name)}
             ${fieldRow(t('memberCard.sex'), sexLabel)}
-            ${fieldRow(t('memberCard.matricule'), profile.member_code)}
+            ${fieldRow(t('memberCard.birthDate'), birthDateFmt)}
             ${fieldRow(t('memberCard.function'), functionLabel(profile.member_title))}
             ${fieldRow(t('memberCard.parish'), profile.parish || '—')}
             ${fieldRow(t('memberCard.issuedOn'), dateFmt(issuedDate))}
@@ -116,7 +124,6 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
         <div style="display:flex;gap:12px;padding:12px 16px;flex:1;">
           <div style="flex:1;font-size:11px;line-height:1.55;">
             ${fieldRow(t('memberCard.birthInfo'), birthLine)}
-            ${fieldRow(t('memberCard.joinedOn'), joinedDate)}
             ${fieldRow(t('memberCard.address'), profile.address || '—')}
             <div style="display:flex;gap:24px;margin-top:12px;">
               ${signatureBlock(t('memberCard.memberSignature'), profile.signature_data)}
@@ -130,7 +137,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
           </div>
         </div>
         <div style="background:${GOLD};color:${NAVY};font-size:10px;font-weight:700;text-align:center;padding:5px;letter-spacing:0.5px;">
-          ${escapeHtml(t('memberCard.churchFullName'))}
+          ${escapeHtml(churchName)}
         </div>
         ${isRevoked ? revokedStamp() : ''}
       </div>

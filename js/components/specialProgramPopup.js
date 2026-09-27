@@ -2,16 +2,41 @@
 // (app.js's showApp), independent of which department tab is active,
 // since it needs to reach every member regardless of whether they
 // ever visit Church Program. Shows the flyer if one's been uploaded,
-// otherwise a "mark your calendar" placeholder — either way, it
-// reappears on every app load until the program's nearest upcoming
-// date passes (a multi-date program keeps popping up across all of
-// its dates, not just the first one).
+// otherwise a "mark your calendar" placeholder — throttled to once per
+// calendar day per browser (see POPUP_SEEN_KEY below): once it's shown
+// today, it won't show again until tomorrow, even across multiple app
+// loads/reloads today. It still reappears day after day until the
+// program's nearest upcoming date passes (a multi-date program keeps
+// popping up across all of its dates, not just the first one).
 import { t } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
 const FLYER_BUCKET = 'church-program-flyers';
 
+// Same "once per calendar day" pattern as app.js's trial banner
+// dismissal (TRIAL_BANNER_DISMISS_KEY) — compares toDateString(), not a
+// rolling 24h window, so it resets at local midnight rather than
+// exactly 24 hours after the last popup.
+const POPUP_SEEN_KEY = 'choir-hub-special-program-popup-seen-on';
+
+// app.js's showApp() actually runs TWICE on a normal page load
+// (supabase-js fires both getSession().then() and the initial
+// onAuthStateChange callback, and both call showApp() -- see its own
+// comment on hasHandledInitialAuthEvent), so this gets called twice in
+// quick succession. The localStorage write below only lands after an
+// async fetch, so both calls would read the pre-write "not seen yet"
+// state and both show a popup -- a synchronous, same-page-load guard is
+// needed in addition to the day-based one, set BEFORE any await so
+// there's no window for the second near-simultaneous call to slip
+// through.
+let checkedThisPageLoad = false;
+
 export async function checkSpecialProgramPopup(supabase) {
+  if (checkedThisPageLoad) return;
+  const today = new Date().toDateString();
+  if (localStorage.getItem(POPUP_SEEN_KEY) === today) return;
+  checkedThisPageLoad = true;
+
   const { data: specialPrograms } = await supabase
     .from('church_programs')
     .select('id, title, flyer_storage_path')
@@ -40,6 +65,7 @@ export async function checkSpecialProgramPopup(supabase) {
   }
 
   showPopup({ title: program.title, date: nextDate.date }, flyerUrl);
+  localStorage.setItem(POPUP_SEEN_KEY, today);
 }
 
 function showPopup(program, flyerUrl) {

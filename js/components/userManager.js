@@ -104,7 +104,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
     if (scope.type === 'department') {
       const { data, error } = await supabase
         .from('department_memberships')
-        .select('id, role, status, user_id, member:profiles!user_id ( id, full_name, phone, address, photo_path, member_title, parish, sex, birth_country, birth_city, card_revoked_at, signature_data, voice_parts, media_tech_skills, profile_emails ( email ) )')
+        .select('id, role, status, user_id, member:profiles!user_id ( id, full_name, phone, address, photo_path, member_title, parish, sex, birth_date, birth_country, birth_city, card_revoked_at, signature_data, voice_parts, media_tech_skills, profile_emails ( email ) )')
         .eq('department_id', scope.departmentId)
         .eq('status', 'approved');
 
@@ -125,6 +125,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
           member_title: r.member.member_title,
           parish: r.member.parish,
           sex: r.member.sex,
+          birth_date: r.member.birth_date,
           birth_country: r.member.birth_country,
           birth_city: r.member.birth_city,
           card_revoked_at: r.member.card_revoked_at,
@@ -138,7 +139,7 @@ export function renderUserManager(container, { supabase, scope, currentUserId })
         .sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else {
       const [{ data: profiles, error: profilesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, phone, address, photo_path, member_title, parish, sex, birth_country, birth_city, card_revoked_at, signature_data, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, can_view_all_departments, can_manage_pastoral_cases, can_post_global_announcements, can_message_any_member, can_approve_any_membership, profile_emails ( email )').order('full_name'),
+        supabase.from('profiles').select('id, full_name, phone, address, photo_path, member_title, parish, sex, birth_date, birth_country, birth_city, card_revoked_at, signature_data, global_role, removed_at, permanently_deleted_at, is_primary_admin, is_school_admin, can_view_all_departments, can_manage_pastoral_cases, can_post_global_announcements, can_message_any_member, can_approve_any_membership, profile_emails ( email )').order('full_name'),
         supabase.from('department_memberships').select('user_id, role, status, departments ( key, name )').eq('status', 'approved'),
       ]);
 

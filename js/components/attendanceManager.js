@@ -323,7 +323,7 @@ export function createAttendanceManagerModal({ supabase, currentUserId }) {
     root.classList.remove('flex');
   }
 
-  return { open };
+  return { open, root };
 }
 
 function escapeHtml(str) {

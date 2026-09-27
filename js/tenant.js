@@ -8,7 +8,11 @@
 // tenant's data, because the database never returns it in the first place.
 import { supabase } from './supabaseClient.js';
 
-let myTenant = null; // { id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url } | null
+const TENANT_COLUMNS = 'id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url, denomination_id';
+
+let myTenant = null; // { id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url, denomination_id } | null
+let myHomeTenantId = null; // profiles.tenant_id, always the caller's own tenant -- never the one they're acting as
+let myActingTenantId = null; // profiles.acting_as_tenant_id, or null when not acting as an extension
 
 export async function loadMyTenant(userId) {
   const { data: profile } = await supabase
@@ -18,16 +22,46 @@ export async function loadMyTenant(userId) {
     // reading it off getTenant() -- the upload itself worked fine
     // (tenantLogoModal.js writes tenants.logo_url correctly), it just
     // never made it into this cached object for anything else to read.
-    .select('tenant_id, tenants ( id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url )')
+    //
+    // Two explicit FK hints are required here: profiles now has TWO
+    // foreign keys into tenants (tenant_id, and acting_as_tenant_id for
+    // Church Extensions -- see 34_church_extensions.sql), so the bare
+    // `tenants ( ... )` embed PostgREST used before that migration is
+    // now ambiguous and errors.
+    //
+    // The home_tenant embed is only reliably readable while NOT acting
+    // as an extension -- tenants' own RLS policy is `id =
+    // current_tenant_id()`, and current_tenant_id() resolves to the
+    // ACTING tenant whenever one is set, so home_tenant comes back null
+    // in that case (fine: acting_tenant covers branding then). Whether
+    // we're acting at all is therefore determined below from the two
+    // plain scalar columns on profiles itself, never from these embeds.
+    .select(`
+      tenant_id, acting_as_tenant_id,
+      home_tenant:tenants!profiles_tenant_id_fkey ( ${TENANT_COLUMNS} ),
+      acting_tenant:tenants!profiles_acting_as_tenant_id_fkey ( ${TENANT_COLUMNS} )
+    `)
     .eq('id', userId)
     .single();
 
-  myTenant = profile?.tenants || null;
+  myHomeTenantId = profile?.tenant_id || null;
+  myActingTenantId = profile?.acting_as_tenant_id || null;
+  // Branding/org-name display only -- real data access is always scoped
+  // server-side by current_tenant_id(), which independently re-verifies
+  // denomination_admins membership on every call (see
+  // 34_church_extensions.sql). If that membership were ever revoked
+  // while acting_as_tenant_id is still set, this could briefly show the
+  // wrong name; it can never show the wrong data.
+  myTenant = profile?.acting_tenant || profile?.home_tenant || null;
   return myTenant;
 }
 
 export function getTenant() {
   return myTenant;
+}
+
+export function isActingAsExtension() {
+  return !!myActingTenantId && myActingTenantId !== myHomeTenantId;
 }
 
 export function getTenantId() {

@@ -71,7 +71,7 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
             <input type="text" name="parish" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
         </div>
-        <div class="grid sm:grid-cols-3 gap-4">
+        <div class="grid sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('memberCard.sex')}</label>
             <select name="sex" class="w-full border border-slate-300 rounded-lg px-3 py-2">
@@ -80,6 +80,12 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
               <option value="F">${t('memberCard.female')}</option>
             </select>
           </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthDate')}</label>
+            <input type="date" name="birth_date" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthCountry')}</label>
             <input type="text" name="birth_country" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
@@ -382,6 +388,7 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
       member_title: form.elements.member_title.value || null,
       parish: form.elements.parish.value.trim() || null,
       sex: form.elements.sex.value || null,
+      birth_date: form.elements.birth_date.value || null,
       birth_country: form.elements.birth_country.value.trim() || null,
       birth_city: form.elements.birth_city.value.trim() || null,
       signature_data: signaturePad.isEmpty() ? null : signaturePad.toDataUrl(),
@@ -429,6 +436,7 @@ export function createUserEditModal({ supabase, currentUserId, onSaved }) {
     form.elements.member_title.value = user.member_title || '';
     form.elements.parish.value = user.parish || '';
     form.elements.sex.value = user.sex || '';
+    form.elements.birth_date.value = user.birth_date || '';
     form.elements.birth_country.value = user.birth_country || '';
     form.elements.birth_city.value = user.birth_city || '';
     signaturePad.clear();

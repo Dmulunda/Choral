@@ -8,6 +8,20 @@
 // Stripe's hosted pages and back; it never writes billing state itself.
 import { t } from '../i18n.js';
 
+// Core functionality included in every tier -- not gated per plan, so
+// not stored in plan_features (that table is only for things a plan
+// can turn on/off, like vpd_academy).
+const BASE_FEATURE_KEYS = [
+  'plans.featureChoirManagement',
+  'plans.featureMemberManagement',
+  'plans.featureDepartmentManagement',
+  'plans.featureProgramsEvents',
+  'plans.featureFinancialManagement',
+  'plans.featurePastoralScheduling',
+  'plans.featureAttendanceTracking',
+  'plans.featureTeamScheduling',
+];
+
 export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCustomerId }) {
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4 overflow-y-auto';
@@ -39,7 +53,11 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
 
     const { data: plans, error } = await supabase
       .from('plans')
-      .select('id, key, name, price_cents, billing_interval, stripe_price_id, plan_features ( features ( key, name ) )')
+      .select(`
+        id, key, name, price_cents, billing_interval, stripe_price_id,
+        max_extensions, max_super_admins_per_tenant, max_members, storage_gb,
+        plan_features ( features ( key, name ) )
+      `)
       .order('price_cents');
 
     if (error) {
@@ -63,19 +81,38 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
 
       const price = plan.price_cents === 0
         ? t('plans.free')
-        : `$${(plan.price_cents / 100).toFixed(0)}${t('plans.perMonth')}`;
+        // toFixed(0) previously rounded 59.99/99.99/199.99 to whole
+        // dollars ($60/$100/$200) -- keep the exact cents, comma as the
+        // decimal separator per how these prices were given (59,99).
+        : `$${(plan.price_cents / 100).toFixed(2).replace('.', ',')}${t('plans.perMonth')}`;
 
-      const features = plan.plan_features.map((pf) => pf.features);
+      // 'vpd_academy' gets its own dedicated bullet below (bundled with
+      // the storage figure it implies) instead of appearing twice --
+      // any OTHER feature ever added to plan_features still shows here.
+      const features = plan.plan_features.map((pf) => pf.features).filter((f) => f.key !== 'vpd_academy');
+      const hasCourses = plan.plan_features.some((pf) => pf.features.key === 'vpd_academy');
+
+      const limitBullets = buildLimitBullets(plan, hasCourses);
+      // Base functionality every tier includes -- Max/Premium's own copy
+      // literally reads "Everything in Pro/Max, plus:", so this list is
+      // identical on all three cards, not gated per plan.
+      const bulletList = (items) => items.map((b) => `<li class="flex items-start gap-1.5"><span class="text-emerald-600">✓</span> ${b}</li>`).join('');
 
       card.innerHTML = `
         ${isCurrent ? `<p class="text-xs font-semibold text-indigo-600 mb-1">${t('plans.currentPlan')}</p>` : ''}
         <h3 class="text-lg font-bold text-slate-800">${escapeHtml(plan.name)}</h3>
         <p class="text-2xl font-bold text-slate-900 mb-3">${price}</p>
-        <ul class="text-sm text-slate-600 space-y-1.5 mb-4 flex-1">
-          ${features.length
-            ? features.map((f) => `<li class="flex items-start gap-1.5"><span class="text-emerald-600">✓</span> ${escapeHtml(f.name)}</li>`).join('')
-            : `<li class="text-slate-400">${t('plans.basicFeaturesOnly')}</li>`}
-        </ul>
+        <div class="flex-1 mb-4">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${t('plans.accessHeading')}</p>
+          <ul class="text-sm text-slate-600 space-y-1.5 mb-3">
+            ${bulletList(limitBullets)}
+            ${bulletList(features.map((f) => escapeHtml(f.name)))}
+          </ul>
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${t('plans.featuresHeading')}</p>
+          <ul class="text-sm text-slate-600 space-y-1.5">
+            ${bulletList(BASE_FEATURE_KEYS.map((key) => t(key)))}
+          </ul>
+        </div>
       `;
 
       // Only checkout-able plans get a button -- Basic has no
@@ -124,6 +161,36 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
   }
 
   return { open };
+}
+
+function buildLimitBullets(plan, hasCourses) {
+  const bullets = [];
+
+  if (plan.max_extensions === 0) {
+    bullets.push(t('plans.limitNoExtensions'));
+  } else if (plan.max_extensions === null) {
+    bullets.push(t('plans.limitExtensionsUnlimited'));
+  } else {
+    bullets.push(t('plans.limitExtensionsUpTo', { count: plan.max_extensions }));
+  }
+
+  bullets.push(plan.max_super_admins_per_tenant === null
+    ? t('plans.limitSuperAdminsUnlimited')
+    : t('plans.limitSuperAdmins', { count: plan.max_super_admins_per_tenant }));
+
+  bullets.push(plan.max_members === null
+    ? t('plans.limitMembersUnlimited')
+    : t('plans.limitMembers', { count: plan.max_members }));
+
+  bullets.push(t('plans.limitProjection'));
+
+  bullets.push(hasCourses ? t('plans.limitCoursesIncluded') : t('plans.limitCoursesNotIncluded'));
+
+  if (hasCourses) {
+    bullets.push(plan.storage_gb === null ? t('plans.limitStorageUnlimited') : t('plans.limitStorage', { count: plan.storage_gb }));
+  }
+
+  return bullets;
 }
 
 function escapeHtml(str) {

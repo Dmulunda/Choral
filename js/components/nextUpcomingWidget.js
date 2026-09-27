@@ -18,13 +18,13 @@ export function renderNextUpcomingWidget(container, { supabase, departmentId, de
   const load = RENDERERS[departmentKey] || loadShift;
 
   container.innerHTML = `
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('dashboard.today')}</h2>
-      <div data-el="today-body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
+    <div class="bg-white rounded-xl border border-slate-100 p-4">
+      <h2 class="text-[12.5px] font-bold text-slate-900 mb-2.5">📅 ${t('dashboard.today')}</h2>
+      <div data-el="today-body" class="text-[12px] text-slate-500 space-y-2.5">${t('common.loading')}</div>
     </div>
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('dashboard.thisWeekSchedule')}</h2>
-      <div data-el="week-body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
+    <div class="bg-white rounded-xl border border-slate-100 p-4">
+      <h2 class="text-[12.5px] font-bold text-slate-900 mb-2.5">📆 ${t('dashboard.thisWeekSchedule')}</h2>
+      <div data-el="week-body" class="text-[12px] text-slate-500 space-y-2.5">${t('common.loading')}</div>
     </div>
   `;
   const todayEl = container.querySelector('[data-el="today-body"]');
@@ -92,7 +92,7 @@ function buildPreachingHtml(rows) {
   return rows.map((row) => {
     const preacherName = row.preacher?.full_name || row.preacher_name;
     return `
-      <div class="border border-slate-200 rounded-lg p-3">
+      <div class="border border-slate-100 rounded-lg p-3">
         <div class="font-medium text-slate-800">${escapeHtml(row.sermon_theme || t('preaching.noSermonTheme'))} <span class="text-slate-400 font-normal">— ${escapeHtml(row.date)}</span></div>
         <div class="text-slate-600 mt-1 text-sm">
           ${t('preaching.moderator')}: ${row.moderator?.full_name ? escapeHtml(row.moderator.full_name) : '—'}
@@ -127,7 +127,7 @@ function buildMediaTechHtml(rows) {
   });
 
   return Array.from(byDate.entries()).map(([date, roleMap]) => `
-    <div class="border border-slate-200 rounded-lg p-3">
+    <div class="border border-slate-100 rounded-lg p-3">
       <div class="font-medium text-slate-800 mb-1">${escapeHtml(date)}</div>
       <div class="space-y-1 text-sm">
         ${Array.from(roleMap.entries()).map(([role, names]) => `
@@ -159,7 +159,7 @@ function buildEcodemHtml(rows) {
   });
 
   return Array.from(byDate.entries()).map(([date, sessions]) => `
-    <div class="border border-slate-200 rounded-lg p-3">
+    <div class="border border-slate-100 rounded-lg p-3">
       <div class="font-medium text-slate-800 mb-1">${escapeHtml(date)}</div>
       <div class="grid sm:grid-cols-3 gap-3 text-sm">
         ${sessions.map((session) => {
@@ -198,7 +198,7 @@ function buildShiftHtml(rows, uniformMap) {
   return rows.map((row) => {
     const names = (row.department_shift_assignments || []).map((a) => a.assignee?.full_name).filter(Boolean);
     return `
-      <div class="border border-slate-200 rounded-lg p-3">
+      <div class="border border-slate-100 rounded-lg p-3">
         <div class="font-medium text-slate-800">${escapeHtml(row.title)} <span class="text-slate-400 font-normal">— ${escapeHtml(row.date)}</span></div>
         ${row.notes ? `<p class="text-slate-600 mt-1 text-sm">${escapeHtml(row.notes)}</p>` : ''}
         <div class="text-slate-500 mt-1 text-sm">${names.length > 0 ? names.map(escapeHtml).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
@@ -208,12 +208,21 @@ function buildShiftHtml(rows, uniformMap) {
   }).join('');
 }
 
+function emptyHtml(message) {
+  return `
+    <div class="flex items-start gap-2 py-0.5">
+      <span class="text-lg opacity-50">🗓️</span>
+      <span class="text-[11.5px] text-slate-400 leading-snug pt-0.5">${message}</span>
+    </div>
+  `;
+}
+
 function noneTodayHtml() {
-  return `<p class="text-slate-400">${t('dashboard.nothingToday')}</p>`;
+  return emptyHtml(t('dashboard.nothingToday'));
 }
 
 function noneElseHtml() {
-  return `<p class="text-slate-400">${t('dashboard.nothingElseThisWeek')}</p>`;
+  return emptyHtml(t('dashboard.nothingElseThisWeek'));
 }
 
 function errorHtml(error) {

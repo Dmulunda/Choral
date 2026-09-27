@@ -38,14 +38,20 @@ export function navigateMeetingWindow(win, { roomName, displayName }) {
 // Jitsi branch, so departments with a fixed link skip that fetch
 // entirely — matches window.prompt's use elsewhere in this app
 // (courseBuilder.js) as the lightweight single-field input pattern.
-export function renderMeetingControls(container, { supabase, active, canAdminister, getDisplayName, onLinkChanged }) {
+// `wrapperClass` lets a caller with its own layout (deptDashboard.js's
+// header toolbar) drop the default spacing/margin this used to always
+// carry, without changing the button styling or the mounting contract
+// (still just appends into whatever `container` is passed) -- so
+// dashboard.js's existing call (Choir's own dashboard) keeps working
+// unchanged.
+export function renderMeetingControls(container, { supabase, active, canAdminister, getDisplayName, onLinkChanged, wrapperClass }) {
   const row = document.createElement('div');
-  row.className = 'flex items-center gap-2 mb-6';
+  row.className = wrapperClass || 'flex items-center gap-2 mb-6';
   container.appendChild(row);
 
   const meetingBtn = document.createElement('button');
   meetingBtn.type = 'button';
-  meetingBtn.className = 'px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700';
+  meetingBtn.className = 'px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 whitespace-nowrap';
   meetingBtn.textContent = t('meeting.start');
   row.appendChild(meetingBtn);
   meetingBtn.addEventListener('click', async () => {
@@ -61,7 +67,7 @@ export function renderMeetingControls(container, { supabase, active, canAdminist
   if (canAdminister) {
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
-    editBtn.className = 'px-3 py-1.5 rounded-lg text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100';
+    editBtn.className = 'px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600 whitespace-nowrap';
     editBtn.textContent = active.meeting_link ? t('meeting.editLink') : t('meeting.setLink');
     row.appendChild(editBtn);
     editBtn.addEventListener('click', async () => {

@@ -42,6 +42,11 @@ export function createMyProfileModal({ supabase, userId }) {
           <input type="file" accept="image/*" data-el="photo-input" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
         <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.legalName')}</label>
+          <input type="text" name="legal_name" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          <p class="text-xs text-slate-400 mt-1">${t('myProfile.legalNameHint')}</p>
+        </div>
+        <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.address')}</label>
           <input type="text" name="address" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
         </div>
@@ -68,6 +73,10 @@ export function createMyProfileModal({ supabase, userId }) {
             <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthCity')}</label>
             <input type="text" name="birth_city" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
           </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthDate')}</label>
+          <input type="date" name="birth_date" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.signature')}</label>
@@ -108,10 +117,12 @@ export function createMyProfileModal({ supabase, userId }) {
     root.classList.remove('hidden');
     root.classList.add('flex');
 
-    const { data: profile } = await supabase.from('profiles').select('address, sex, parish, birth_country, birth_city, signature_data').eq('id', userId).single();
+    const { data: profile } = await supabase.from('profiles').select('legal_name, address, sex, parish, birth_date, birth_country, birth_city, signature_data').eq('id', userId).single();
+    form.elements.legal_name.value = profile?.legal_name || '';
     form.elements.address.value = profile?.address || '';
     form.elements.sex.value = profile?.sex || '';
     form.elements.parish.value = profile?.parish || '';
+    form.elements.birth_date.value = profile?.birth_date || '';
     form.elements.birth_country.value = profile?.birth_country || '';
     form.elements.birth_city.value = profile?.birth_city || '';
     signaturePad.clear();
@@ -138,9 +149,11 @@ export function createMyProfileModal({ supabase, userId }) {
     formStatusEl.textContent = t('common.saving');
 
     const update = {
+      legal_name: form.elements.legal_name.value.trim() || null,
       address: form.elements.address.value.trim() || null,
       sex: form.elements.sex.value || null,
       parish: form.elements.parish.value.trim() || null,
+      birth_date: form.elements.birth_date.value || null,
       birth_country: form.elements.birth_country.value.trim() || null,
       birth_city: form.elements.birth_city.value.trim() || null,
       signature_data: signaturePad.isEmpty() ? null : signaturePad.toDataUrl(),
