@@ -7,16 +7,40 @@
 // (soonest date first) -- not just the single nearest one -- each
 // advancing to the next only once the current one is dismissed. A
 // multi-date program still only queues once, using its own nearest
-// upcoming date, not once per date. No dismissal tracking (no
-// localStorage/seen-at) -- by design, the whole queue reappears on
-// every app load until a program's nearest date passes, same as
-// before.
+// upcoming date, not once per date. Throttled to once per calendar day
+// per browser (see POPUP_SEEN_KEY below): once the queue has been
+// shown today, it won't start again until tomorrow, even across
+// multiple app loads/reloads today. It still reappears day after day
+// until a program's nearest date passes.
 import { t } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
 const FLYER_BUCKET = 'church-program-flyers';
 
+// Same "once per calendar day" pattern as app.js's trial banner
+// dismissal (TRIAL_BANNER_DISMISS_KEY) — compares toDateString(), not a
+// rolling 24h window, so it resets at local midnight rather than
+// exactly 24 hours after the last popup.
+const POPUP_SEEN_KEY = 'choir-hub-special-program-popup-seen-on';
+
+// app.js's showApp() actually runs TWICE on a normal page load
+// (supabase-js fires both getSession().then() and the initial
+// onAuthStateChange callback, and both call showApp() -- see its own
+// comment on hasHandledInitialAuthEvent), so this gets called twice in
+// quick succession. The localStorage write below only lands after an
+// async fetch, so both calls would read the pre-write "not seen yet"
+// state and both start their own queue -- a synchronous, same-page-load
+// guard is needed in addition to the day-based one, set BEFORE any
+// await so there's no window for the second near-simultaneous call to
+// slip through.
+let checkedThisPageLoad = false;
+
 export async function checkSpecialProgramPopup(supabase) {
+  if (checkedThisPageLoad) return;
+  const today = new Date().toDateString();
+  if (localStorage.getItem(POPUP_SEEN_KEY) === today) return;
+  checkedThisPageLoad = true;
+
   const { data: specialPrograms } = await supabase
     .from('church_programs')
     .select('id, title, flyer_storage_path')
@@ -43,6 +67,9 @@ export async function checkSpecialProgramPopup(supabase) {
     queue.push({ program, date: row.date });
   }
 
+  if (queue.length === 0) return;
+
+  localStorage.setItem(POPUP_SEEN_KEY, today);
   showNextInQueue(supabase, queue);
 }
 
