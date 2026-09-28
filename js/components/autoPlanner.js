@@ -121,6 +121,7 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
   let availableSingers = [];
   let existingAssignments = []; // [{ voice_part, singer }] — the currently saved roster, if any
   let roster = []; // [{ voice_part, required, slots: [singerId|null, ...], shortage }]
+  let conflictMap = new Map(); // user_id -> department name, for anyone already assigned elsewhere that day
 
   container.innerHTML = `
     <div class="space-y-6">
@@ -201,6 +202,22 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
       availableSingers = singers;
       existingAssignments = await getExistingAssignments(supabase, planId);
       roster = generateRoster(availableSingers, readRequirements(), existingAssignments);
+
+      // Plain-text "already in {department}" note next to a candidate's
+      // name -- native <option> elements can't render bold/color, so
+      // this can't be a richer visual warning. Choir has no single
+      // fixed departmentId in scope here (unlike the other boards),
+      // so it's looked up by key once per generate() call.
+      const { data: choirDept } = await supabase.from('departments').select('id').eq('key', 'choir').single();
+      if (choirDept) {
+        const { data: conflictRows } = await supabase.rpc('get_all_schedule_conflicts_for_date', {
+          p_date: dateStr, p_exclude_department_id: choirDept.id,
+        });
+        conflictMap = new Map((conflictRows || []).map((r) => [r.user_id, r.department_name]));
+      } else {
+        conflictMap = new Map();
+      }
+
       renderResults();
       statusEl.textContent = tn('planner.singersAvailable', availableSingers.length, { date: dateStr });
     } catch (error) {
@@ -211,7 +228,9 @@ export function renderAdminAutoPlanner(container, { supabase, adminUserId }) {
   }
 
   function singerLabel(singer) {
-    return singer.instrument_name ? `${singer.full_name} (${singer.instrument_name})` : singer.full_name;
+    const base = singer.instrument_name ? `${singer.full_name} (${singer.instrument_name})` : singer.full_name;
+    const conflictDept = conflictMap.get(singer.id);
+    return conflictDept ? `${base} (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : base;
   }
 
   function renderResults() {

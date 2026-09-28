@@ -127,10 +127,18 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
   // Excludes anyone who reported themselves unavailable for the
   // selected date, so scheduling someone who already said they can't
   // make it isn't even possible.
-  function renderWorkerOptions(unavailableIds) {
+  //
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color).
+  function renderWorkerOptions(unavailableIds, conflictMap = new Map()) {
     const options = allMembers
       .filter((m) => !unavailableIds.has(m.user_id))
-      .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+      .map((m) => {
+        const conflictDept = conflictMap.get(m.user_id);
+        const note = conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+        return `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}${note}</option>`;
+      })
       .join('');
 
     AGE_GROUPS.forEach((group) => {
@@ -150,15 +158,19 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
       return;
     }
 
-    const [{ data: sessions }, { data: unavailableRows }] = await Promise.all([
+    const [{ data: sessions }, { data: unavailableRows }, { data: conflictRows }] = await Promise.all([
       supabase
         .from('ecodem_sessions')
         .select('id, age_group, topic, ecodem_session_workers ( user_id, worker:profiles!user_id ( full_name ) )')
         .eq('date', dateStr),
       supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
     ]);
 
-    renderWorkerOptions(new Set((unavailableRows || []).map((r) => r.user_id)));
+    renderWorkerOptions(
+      new Set((unavailableRows || []).map((r) => r.user_id)),
+      new Map((conflictRows || []).map((r) => [r.user_id, r.department_name])),
+    );
 
     AGE_GROUPS.forEach((group) => { container.querySelector(`[data-group-topic="${group}"]`).value = ''; });
 

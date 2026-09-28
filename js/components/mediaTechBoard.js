@@ -183,11 +183,19 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   // singers to their own voice part. Also excludes anyone who reported
   // themselves unavailable for the selected date, so scheduling someone
   // who already said they can't make it isn't even possible.
-  function renderRoleOptions(unavailableIds) {
+  //
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color).
+  function renderRoleOptions(unavailableIds, conflictMap = new Map()) {
     ROLES.forEach((role) => {
       const options = allMembers
         .filter((m) => (m.member.media_tech_skills || []).includes(role) && !unavailableIds.has(m.user_id))
-        .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+        .map((m) => {
+          const conflictDept = conflictMap.get(m.user_id);
+          const note = conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+          return `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}${note}</option>`;
+        })
         .join('');
       container.querySelector(`[data-role-select="${role}"]`).innerHTML = options;
     });
@@ -196,15 +204,19 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   async function prefillFromDate(dateStr) {
     if (!dateStr) { renderRoleOptions(new Set()); return; }
 
-    const [{ data }, { data: unavailableRows }] = await Promise.all([
+    const [{ data }, { data: unavailableRows }, { data: conflictRows }] = await Promise.all([
       supabase
         .from('media_tech_assignments')
         .select('role, user_id, assignee:profiles!user_id ( full_name )')
         .eq('date', dateStr),
       supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
     ]);
 
-    renderRoleOptions(new Set((unavailableRows || []).map((r) => r.user_id)));
+    renderRoleOptions(
+      new Set((unavailableRows || []).map((r) => r.user_id)),
+      new Map((conflictRows || []).map((r) => [r.user_id, r.department_name])),
+    );
 
     (data || []).forEach((row) => {
       const select = container.querySelector(`[data-role-select="${row.role}"]`);

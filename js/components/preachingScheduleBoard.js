@@ -158,10 +158,23 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
   // selected for this date stays in the list regardless, same
   // exception Choir's auto-planner already makes, so an existing
   // (now-unavailable) assignment doesn't just silently disappear.
-  function renderMemberSelect(selectEl, placeholderLabel, unavailableIds, selectedId) {
+  //
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color, so
+  // this can't be a richer visual warning; get_all_schedule_conflicts_for_date
+  // still lets the scheduler pick them, same as the save-time confirm
+  // dialog in schedulingConflicts.js).
+  function renderMemberSelect(selectEl, placeholderLabel, unavailableIds, selectedId, conflictMap = new Map()) {
     const options = allMembers
       .filter((m) => m.user_id === selectedId || !unavailableIds.has(m.user_id))
-      .map((m) => `<option value="${m.user_id}" ${m.user_id === selectedId ? 'selected' : ''}>${escapeHtml(m.member.full_name)}${unavailableIds.has(m.user_id) ? ` (${t('deptScheduling.unavailableOnDate')})` : ''}</option>`)
+      .map((m) => {
+        const conflictDept = conflictMap.get(m.user_id);
+        const note = unavailableIds.has(m.user_id)
+          ? ` (${t('deptScheduling.unavailableOnDate')})`
+          : conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+        return `<option value="${m.user_id}" ${m.user_id === selectedId ? 'selected' : ''}>${escapeHtml(m.member.full_name)}${note}</option>`;
+      })
       .join('');
     selectEl.innerHTML = `<option value="">${placeholderLabel}</option>` + options;
   }
@@ -173,15 +186,15 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
       return;
     }
 
-    const { data: unavailableRows } = await supabase
-      .from('availability')
-      .select('user_id')
-      .eq('date', dateStr)
-      .eq('status', 'unavailable');
+    const [{ data: unavailableRows }, { data: conflictRows }] = await Promise.all([
+      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
+    ]);
 
     const unavailableIds = new Set((unavailableRows || []).map((r) => r.user_id));
-    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), unavailableIds, editingRow?.moderator_id || null);
-    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), unavailableIds, editingRow?.preacher_id || null);
+    const conflictMap = new Map((conflictRows || []).map((r) => [r.user_id, r.department_name]));
+    renderMemberSelect(moderatorSelect, t('preaching.moderatorNone'), unavailableIds, editingRow?.moderator_id || null, conflictMap);
+    renderMemberSelect(preacherSelect, t('preaching.preacherNone'), unavailableIds, editingRow?.preacher_id || null, conflictMap);
   }
 
   function startEditing(row) {
