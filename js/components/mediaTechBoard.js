@@ -8,6 +8,7 @@
 import { t, mediaTechRoleLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
@@ -182,11 +183,19 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   // singers to their own voice part. Also excludes anyone who reported
   // themselves unavailable for the selected date, so scheduling someone
   // who already said they can't make it isn't even possible.
-  function renderRoleOptions(unavailableIds) {
+  //
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color).
+  function renderRoleOptions(unavailableIds, conflictMap = new Map()) {
     ROLES.forEach((role) => {
       const options = allMembers
         .filter((m) => (m.member.media_tech_skills || []).includes(role) && !unavailableIds.has(m.user_id))
-        .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+        .map((m) => {
+          const conflictDept = conflictMap.get(m.user_id);
+          const note = conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+          return `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}${note}</option>`;
+        })
         .join('');
       container.querySelector(`[data-role-select="${role}"]`).innerHTML = options;
     });
@@ -195,15 +204,19 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
   async function prefillFromDate(dateStr) {
     if (!dateStr) { renderRoleOptions(new Set()); return; }
 
-    const [{ data }, { data: unavailableRows }] = await Promise.all([
+    const [{ data }, { data: unavailableRows }, { data: conflictRows }] = await Promise.all([
       supabase
         .from('media_tech_assignments')
         .select('role, user_id, assignee:profiles!user_id ( full_name )')
         .eq('date', dateStr),
       supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
     ]);
 
-    renderRoleOptions(new Set((unavailableRows || []).map((r) => r.user_id)));
+    renderRoleOptions(
+      new Set((unavailableRows || []).map((r) => r.user_id)),
+      new Map((conflictRows || []).map((r) => [r.user_id, r.department_name])),
+    );
 
     (data || []).forEach((row) => {
       const select = container.querySelector(`[data-role-select="${row.role}"]`);
@@ -326,7 +339,10 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
 
     listEl.innerHTML = Array.from(byDate.entries()).map(([date, roleMap]) => `
       <div class="border border-slate-200 rounded-lg p-3">
-        <div class="text-sm font-semibold text-slate-800 mb-2">${escapeHtml(date)}</div>
+        <div class="flex items-baseline justify-between gap-3 mb-2">
+          <div class="text-sm font-semibold text-slate-800">${escapeHtml(date)}</div>
+          ${canAdminister ? `<button type="button" data-action="delete" data-date="${escapeHtml(date)}" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('mediaTech.delete')}</button>` : ''}
+        </div>
         <div class="grid sm:grid-cols-2 gap-2">
           ${ROLES.filter((role) => roleMap.has(role)).map((role) => `
             <div class="text-sm">
@@ -346,6 +362,24 @@ export function renderMediaTechBoard(container, { supabase, departmentId, canAdm
       </div>
     `).join('');
   }
+
+  // Delegated rather than one listener per row -- load() rebuilds
+  // listEl.innerHTML wholesale on every refresh. There's no single
+  // "session" id to delete here (each role/person/date is its own flat
+  // row, sql/018/060) -- deleting a date's whole program means deleting
+  // every assignment row sharing that date.
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="delete"]');
+    if (!btn) return;
+    const date = btn.dataset.date;
+    if (!(await confirmDialog({ message: t('mediaTech.confirmDelete', { date }) }))) return;
+    const { error } = await supabase.from('media_tech_assignments').delete().eq('date', date);
+    if (error) {
+      window.alert(t('mediaTech.deleteFailed', { message: error.message }));
+      return;
+    }
+    load();
+  });
 }
 
 function escapeHtml(str) {

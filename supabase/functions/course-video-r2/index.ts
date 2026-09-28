@@ -96,6 +96,46 @@ Deno.serve(async (req) => {
 
     const { action, lesson_id, file_name, content_type, object_key } = await req.json();
 
+    if (action === 'playback_url') {
+      // The hot path -- every lesson open hits this, so the profile
+      // lookup (isSchoolAdmin) and the lesson lookup (video path) run
+      // concurrently instead of one-after-another; neither depends on
+      // the other's result. The enrollment check still has to wait,
+      // since it needs both isSchoolAdmin (to know whether to skip it)
+      // and the lesson's course_id.
+      if (!lesson_id) return json({ error: 'lesson_id is required' }, 400);
+
+      const [{ data: callerProfile }, { data: lesson }] = await Promise.all([
+        admin.from('profiles').select('is_school_admin, global_role').eq('id', caller.id).single(),
+        admin.from('lessons').select('video_storage_path, video_provider, module_id, course_modules!module_id ( course_id )').eq('id', lesson_id).single(),
+      ]);
+      const isSchoolAdmin = callerProfile?.is_school_admin || callerProfile?.global_role === 'super_admin';
+
+      if (!lesson || lesson.video_provider !== 'r2' || !lesson.video_storage_path) {
+        return json({ error: 'No R2 video found for this lesson' }, 404);
+      }
+
+      if (!isSchoolAdmin) {
+        const { data: enrollment } = await admin
+          .from('course_enrollments')
+          .select('status')
+          .eq('user_id', caller.id)
+          .eq('course_id', lesson.course_modules.course_id)
+          .eq('status', 'approved')
+          .maybeSingle();
+        if (!enrollment) return json({ error: 'Not enrolled in this course' }, 403);
+      }
+
+      const url = new URL(`${endpoint}/${lesson.video_storage_path}`);
+      url.searchParams.set('X-Amz-Expires', String(PLAYBACK_URL_TTL_SECONDS));
+      const playbackUrl = await presign(client, url, 'GET');
+
+      return json({ url: playbackUrl });
+    }
+
+    // upload_url/delete are School-Admin-only, infrequent, and not on
+    // the student playback hot path -- the single profile lookup here
+    // isn't worth parallelizing against anything.
     const { data: callerProfile } = await admin
       .from('profiles')
       .select('is_school_admin, global_role')
@@ -117,36 +157,6 @@ Deno.serve(async (req) => {
       const uploadUrl = await presign(client, url, 'PUT', { 'content-type': resolvedContentType });
 
       return json({ upload_url: uploadUrl, object_key: objectKey, content_type: resolvedContentType });
-    }
-
-    if (action === 'playback_url') {
-      if (!lesson_id) return json({ error: 'lesson_id is required' }, 400);
-
-      const { data: lesson } = await admin
-        .from('lessons')
-        .select('video_storage_path, video_provider, module_id, course_modules!module_id ( course_id )')
-        .eq('id', lesson_id)
-        .single();
-      if (!lesson || lesson.video_provider !== 'r2' || !lesson.video_storage_path) {
-        return json({ error: 'No R2 video found for this lesson' }, 404);
-      }
-
-      if (!isSchoolAdmin) {
-        const { data: enrollment } = await admin
-          .from('course_enrollments')
-          .select('status')
-          .eq('user_id', caller.id)
-          .eq('course_id', lesson.course_modules.course_id)
-          .eq('status', 'approved')
-          .maybeSingle();
-        if (!enrollment) return json({ error: 'Not enrolled in this course' }, 403);
-      }
-
-      const url = new URL(`${endpoint}/${lesson.video_storage_path}`);
-      url.searchParams.set('X-Amz-Expires', String(PLAYBACK_URL_TTL_SECONDS));
-      const playbackUrl = await presign(client, url, 'GET');
-
-      return json({ url: playbackUrl });
     }
 
     if (action === 'delete') {

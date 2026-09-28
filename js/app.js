@@ -9,11 +9,17 @@ import { renderAuthScreen } from './components/authScreen.js';
 import { renderPasswordRecovery } from './components/passwordRecovery.js';
 import { renderMembersTab } from './members.js';
 import { renderDashboardTab } from './dashboard.js';
-import { renderDeptDashboardTab } from './deptDashboard.js';
+import { renderDeptDashboardTab, HEADCOUNT_DEPARTMENT_KEYS } from './deptDashboard.js';
+import { renderHeadcountTallyTab } from './headcountTallyPage.js';
 import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
-import { renderSuperAdminHomeTab, openGuestOnboardingHub } from './superAdminHome.js';
+import { renderSuperAdminHomeTab, openGuestOnboardingHub, openDirectory } from './superAdminHome.js';
+import { createUserManagerModal } from './components/userManager.js';
+import { renderToolsTab } from './toolsPage.js';
 import { renderTrainingTab } from './training.js';
+import { renderServiceProgramTab } from './serviceProgram.js';
+import { renderTaxTab } from './taxPage.js';
+import { renderBudgetPageTab } from './budgetPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
@@ -21,27 +27,30 @@ import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createJoinDepartmentModal } from './components/joinDepartmentModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createRulesModal } from './components/rulesModal.js';
+import { createHelpModal } from './components/helpModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
-import { createPastorMeetingRequestModal } from './components/pastorMeetingRequests.js';
+import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { createChangePasswordModal } from './components/changePasswordModal.js';
 import { createMyProfileModal } from './components/myProfileModal.js';
 import { createMyLettersModal, createDisciplinaryLettersAdminModal } from './components/disciplinaryLetters.js';
 import { createNotificationSettingsModal } from './components/notificationSettingsModal.js';
 import { checkSpecialProgramPopup } from './components/specialProgramPopup.js';
-import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, t, loadLabelOverrides } from './i18n.js';
+import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, departmentIcon, t, loadLabelOverrides } from './i18n.js';
 import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
-  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember,
+  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
+  hasFinanceOversight,
 } from './departments.js';
 import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
+import { loadChurchBranding } from './churchBranding.js';
 import { confirmLeaveIfProjecting } from './utils/projectionGuard.js';
 
 registerServiceWorker();
@@ -49,7 +58,8 @@ registerServiceWorker();
 const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
 const departmentSwitcherWrapEl = document.querySelector('#department-switcher-wrap');
-const departmentSwitcherEl = document.querySelector('#department-switcher');
+const departmentSwitcherListEl = document.querySelector('#department-switcher-list');
+
 const deptDashboardNameEl = document.querySelector('[data-el="dept-dashboard-name"]');
 const deptSchedulingNameEl = document.querySelector('[data-el="dept-scheduling-name"]');
 const comingSoonPanelEl = document.querySelector('#department-coming-soon');
@@ -59,6 +69,7 @@ const comingSoonApprovalsListEl = comingSoonApprovalsEl.querySelector('[data-el=
 const noAccessPanelEl = document.querySelector('#no-department-access');
 const inboxBtn = document.querySelector('#inbox-btn');
 const inboxBadgeEl = document.querySelector('#inbox-badge');
+const helpBtn = document.querySelector('#help-btn');
 const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
 const viewAsBtn = document.querySelector('#view-as-btn');
 const viewAsBannerEl = document.querySelector('#view-as-banner');
@@ -68,6 +79,8 @@ const previewAsMemberBtn = document.querySelector('#preview-as-member-btn');
 const signOutBtnDesktop = document.querySelector('#sign-out-btn-desktop');
 const accountMenuBtn = document.querySelector('#account-menu-btn');
 const accountMenuDialog = document.querySelector('#account-menu-dialog');
+const quickAccessDialog = document.querySelector('#quick-access-dialog');
+const quickAccessListEl = document.querySelector('[data-el="quick-access-list"]');
 const notificationsBtn = document.querySelector('#notifications-btn');
 const headerNewMemberBtn = document.querySelector('#header-new-member-btn');
 const loginSplashEl = document.querySelector('#login-splash');
@@ -92,20 +105,48 @@ const lazyTabs = {
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
   'dept-projection': renderDeptProjectionTab,
+  'headcount-tally': renderHeadcountTallyTab,
   'super-home': renderSuperAdminHomeTab,
+  tools: renderToolsTab,
   training: renderTrainingTab,
+  'service-program': renderServiceProgramTab,
+  tax: renderTaxTab,
+  budget: renderBudgetPageTab,
+  'pastor-meetings': renderPastorMeetingsTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
 
+// activateTab() only toggles a panel's visibility -- it never unmounts
+// or re-renders an already-loaded tab's DOM, so a tab whose data was
+// changed from somewhere ELSE (e.g. a Headcount Tally submission
+// changing what the Dashboard's headcount history table already
+// rendered) stays stale until this is called for it, forcing the next
+// visit to actually re-fetch instead of just un-hiding the old DOM.
+export function invalidateTabCache(name) {
+  loadedTabs.delete(name);
+}
+
+// Mirrors departments.js's ACTIVE_DEPT_STORAGE_KEY pattern -- lets a page
+// refresh land back on the tab the user was actually viewing instead of
+// always resetting to the department's default tab (see showApp() and
+// applyActiveDepartment()'s no-active-department branch).
+const TAB_STORAGE_KEY = 'choir-hub-last-tab';
+
 function activateTab(name) {
   currentTabName = name;
+  localStorage.setItem(TAB_STORAGE_KEY, name);
 
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.tabPanel !== name);
   });
 
-  tabs.forEach((tab) => {
+  // Queried fresh rather than using the closed-over `tabs` snapshot from
+  // script load -- the Budget nav button (see updateBudgetNavVisibility())
+  // is inserted dynamically, after that snapshot was taken, specifically
+  // so it can be entirely absent for most viewers rather than just
+  // CSS-hidden like every other conditional nav item in this file.
+  document.querySelectorAll('[data-tab-target]').forEach((tab) => {
     const isActive = tab.dataset.tabTarget === name;
     tab.classList.toggle('bg-indigo-600', isActive);
     tab.classList.toggle('text-white', isActive);
@@ -144,6 +185,21 @@ function resolveLandingTab(previousTabName, active, isChoir) {
   return target;
 }
 
+// Budget isn't a choir/other pair like TAB_KIND_MAP's other entries —
+// it's the same single tab regardless of department, but only
+// actually meaningful for whoever can manage the newly-active
+// department's own budget (admin/secretary, mirrors
+// budgetCentralBoard.js's own activeIsLeader check) or someone with
+// cross-department finance oversight (Pastor/Church Secretary/Super
+// Admin/Finance admin, who see the same oversight view no matter
+// which department is active). Anyone else switching away from Budget
+// lands on Home instead of a Budget page they can't do anything with.
+function resolveBudgetLanding(active) {
+  if (hasFinanceOversight()) return 'budget';
+  if (active.role === 'admin' || active.role === 'secretary') return 'budget';
+  return 'super-home';
+}
+
 // Applies a visibility/state rule to every element sharing a given
 // data-nav-group value. Most groups now live on a single sidebar
 // element (mobile drawer and permanent desktop column are the same
@@ -154,6 +210,38 @@ function forEachNavGroup(name, fn) {
   document.querySelectorAll(`[data-nav-group="${name}"]`).forEach(fn);
 }
 
+// The Budget nav button (Finance/Budget module) deliberately isn't
+// built-then-CSS-hidden like every other conditional nav item above --
+// the spec calls for zero trace for anyone who isn't a department
+// admin/secretary or Pastor, so it's only ever constructed and inserted
+// into the DOM for hasAnyDeptLeadership() (departments.js), and removed
+// again if that ever becomes false mid-session (Standard User Mode,
+// View-As). Re-run on every applyActiveDepartment(), same as the
+// 'global' nav group right above this call, since department
+// leadership can change identity (not just visibility) across those
+// mode switches.
+const unconditionalNavGroupEl = document.querySelector('#unconditional-nav-group');
+let budgetNavBtn = null;
+function updateBudgetNavVisibility() {
+  if (hasAnyDeptLeadership()) {
+    if (!budgetNavBtn) {
+      budgetNavBtn = document.createElement('button');
+      budgetNavBtn.dataset.tabTarget = 'budget';
+      budgetNavBtn.setAttribute('data-i18n', 'nav.budget');
+      budgetNavBtn.className = 'w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800';
+      budgetNavBtn.textContent = t('nav.budget');
+      budgetNavBtn.addEventListener('click', () => {
+        activateTab('budget');
+        closeSidebar();
+      });
+      unconditionalNavGroupEl.appendChild(budgetNavBtn);
+    }
+  } else if (budgetNavBtn) {
+    budgetNavBtn.remove();
+    budgetNavBtn = null;
+  }
+}
+
 // ---- Department switcher ----
 // Only Choir has real screens today — other departments show a
 // placeholder until their own phase ships. The switcher itself only
@@ -161,17 +249,26 @@ function forEachNavGroup(name, fn) {
 // access to (or every department, for a super admin/viewer).
 function populateDepartmentSwitcher() {
   const departments = getMyDepartments();
-  const showHomeOption = hasGlobalReach();
-  departmentSwitcherWrapEl.classList.toggle('hidden', departments.length === 0 && !showHomeOption);
-
-  const homeOption = showHomeOption ? `<option value="${HOME_KEY}">${t('nav.home')}</option>` : '';
-  departmentSwitcherEl.innerHTML = homeOption + departments
-    .map((d) => `<option value="${d.key}">${departmentLabel(d.key)}</option>`)
-    .join('');
+  departmentSwitcherWrapEl.classList.toggle('hidden', departments.length === 0);
 
   const active = getActiveDepartment();
-  departmentSwitcherEl.value = active ? active.key : (isHomeActive() ? HOME_KEY : '');
+  const activeKey = active ? active.key : null;
+
+  departmentSwitcherListEl.innerHTML = departments.map((d) => `
+    <button type="button" data-dept-key="${d.key}"
+        class="w-full text-left px-2 py-1.5 rounded-lg text-[12.8px] font-medium transition-colors flex items-center gap-2.5 ${
+          d.key === activeKey ? 'bg-[#2a2d3d] text-white' : 'text-slate-300 hover:bg-[#1e2130] hover:text-white'
+        }">
+      <span class="w-[18px] text-center shrink-0">${departmentIcon(d.key)}</span>
+      <span class="truncate">${departmentLabel(d.key)}</span>
+    </button>
+  `).join('');
 }
+
+departmentSwitcherListEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-dept-key]');
+  if (btn) handleDepartmentSwitch(btn.dataset.deptKey);
+});
 
 function applyActiveDepartment() {
   const active = getActiveDepartment();
@@ -193,6 +290,7 @@ function applyActiveDepartment() {
   // since active is intentionally null while on the Home console —
   // Home itself lives inside this same nav group.
   forEachNavGroup('global', (el) => el.classList.toggle('hidden', !hasGlobalReach()));
+  updateBudgetNavVisibility();
   updateSidebarToolsSelect();
 
   if (!active) {
@@ -203,7 +301,12 @@ function applyActiveDepartment() {
       forEachNavGroup('members-nav', (el) => el.classList.add('hidden'));
       comingSoonPanelEl.classList.add('hidden');
       loadedTabs.delete('super-home');
-      activateTab('super-home');
+      loadedTabs.delete('tools');
+      // Home and Tools are the only two tabs valid with no active
+      // department (GLOBAL_ONLY_TARGETS) -- any other stored value here
+      // is stale (e.g. a department-scoped tab from before switching to
+      // Home) and correctly falls back to the default.
+      activateTab(previousTabName === 'tools' ? 'tools' : 'super-home');
       return;
     }
 
@@ -236,11 +339,17 @@ function applyActiveDepartment() {
   forEachNavGroup('uniform-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers')));
   // Projection: its own page, Media & Tech only.
   forEachNavGroup('dept-projection-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
+  // Headcount Tally: Ushers/Welcoming & Socialisation/Ecodem, every
+  // approved member (not just admin/secretary) -- counting people at
+  // the door isn't an admin-only task.
+  forEachNavGroup('headcount-tally-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && HEADCOUNT_DEPARTMENT_KEYS.includes(active.key))));
+
+  loadedTabs.delete('budget');
 
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     loadedTabs.delete('uniform');
-    activateTab(resolveLandingTab(previousTabName, active, true) || 'dashboard');
+    activateTab(previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, true) || 'dashboard'));
   } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
@@ -252,7 +361,8 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
     loadedTabs.delete('dept-projection');
-    activateTab(resolveLandingTab(previousTabName, active, false) || 'dept-dashboard');
+    loadedTabs.delete('headcount-tally');
+    activateTab(previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, false) || 'dept-dashboard'));
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
     // 'custom') is handled above; kept as a fallback in case a future
@@ -274,20 +384,16 @@ function applyActiveDepartment() {
   }
 }
 
-// Shared by both the mobile sidebar select and the desktop one —
-// `selectEl` is whichever one the person actually touched, so a
-// cancelled switch (confirmLeaveIfProjecting) reverts just that one;
-// populateDepartmentSwitcher() at the end re-syncs both to the real
-// active department either way.
-async function handleDepartmentSwitcherChange(selectEl) {
+// Was shared by both a mobile and desktop <select>; the sidebar is a
+// single shared element between mobile drawer and desktop column, so
+// now there's just one list. No value to revert on cancel the way a
+// <select> needed -- nothing visually changes until this actually
+// commits, so a cancelled switch just returns without touching state.
+export async function handleDepartmentSwitch(nextKey) {
   const active = getActiveDepartment();
   const previousKey = active ? active.key : (isHomeActive() ? HOME_KEY : '');
-  const nextKey = selectEl.value;
 
-  if (nextKey !== previousKey && !(await confirmLeaveIfProjecting())) {
-    selectEl.value = previousKey;
-    return;
-  }
+  if (nextKey !== previousKey && !(await confirmLeaveIfProjecting())) return;
 
   setActiveDepartmentKey(nextKey);
   applyActiveDepartment();
@@ -295,8 +401,6 @@ async function handleDepartmentSwitcherChange(selectEl) {
   updatePreviewAsMemberUI();
   closeSidebar();
 }
-
-departmentSwitcherEl.addEventListener('change', () => handleDepartmentSwitcherChange(departmentSwitcherEl));
 
 // ---- Role Switcher: Super Admin Mode vs Standard User Mode ----
 function updateRoleSwitcherUI() {
@@ -454,6 +558,67 @@ accountMenuDialog.addEventListener('click', (e) => {
 
 notificationsBtn.addEventListener('click', () => runSidebarTool('notifications'));
 
+// ---- Quick Access dialog (mobile bottom bar's 3-line icon) ----
+// Everything that isn't Home/Tools/a department's own nav lives here --
+// VPD Academy, Service Program, and Tax are unconditional (same as
+// their sidebar nav entries); Budget only appears for department
+// leadership (mirrors updateBudgetNavVisibility()'s "zero trace" rule
+// -- built fresh each time this opens rather than once at load, same
+// reason); everything else here only appears while the relevant
+// department is active, mirroring each one's own sidebar nav-group
+// gate exactly (applyActiveDepartment() above): Dashboard/Scheduling
+// for any department, Songbook/Voice Exercises/Uniform for Choir
+// (Uniform for Ushers too), Projection for Media & Tech, Headcount
+// Tally for Ushers/Welcoming & Socialisation/Ecodem.
+const QUICK_ACCESS_ITEMS_CLASS = 'w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2.5';
+function buildQuickAccessItems() {
+  const active = getActiveDepartment();
+  const isChoir = active?.key === 'choir';
+  const items = [
+    { icon: '🎓', label: t('nav.training'), tab: 'training' },
+    { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
+    { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
+  ];
+  if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
+  if (active) {
+    items.push({ icon: '📊', label: t('nav.dashboard'), tab: isChoir ? 'dashboard' : 'dept-dashboard' });
+    if (!(active.key === 'finance' || active.key === 'church_program')) {
+      items.push({ icon: '📅', label: t('nav.scheduling'), tab: isChoir ? 'scheduling' : 'dept-scheduling' });
+    }
+    if (isChoir) items.push({ icon: '🎵', label: t('nav.songbook'), tab: 'songbook' });
+    if (isChoir) items.push({ icon: '🎤', label: t('nav.voiceExercises'), tab: 'voice-exercises' });
+    if (isChoir || active.key === 'ushers') items.push({ icon: '🎽', label: t('nav.uniform'), tab: 'uniform' });
+    if (active.key === 'media_tech') items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
+    if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
+  }
+  return items;
+}
+
+function openQuickAccess() {
+  quickAccessListEl.innerHTML = buildQuickAccessItems().map((item) => `
+    <button type="button" data-quick-access-tab="${item.tab}" class="${QUICK_ACCESS_ITEMS_CLASS}">
+      <span class="text-lg">${item.icon}</span> <span>${item.label}</span>
+    </button>
+  `).join('');
+  quickAccessDialog.classList.remove('hidden');
+  quickAccessDialog.classList.add('flex');
+}
+
+function closeQuickAccess() {
+  quickAccessDialog.classList.add('hidden');
+  quickAccessDialog.classList.remove('flex');
+}
+
+quickAccessDialog.querySelector('[data-action="close-quick-access"]').addEventListener('click', closeQuickAccess);
+quickAccessDialog.addEventListener('click', (e) => {
+  if (e.target === quickAccessDialog) { closeQuickAccess(); return; }
+  const tabBtn = e.target.closest('[data-quick-access-tab]');
+  if (tabBtn) {
+    activateTab(tabBtn.dataset.quickAccessTab);
+    closeQuickAccess();
+  }
+});
+
 headerNewMemberBtn.addEventListener('click', () => {
   activateTab('super-home');
   openGuestOnboardingHub();
@@ -568,7 +733,7 @@ function handleToolsSelectChange(selectEl) {
 
 sidebarToolsSelect.addEventListener('change', () => handleToolsSelectChange(sidebarToolsSelect));
 
-function runSidebarTool(value) {
+export function runSidebarTool(value) {
   const active = getActiveDepartment();
   const effectiveSupabase = getEffectiveSupabase();
 
@@ -598,7 +763,9 @@ function runSidebarTool(value) {
   } else if (value === 'join-department') {
     createJoinDepartmentModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'pastor-meeting') {
-    createPastorMeetingRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
+    // Replaces the old note-only popup entirely -- opens the real
+    // scheduling page (js/pastorMeetingsPage.js) instead.
+    activateTab('pastor-meetings');
   } else if (value === 'prayer-request') {
     createPrayerRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'department-rules' && active) {
@@ -660,6 +827,16 @@ inboxBtn.addEventListener('click', () => {
   closeSidebar();
 });
 
+helpBtn.addEventListener('click', () => {
+  const modal = createHelpModal({
+    supabase: getEffectiveSupabase(),
+    currentUserId,
+    canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin',
+  });
+  modal.open();
+  closeSidebar();
+});
+
 // ---- Language switcher (top bar) ----
 document.documentElement.lang = getLang();
 applyStaticTranslations();
@@ -717,8 +894,23 @@ onLangChange(() => {
   if (currentTabName && lazyTabs[currentTabName]) lazyTabs[currentTabName]();
 });
 
+// Home and Tools both represent "no department active" now that the
+// department switcher is a plain list rather than a <select> that used
+// to fold a "Home" option into the same control (and, via its change
+// handler, the same setActiveDepartmentKey(HOME_KEY) call). Clearing
+// it here only re-renders the list's own highlighting
+// (populateDepartmentSwitcher()) -- NOT the heavier
+// applyActiveDepartment(), which has its own "no active department"
+// branch that forces the tab back to super-home and would hijack a
+// click on Tools into landing on Home instead.
+const GLOBAL_ONLY_TARGETS = ['super-home', 'tools'];
+
 tabs.forEach((tab) => {
   tab.addEventListener('click', () => {
+    if (GLOBAL_ONLY_TARGETS.includes(tab.dataset.tabTarget) && !isHomeActive()) {
+      setActiveDepartmentKey(HOME_KEY);
+      populateDepartmentSwitcher();
+    }
     activateTab(tab.dataset.tabTarget);
     closeSidebar();
   });
@@ -743,6 +935,66 @@ function closeSidebar() {
 menuOpenBtn.addEventListener('click', openSidebar);
 menuCloseBtn.addEventListener('click', closeSidebar);
 sidebarBackdrop.addEventListener('click', closeSidebar);
+
+// ---- Mobile bottom tab bar ----
+// Home reuses the real data-tab-target button (see the `tabs` click
+// handler above), so it already shares styling/gating/click-handling
+// with the sidebar's own version. The other four need their own
+// wiring here since each one's actual destination depends on role
+// and/or the currently active department, not a fixed tab name.
+
+// Directory: a global-reach role (Super Admin/Pastor Admin/Church
+// Secretary/etc.) gets the real cross-department Directory (same one
+// Tools' own Directory tile opens); everyone else gets the roster for
+// whichever department they're currently viewing -- same modal
+// deptDashboard.js's own "Manage Roster" button opens, just triggered
+// from here too instead of requiring a trip to that tab first.
+document.querySelector('[data-mobile-nav="directory"]')?.addEventListener('click', () => {
+  if (hasGlobalReach()) {
+    openDirectory();
+    return;
+  }
+  const active = getActiveDepartment();
+  if (!active) return;
+  createUserManagerModal({
+    supabase: getEffectiveSupabase(),
+    scope: { type: 'department', departmentId: active.id, departmentKey: active.key },
+    currentUserId,
+    title: t('nav.members'),
+  }).open();
+});
+
+// Schedule: jumps straight to whichever scheduling tab is correct for
+// the active department (Choir's own vs. the shared dept-scheduling
+// tab), reusing resolveLandingTab()'s existing Finance/Church Program
+// exclusion (those two have no scheduling at all) rather than
+// duplicating that check here.
+document.querySelector('[data-mobile-nav="schedule"]')?.addEventListener('click', () => {
+  const active = getActiveDepartment();
+  if (!active) return;
+  const isChoir = active.key === 'choir';
+  activateTab(resolveLandingTab('scheduling', active, isChoir) || (isChoir ? 'dashboard' : 'dept-dashboard'));
+  closeSidebar();
+});
+
+// Quick Access: opens quick-access-dialog (defined above, near the
+// Account dialog it's modeled on) -- VPD Academy, Service Program,
+// Budget (department leadership only), and the active department's
+// Dashboard.
+document.querySelector('[data-mobile-nav="quick-access"]')?.addEventListener('click', openQuickAccess);
+
+// Settings: the Tools tab, for everyone -- not just global-reach roles
+// (unlike the sidebar's own Tools nav entry, which stays admin-only;
+// see toolsPage.js's "My Account" category for what an ordinary member
+// finds here: profile, church rules, change password, etc.).
+document.querySelector('[data-mobile-nav="settings"]')?.addEventListener('click', () => {
+  if (!isHomeActive()) {
+    setActiveDepartmentKey(HOME_KEY);
+    populateDepartmentSwitcher();
+  }
+  activateTab('tools');
+  closeSidebar();
+});
 
 // ---- Auth gating ----
 const authScreenEl = document.querySelector('#auth-screen');
@@ -836,6 +1088,28 @@ function showStayConnectedPrompt() {
   });
 }
 
+// Deep-link support for a shared link/QR code (?open=<tab>&dept=<key>)
+// — the Headcount Tally tool's "Share Link" button encodes one of
+// these so scanning it, once signed in, lands straight on the right
+// department's tool instead of wherever normal landing logic would
+// otherwise choose. Only consulted once per page load (the query
+// string is stripped from the URL afterward) so a later refresh in
+// the same tab doesn't keep re-applying it over whatever the user has
+// since navigated to themselves.
+async function applyDeepLinkFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const openTab = params.get('open');
+  if (!openTab) return;
+
+  const deptKey = params.get('dept');
+  if (deptKey && getMyDepartments().some((d) => d.key === deptKey)) {
+    await handleDepartmentSwitch(deptKey);
+  }
+  if (lazyTabs[openTab]) activateTab(openTab);
+
+  history.replaceState(null, '', window.location.pathname + window.location.hash);
+}
+
 async function showApp(session, { isFreshSignIn = false } = {}) {
   if (isRecovering) return;
 
@@ -877,6 +1151,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // just after a re-render.
   await loadLabelOverrides();
   await loadAppTheme();
+  await loadChurchBranding();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
 
@@ -888,8 +1163,19 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 
   if (isFreshSignIn) markSessionStart(); else checkSessionAge();
 
+  // Seed from the last tab this browser was actually viewing, but only on
+  // a fresh page load (currentTabName still at its module-load default) --
+  // a later showApp() call in the same session (e.g. after a token
+  // refresh) must never clobber a tab the user has since navigated to.
+  // resolveLandingTab()'s existing context guards (TAB_KIND_MAP, the
+  // uniform/dept-scheduling exclusions) still apply to this value exactly
+  // as they do to an in-session department switch, so a stored tab that's
+  // invalid for the department being landed on here is never restored.
+  if (currentTabName === null) currentTabName = localStorage.getItem(TAB_STORAGE_KEY);
+
   populateDepartmentSwitcher();
   applyActiveDepartment();
+  await applyDeepLinkFromUrl();
   updateRoleSwitcherUI();
   updateViewAsUI();
   updatePreviewAsMemberUI();
@@ -959,7 +1245,22 @@ supabase.auth.getSession().then(({ data: { session }, error }) => {
 
 initVersionCheck();
 
+// supabase-js fires this listener's very first callback at subscribe time
+// on every page load (restoring an existing session or reporting none),
+// and in this SDK setup that first firing can itself carry event
+// 'SIGNED_IN' -- indistinguishable by event name alone from a real,
+// interactive login. Treating that as isFreshSignIn (see showApp()) wrongly
+// forced any global-role holder (Super Admin/Secretary) out of whatever
+// department/tab they were on and back to Home on a plain refresh. A real
+// login can only happen after the auth form is mounted and submitted,
+// which is always after this first firing, so only firings after the
+// first one are ever treated as a fresh sign-in.
+let hasHandledInitialAuthEvent = false;
+
 supabase.auth.onAuthStateChange((event, session) => {
+  const isInitialFiring = !hasHandledInitialAuthEvent;
+  hasHandledInitialAuthEvent = true;
+
   if (event === 'PASSWORD_RECOVERY') {
     showPasswordRecovery();
     return;
@@ -968,7 +1269,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     showAuth();
     return;
   }
-  if (event === 'SIGNED_IN') {
+  if (event === 'SIGNED_IN' && !isInitialFiring) {
     showSplashThenApp(session);
   } else {
     showApp(session);

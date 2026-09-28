@@ -1,13 +1,15 @@
 // Ecodem (Children's Ministry) session board: three age groups, each
-// needing exactly two assigned workers plus a lesson topic per
-// scheduled date. "Exactly two" is enforced here — two dedicated
-// single-selects per group rather than a multi-select, so it's obvious
-// what's required and easy to validate before saving. Each assigned
-// worker then approves or declines their own slot (sql/049), same as
-// every other department now.
+// with a lesson topic and up to two assigned workers per scheduled
+// date -- at least one is required, the second is optional for a
+// group that only needs one worker. Two dedicated single-selects per
+// group rather than a multi-select, so it's obvious what's expected
+// and easy to validate before saving. Each assigned worker then
+// approves or declines their own slot (sql/049), same as every other
+// department now.
 import { t, ecodemAgeGroupLabel } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
@@ -42,7 +44,7 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
                 <select data-group-worker="${group}-1" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mb-2">
                   <option value="">—</option>
                 </select>
-                <label class="block text-xs font-medium text-slate-500 mb-1">${t('ecodem.worker2')}</label>
+                <label class="block text-xs font-medium text-slate-500 mb-1">${t('ecodem.worker2')} <span class="font-normal text-slate-400">(${t('ecodem.optional')})</span></label>
                 <select data-group-worker="${group}-2" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
                   <option value="">—</option>
                 </select>
@@ -125,10 +127,18 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
   // Excludes anyone who reported themselves unavailable for the
   // selected date, so scheduling someone who already said they can't
   // make it isn't even possible.
-  function renderWorkerOptions(unavailableIds) {
+  //
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color).
+  function renderWorkerOptions(unavailableIds, conflictMap = new Map()) {
     const options = allMembers
       .filter((m) => !unavailableIds.has(m.user_id))
-      .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+      .map((m) => {
+        const conflictDept = conflictMap.get(m.user_id);
+        const note = conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+        return `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}${note}</option>`;
+      })
       .join('');
 
     AGE_GROUPS.forEach((group) => {
@@ -148,15 +158,19 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
       return;
     }
 
-    const [{ data: sessions }, { data: unavailableRows }] = await Promise.all([
+    const [{ data: sessions }, { data: unavailableRows }, { data: conflictRows }] = await Promise.all([
       supabase
         .from('ecodem_sessions')
         .select('id, age_group, topic, ecodem_session_workers ( user_id, worker:profiles!user_id ( full_name ) )')
         .eq('date', dateStr),
       supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
     ]);
 
-    renderWorkerOptions(new Set((unavailableRows || []).map((r) => r.user_id)));
+    renderWorkerOptions(
+      new Set((unavailableRows || []).map((r) => r.user_id)),
+      new Map((conflictRows || []).map((r) => [r.user_id, r.department_name])),
+    );
 
     AGE_GROUPS.forEach((group) => { container.querySelector(`[data-group-topic="${group}"]`).value = ''; });
 
@@ -185,9 +199,9 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
     const date = form.elements.date.value;
     if (!date) return;
 
-    // Validate "exactly two" per group that's actually being used —
-    // a group with a topic or one worker but not the other is rejected;
-    // a group left entirely blank is simply skipped for this date.
+    // At least one worker per group that's actually being used — worker
+    // 2 is optional, for a group that only needs one person; a group
+    // left entirely blank is simply skipped for this date.
     const groupsToSave = [];
     for (const group of AGE_GROUPS) {
       const topic = container.querySelector(`[data-group-topic="${group}"]`).value.trim();
@@ -196,15 +210,16 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
 
       if (!topic && !worker1 && !worker2) continue;
 
-      if (!worker1 || !worker2) {
+      if (!worker1) {
         formStatusEl.className = 'text-sm text-rose-600';
-        formStatusEl.textContent = `${ecodemAgeGroupLabel(group)} ${t('ecodem.bothWorkersRequired')}`;
+        formStatusEl.textContent = `${ecodemAgeGroupLabel(group)} ${t('ecodem.atLeastOneWorkerRequired')}`;
         return;
       }
 
       const worker1Label = container.querySelector(`[data-group-worker="${group}-1"]`).selectedOptions[0]?.textContent || worker1;
       const worker2Label = container.querySelector(`[data-group-worker="${group}-2"]`).selectedOptions[0]?.textContent || worker2;
-      groupsToSave.push({ group, topic: topic || null, workers: [worker1, worker2], workerLabels: [worker1Label, worker2Label] });
+      const pairs = [[worker1, worker1Label], [worker2, worker2Label]].filter(([userId]) => !!userId);
+      groupsToSave.push({ group, topic: topic || null, workers: pairs.map(([userId]) => userId), workerLabels: pairs.map(([, label]) => label) });
     }
 
     const allWorkerAssignments = groupsToSave.flatMap(({ workers, workerLabels }) =>
@@ -285,7 +300,7 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
     // Admin, who still needs to find and correct an already-past one.
     let listQuery = supabase
       .from('ecodem_sessions')
-      .select('date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )');
+      .select('id, date, age_group, topic, ecodem_session_workers ( status, reason, worker:profiles!user_id ( full_name ), working_department:departments!working_department_id ( key ) )');
     if (getGlobalRole() !== 'super_admin') listQuery = listQuery.gte('date', todayLocal());
     const { data, error } = await listQuery.order('date', { ascending: true });
 
@@ -313,7 +328,10 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
             const workers = (session.ecodem_session_workers || []).filter((w) => w.worker?.full_name);
             return `
               <div class="text-sm">
-                <div class="font-medium text-slate-700">${ecodemAgeGroupLabel(session.age_group)}</div>
+                <div class="flex items-baseline justify-between gap-2">
+                  <div class="font-medium text-slate-700">${ecodemAgeGroupLabel(session.age_group)}</div>
+                  ${canAdminister ? `<button type="button" data-action="delete" data-session-id="${session.id}" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('ecodem.delete')}</button>` : ''}
+                </div>
                 <div class="text-slate-600">${session.topic ? escapeHtml(session.topic) : `<span class="text-slate-400">${t('ecodem.noTopic')}</span>`}</div>
                 <div class="text-slate-500 mt-1 flex flex-wrap gap-1">${workers.length > 0
                   ? workers.map((w) => renderAssigneeBadge({
@@ -330,6 +348,22 @@ export function renderEcodemBoard(container, { supabase, departmentId, canAdmini
       </div>
     `).join('');
   }
+
+  // Delegated rather than one listener per row -- load() rebuilds
+  // listEl.innerHTML wholesale on every refresh. Deleting the session
+  // cascades to its ecodem_session_workers rows (sql/018's FK).
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="delete"]');
+    if (!btn) return;
+    const sessionId = btn.dataset.sessionId;
+    if (!(await confirmDialog({ message: t('ecodem.confirmDelete') }))) return;
+    const { error } = await supabase.from('ecodem_sessions').delete().eq('id', sessionId);
+    if (error) {
+      window.alert(t('ecodem.deleteFailed', { message: error.message }));
+      return;
+    }
+    load();
+  });
 }
 
 function escapeHtml(str) {

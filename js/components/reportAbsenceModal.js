@@ -99,10 +99,37 @@ export function createReportAbsenceModal({ supabase, onReported }) {
       return;
     }
 
-    const confirmMessage = dates.length === 1
-      ? t('absence.confirmSubmit', { date: dates[0] })
-      : t('absence.confirmSubmitMulti', { count: dates.length, dates: dates.join(', ') });
-    if (!(await confirmDialog({ message: confirmMessage, confirmLabel: t('absence.submit'), danger: false }))) return;
+    // Checked up front so the confirm dialog below can warn about it --
+    // read-only (report_absence_conflict_check() inserts nothing), so
+    // cancelling this dialog leaves no trace. Reporting absence despite
+    // an existing assignment is now allowed if the person confirms
+    // anyway (report_absence() itself notifies the affected
+    // department(s) once the report actually happens, not here).
+    saveBtn.disabled = true;
+    formStatusEl.className = 'text-sm text-slate-500';
+    formStatusEl.textContent = t('absence.checkingConflicts');
+
+    const { data: conflicts, error: conflictError } = await supabase.rpc('report_absence_conflict_check', { p_dates: dates });
+    saveBtn.disabled = false;
+    if (conflictError) {
+      formStatusEl.className = 'text-sm text-rose-600';
+      formStatusEl.textContent = t('absence.submitFailed', { message: conflictError.message });
+      return;
+    }
+    formStatusEl.textContent = '';
+
+    const hasConflicts = conflicts && conflicts.length > 0;
+    const confirmMessage = hasConflicts
+      ? [
+          t('absence.conflictIntro'),
+          ...conflicts.map((c) => t('absence.conflictLine', { date: c.conflict_date, department: c.department_name })),
+          t('absence.conflictConfirmQuestion'),
+          t('absence.conflictTalkToHead'),
+        ].join(' ')
+      : dates.length === 1
+        ? t('absence.confirmSubmit', { date: dates[0] })
+        : t('absence.confirmSubmitMulti', { count: dates.length, dates: dates.join(', ') });
+    if (!(await confirmDialog({ message: confirmMessage, confirmLabel: t('absence.submit'), danger: hasConflicts }))) return;
 
     saveBtn.disabled = true;
     formStatusEl.className = 'text-sm text-slate-500';

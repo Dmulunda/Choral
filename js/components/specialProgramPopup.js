@@ -2,12 +2,16 @@
 // (app.js's showApp), independent of which department tab is active,
 // since it needs to reach every member regardless of whether they
 // ever visit Church Program. Shows the flyer if one's been uploaded,
-// otherwise a "mark your calendar" placeholder — throttled to once per
-// calendar day per browser (see POPUP_SEEN_KEY below): once it's shown
-// today, it won't show again until tomorrow, even across multiple app
-// loads/reloads today. It still reappears day after day until the
-// program's nearest upcoming date passes (a multi-date program keeps
-// popping up across all of its dates, not just the first one).
+// otherwise a "mark your calendar" placeholder. Every special program
+// with an upcoming date gets its own pop-up, shown one after another
+// (soonest date first) -- not just the single nearest one -- each
+// advancing to the next only once the current one is dismissed. A
+// multi-date program still only queues once, using its own nearest
+// upcoming date, not once per date. Throttled to once per calendar day
+// per browser (see POPUP_SEEN_KEY below): once the queue has been
+// shown today, it won't start again until tomorrow, even across
+// multiple app loads/reloads today. It still reappears day after day
+// until a program's nearest date passes.
 import { t } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
@@ -20,17 +24,15 @@ const FLYER_BUCKET = 'church-program-flyers';
 const POPUP_SEEN_KEY = 'choir-hub-special-program-popup-seen-on';
 
 // app.js's showApp() actually runs TWICE on a normal page load
-// (supabase.auth.getSession().then() AND the initial
-// onAuthStateChange callback both call it -- the latter via
-// showSplashThenApp() when the first firing carries event
-// 'SIGNED_IN', which supabase-js does even on a plain page load, not
-// just a real interactive sign-in), so this gets called twice in quick
-// succession. The localStorage write below only lands after an async
-// fetch, so both calls would read the pre-write "not seen yet" state
-// and both show a popup -- a synchronous, same-page-load guard is
-// needed in addition to the day-based one, set BEFORE any await so
-// there's no window for the second near-simultaneous call to slip
-// through.
+// (supabase-js fires both getSession().then() and the initial
+// onAuthStateChange callback, and both call showApp() -- see its own
+// comment on hasHandledInitialAuthEvent), so this gets called twice in
+// quick succession. The localStorage write below only lands after an
+// async fetch, so both calls would read the pre-write "not seen yet"
+// state and both start their own queue -- a synchronous, same-page-load
+// guard is needed in addition to the day-based one, set BEFORE any
+// await so there's no window for the second near-simultaneous call to
+// slip through.
 let checkedThisPageLoad = false;
 
 export async function checkSpecialProgramPopup(supabase) {
@@ -46,31 +48,45 @@ export async function checkSpecialProgramPopup(supabase) {
 
   if (!specialPrograms || specialPrograms.length === 0) return;
 
-  const { data: nextDate } = await supabase
+  const { data: dates } = await supabase
     .from('church_program_dates')
     .select('program_id, date')
     .in('program_id', specialPrograms.map((p) => p.id))
     .gte('date', todayLocal())
-    .order('date', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order('date', { ascending: true });
 
-  if (!nextDate) return;
+  if (!dates || dates.length === 0) return;
 
-  const program = specialPrograms.find((p) => p.id === nextDate.program_id);
-  if (!program) return;
+  const queuedProgramIds = new Set();
+  const queue = [];
+  for (const row of dates) {
+    if (queuedProgramIds.has(row.program_id)) continue;
+    const program = specialPrograms.find((p) => p.id === row.program_id);
+    if (!program) continue;
+    queuedProgramIds.add(row.program_id);
+    queue.push({ program, date: row.date });
+  }
+
+  if (queue.length === 0) return;
+
+  localStorage.setItem(POPUP_SEEN_KEY, today);
+  showNextInQueue(supabase, queue);
+}
+
+async function showNextInQueue(supabase, queue) {
+  const next = queue.shift();
+  if (!next) return;
 
   let flyerUrl = null;
-  if (program.flyer_storage_path) {
-    const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(program.flyer_storage_path, 3600);
+  if (next.program.flyer_storage_path) {
+    const { data: signed } = await supabase.storage.from(FLYER_BUCKET).createSignedUrl(next.program.flyer_storage_path, 3600);
     flyerUrl = signed?.signedUrl || null;
   }
 
-  showPopup({ title: program.title, date: nextDate.date }, flyerUrl);
-  localStorage.setItem(POPUP_SEEN_KEY, today);
+  showPopup({ title: next.program.title, date: next.date }, flyerUrl, () => showNextInQueue(supabase, queue));
 }
 
-function showPopup(program, flyerUrl) {
+function showPopup(program, flyerUrl, onClose) {
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4';
   root.innerHTML = `
@@ -93,8 +109,9 @@ function showPopup(program, flyerUrl) {
     </div>
   `;
   document.body.appendChild(root);
-  root.querySelector('[data-action="close"]').addEventListener('click', () => root.remove());
-  root.addEventListener('click', (e) => { if (e.target === root) root.remove(); });
+  const advance = () => { root.remove(); onClose?.(); };
+  root.querySelector('[data-action="close"]').addEventListener('click', advance);
+  root.addEventListener('click', (e) => { if (e.target === root) advance(); });
 }
 
 function escapeHtml(str) {

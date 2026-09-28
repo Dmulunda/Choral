@@ -12,6 +12,7 @@
 // and none was asked for, so these are simple constants a future code
 // change would update if the actual people ever change.
 import { t } from '../i18n.js';
+import { getChurchLogoUrl } from '../churchBranding.js';
 
 const LEAD_INSTRUCTOR_NAME = 'Prophète Francis Ngawala';
 const LEAD_INSTRUCTOR_TITLE = 'LEAD INSTRUCTOR';
@@ -20,7 +21,11 @@ const ACADEMY_DIRECTOR_TITLE = 'PASTEUR PRINCIPAL';
 
 export function openCertificate({ studentName, courseTitle, approvedAt, approvalId }) {
   const dateLabel = new Date(approvedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  const logoUrl = `${window.location.origin}/img/vpd-logo.png`;
+  // Falls back to the default asset only if no church logo has been
+  // uploaded yet -- see js/components/churchLogoModal.js. Works fine in
+  // this detached window/tab too: getChurchLogoUrl() is an absolute
+  // Supabase public-storage URL, same shape as the origin-based fallback.
+  const logoUrl = getChurchLogoUrl() || `${window.location.origin}/img/vpd-logo.png`;
   const certificateId = formatCertificateId(approvalId, approvedAt);
 
   const html = `

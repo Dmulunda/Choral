@@ -18,13 +18,13 @@ export function renderNextUpcomingWidget(container, { supabase, departmentId, de
   const load = RENDERERS[departmentKey] || loadShift;
 
   container.innerHTML = `
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('dashboard.today')}</h2>
-      <div data-el="today-body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
+    <div class="bg-white rounded-xl border border-slate-100 p-4">
+      <h2 class="text-[12.5px] font-bold text-slate-900 mb-2.5">📅 ${t('dashboard.today')}</h2>
+      <div data-el="today-body" class="text-[12px] text-slate-500 space-y-2.5">${t('common.loading')}</div>
     </div>
-    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('dashboard.thisWeekSchedule')}</h2>
-      <div data-el="week-body" class="text-sm text-slate-500 space-y-3">${t('common.loading')}</div>
+    <div class="bg-white rounded-xl border border-slate-100 p-4">
+      <h2 class="text-[12.5px] font-bold text-slate-900 mb-2.5">📆 ${t('dashboard.thisWeekSchedule')}</h2>
+      <div data-el="week-body" class="text-[12px] text-slate-500 space-y-2.5">${t('common.loading')}</div>
     </div>
   `;
   const todayEl = container.querySelector('[data-el="today-body"]');
@@ -75,28 +75,58 @@ export function uniformLineHtml(uniformMap, date) {
   return desc ? `<div class="text-xs text-purple-700 mt-1">${t('uniform.label')}: ${escapeHtml(desc)}</div>` : '';
 }
 
-async function loadPreaching({ todayEl, weekEl }, { supabase }) {
-  const { start, end } = getWeekRange();
-  const { data, error } = await supabase
-    .from('preaching_schedule')
-    .select('date, sermon_theme, bible_verse, preacher_id, preacher_name, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name )')
+// Still shown here as scheduled (the assignment itself is untouched
+// when someone reports absence after being scheduled -- see
+// report_absence()'s warn-and-allow flow), but flagged red so whoever's
+// reviewing the week's schedule can see a replacement is needed. Keyed
+// by "userId|date" since a multi-day week card needs to know WHICH day
+// someone's absent for, not just whether they ever are that week.
+async function loadAbsentKeys(supabase, start, end) {
+  const { data } = await supabase
+    .from('availability')
+    .select('user_id, date')
+    .eq('status', 'unavailable')
     .gte('date', start)
-    .lte('date', end)
-    .order('date', { ascending: true });
-
-  if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
-  renderTodayAndWeek(todayEl, weekEl, data || [], buildPreachingHtml);
+    .lte('date', end);
+  return new Set((data || []).map((r) => `${r.user_id}|${r.date}`));
 }
 
-function buildPreachingHtml(rows) {
+function nameWithAbsentNote(name, userId, date, absentKeys) {
+  if (!absentKeys.has(`${userId}|${date}`)) return escapeHtml(name);
+  return `${escapeHtml(name)} <span class="text-rose-600 font-bold">(${t('serviceProgram.reportedAbsent')})</span>`;
+}
+
+async function loadPreaching({ todayEl, weekEl }, { supabase }) {
+  const { start, end } = getWeekRange();
+  const [{ data, error }, absentKeys] = await Promise.all([
+    supabase
+      .from('preaching_schedule')
+      .select('date, sermon_theme, bible_verse, moderator_id, preacher_id, preacher_name, moderator:profiles!moderator_id ( full_name ), preacher:profiles!preacher_id ( full_name )')
+      .gte('date', start)
+      .lte('date', end)
+      .order('date', { ascending: true }),
+    loadAbsentKeys(supabase, start, end),
+  ]);
+
+  if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
+  renderTodayAndWeek(todayEl, weekEl, data || [], (rows) => buildPreachingHtml(rows, absentKeys));
+}
+
+function buildPreachingHtml(rows, absentKeys) {
   return rows.map((row) => {
     const preacherName = row.preacher?.full_name || row.preacher_name;
+    const moderatorHtml = row.moderator?.full_name
+      ? nameWithAbsentNote(row.moderator.full_name, row.moderator_id, row.date, absentKeys)
+      : '—';
+    const preacherHtml = preacherName
+      ? (row.preacher_id ? nameWithAbsentNote(preacherName, row.preacher_id, row.date, absentKeys) : escapeHtml(preacherName))
+      : '—';
     return `
-      <div class="border border-slate-200 rounded-lg p-3">
+      <div class="border border-slate-100 rounded-lg p-3">
         <div class="font-medium text-slate-800">${escapeHtml(row.sermon_theme || t('preaching.noSermonTheme'))} <span class="text-slate-400 font-normal">— ${escapeHtml(row.date)}</span></div>
         <div class="text-slate-600 mt-1 text-sm">
-          ${t('preaching.moderator')}: ${row.moderator?.full_name ? escapeHtml(row.moderator.full_name) : '—'}
-          &nbsp;·&nbsp; ${t('preaching.preacher')}: ${preacherName ? escapeHtml(preacherName) : '—'}
+          ${t('preaching.moderator')}: ${moderatorHtml}
+          &nbsp;·&nbsp; ${t('preaching.preacher')}: ${preacherHtml}
         </div>
         ${row.bible_verse ? `<div class="text-indigo-700 italic mt-1 text-sm">${escapeHtml(row.bible_verse)}</div>` : ''}
       </div>
@@ -106,32 +136,35 @@ function buildPreachingHtml(rows) {
 
 async function loadMediaTech({ todayEl, weekEl }, { supabase }) {
   const { start, end } = getWeekRange();
-  const { data, error } = await supabase
-    .from('media_tech_assignments')
-    .select('date, role, assignee:profiles!user_id ( full_name )')
-    .gte('date', start)
-    .lte('date', end)
-    .order('date', { ascending: true });
+  const [{ data, error }, absentKeys] = await Promise.all([
+    supabase
+      .from('media_tech_assignments')
+      .select('date, role, user_id, assignee:profiles!user_id ( full_name )')
+      .gte('date', start)
+      .lte('date', end)
+      .order('date', { ascending: true }),
+    loadAbsentKeys(supabase, start, end),
+  ]);
 
   if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
-  renderTodayAndWeek(todayEl, weekEl, data || [], buildMediaTechHtml);
+  renderTodayAndWeek(todayEl, weekEl, data || [], (rows) => buildMediaTechHtml(rows, absentKeys));
 }
 
-function buildMediaTechHtml(rows) {
+function buildMediaTechHtml(rows, absentKeys) {
   const byDate = new Map();
   rows.forEach((row) => {
     if (!byDate.has(row.date)) byDate.set(row.date, new Map());
     const roleMap = byDate.get(row.date);
     if (!roleMap.has(row.role)) roleMap.set(row.role, []);
-    if (row.assignee?.full_name) roleMap.get(row.role).push(row.assignee.full_name);
+    if (row.assignee?.full_name) roleMap.get(row.role).push({ name: row.assignee.full_name, userId: row.user_id });
   });
 
   return Array.from(byDate.entries()).map(([date, roleMap]) => `
-    <div class="border border-slate-200 rounded-lg p-3">
+    <div class="border border-slate-100 rounded-lg p-3">
       <div class="font-medium text-slate-800 mb-1">${escapeHtml(date)}</div>
       <div class="space-y-1 text-sm">
-        ${Array.from(roleMap.entries()).map(([role, names]) => `
-          <div><span class="text-slate-500">${mediaTechRoleLabel(role)}:</span> <span class="text-slate-800">${names.length > 0 ? names.map(escapeHtml).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</span></div>
+        ${Array.from(roleMap.entries()).map(([role, people]) => `
+          <div><span class="text-slate-500">${mediaTechRoleLabel(role)}:</span> <span class="text-slate-800">${people.length > 0 ? people.map((p) => nameWithAbsentNote(p.name, p.userId, date, absentKeys)).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</span></div>
         `).join('')}
       </div>
     </div>
@@ -140,18 +173,21 @@ function buildMediaTechHtml(rows) {
 
 async function loadEcodem({ todayEl, weekEl }, { supabase }) {
   const { start, end } = getWeekRange();
-  const { data, error } = await supabase
-    .from('ecodem_sessions')
-    .select('date, age_group, topic, ecodem_session_workers ( worker:profiles!user_id ( full_name ) )')
-    .gte('date', start)
-    .lte('date', end)
-    .order('date', { ascending: true });
+  const [{ data, error }, absentKeys] = await Promise.all([
+    supabase
+      .from('ecodem_sessions')
+      .select('date, age_group, topic, ecodem_session_workers ( user_id, worker:profiles!user_id ( full_name ) )')
+      .gte('date', start)
+      .lte('date', end)
+      .order('date', { ascending: true }),
+    loadAbsentKeys(supabase, start, end),
+  ]);
 
   if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
-  renderTodayAndWeek(todayEl, weekEl, data || [], buildEcodemHtml);
+  renderTodayAndWeek(todayEl, weekEl, data || [], (rows) => buildEcodemHtml(rows, absentKeys));
 }
 
-function buildEcodemHtml(rows) {
+function buildEcodemHtml(rows, absentKeys) {
   const byDate = new Map();
   rows.forEach((session) => {
     if (!byDate.has(session.date)) byDate.set(session.date, []);
@@ -159,16 +195,16 @@ function buildEcodemHtml(rows) {
   });
 
   return Array.from(byDate.entries()).map(([date, sessions]) => `
-    <div class="border border-slate-200 rounded-lg p-3">
+    <div class="border border-slate-100 rounded-lg p-3">
       <div class="font-medium text-slate-800 mb-1">${escapeHtml(date)}</div>
       <div class="grid sm:grid-cols-3 gap-3 text-sm">
         ${sessions.map((session) => {
-          const names = (session.ecodem_session_workers || []).map((w) => w.worker?.full_name).filter(Boolean);
+          const workers = (session.ecodem_session_workers || []).filter((w) => w.worker?.full_name);
           return `
             <div>
               <div class="font-medium text-slate-700">${ecodemAgeGroupLabel(session.age_group)}</div>
               <div class="text-slate-600">${session.topic ? escapeHtml(session.topic) : `<span class="text-slate-400">${t('ecodem.noTopic')}</span>`}</div>
-              <div class="text-slate-500 mt-1">${names.length > 0 ? names.map(escapeHtml).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
+              <div class="text-slate-500 mt-1">${workers.length > 0 ? workers.map((w) => nameWithAbsentNote(w.worker.full_name, w.user_id, date, absentKeys)).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
             </div>
           `;
         }).join('')}
@@ -179,41 +215,51 @@ function buildEcodemHtml(rows) {
 
 async function loadShift({ todayEl, weekEl }, { supabase, departmentId, departmentKey }) {
   const { start, end } = getWeekRange();
-  const [{ data, error }, uniformMap] = await Promise.all([
+  const [{ data, error }, uniformMap, absentKeys] = await Promise.all([
     supabase
       .from('department_shifts')
-      .select('date, title, notes, department_shift_assignments ( assignee:profiles!user_id ( full_name ) )')
+      .select('date, title, notes, department_shift_assignments ( user_id, assignee:profiles!user_id ( full_name ) )')
       .eq('department_id', departmentId)
       .gte('date', start)
       .lte('date', end)
       .order('date', { ascending: true }),
     departmentKey === 'ushers' ? loadUniformByDate(supabase, departmentId, start, end) : Promise.resolve(null),
+    loadAbsentKeys(supabase, start, end),
   ]);
 
   if (error) { todayEl.innerHTML = weekEl.innerHTML = errorHtml(error); return; }
-  renderTodayAndWeek(todayEl, weekEl, data || [], (rows) => buildShiftHtml(rows, uniformMap));
+  renderTodayAndWeek(todayEl, weekEl, data || [], (rows) => buildShiftHtml(rows, uniformMap, absentKeys));
 }
 
-function buildShiftHtml(rows, uniformMap) {
+function buildShiftHtml(rows, uniformMap, absentKeys) {
   return rows.map((row) => {
-    const names = (row.department_shift_assignments || []).map((a) => a.assignee?.full_name).filter(Boolean);
+    const people = (row.department_shift_assignments || []).filter((a) => a.assignee?.full_name);
     return `
-      <div class="border border-slate-200 rounded-lg p-3">
+      <div class="border border-slate-100 rounded-lg p-3">
         <div class="font-medium text-slate-800">${escapeHtml(row.title)} <span class="text-slate-400 font-normal">— ${escapeHtml(row.date)}</span></div>
         ${row.notes ? `<p class="text-slate-600 mt-1 text-sm">${escapeHtml(row.notes)}</p>` : ''}
-        <div class="text-slate-500 mt-1 text-sm">${names.length > 0 ? names.map(escapeHtml).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
+        <div class="text-slate-500 mt-1 text-sm">${people.length > 0 ? people.map((a) => nameWithAbsentNote(a.assignee.full_name, a.user_id, row.date, absentKeys)).join(', ') : `<span class="text-slate-400">${t('deptScheduling.unassigned')}</span>`}</div>
         ${uniformLineHtml(uniformMap, row.date)}
       </div>
     `;
   }).join('');
 }
 
+function emptyHtml(message) {
+  return `
+    <div class="flex items-start gap-2 py-0.5">
+      <span class="text-lg opacity-50">🗓️</span>
+      <span class="text-[11.5px] text-slate-400 leading-snug pt-0.5">${message}</span>
+    </div>
+  `;
+}
+
 function noneTodayHtml() {
-  return `<p class="text-slate-400">${t('dashboard.nothingToday')}</p>`;
+  return emptyHtml(t('dashboard.nothingToday'));
 }
 
 function noneElseHtml() {
-  return `<p class="text-slate-400">${t('dashboard.nothingElseThisWeek')}</p>`;
+  return emptyHtml(t('dashboard.nothingElseThisWeek'));
 }
 
 function errorHtml(error) {

@@ -52,7 +52,12 @@ export function applyAppTheme({ primary_color, text_color, background_color, fon
     root.style.setProperty('--theme-font', font.family);
     if (font.googleFont) loadGoogleFont(font.googleFont);
   } else {
-    root.style.setProperty('--theme-font', 'inherit');
+    // "Default" used to literally mean the CSS keyword `inherit` --
+    // with nothing else setting a font anywhere, that falls through to
+    // the browser's raw default (often a serif), not an actual design
+    // choice. A real sans stack here is what "Default" was always
+    // supposed to look like; matches index.html's own :root fallback.
+    root.style.setProperty('--theme-font', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif');
   }
 }
 

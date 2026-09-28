@@ -16,6 +16,12 @@ import { getFontChoices, applyAppTheme } from '../theme.js';
 
 const NAV_KEYS = ['nav.dashboard', 'nav.scheduling', 'nav.songbook', 'nav.voiceExercises', 'nav.members', 'nav.home', 'nav.training'];
 const SIDEBAR_KEYS = ['sidebar.churchRules', 'sidebar.attendance', 'sidebar.appSuggestion', 'sidebar.reportAbsence', 'sidebar.departmentRules', 'sidebar.monthlyReport', 'sidebar.guestCases', 'sidebar.memberCases'];
+// The church's name doesn't actually translate -- admins just type the
+// same value in both the English and French fields, same as how this
+// key already carries an identical string in both TRANSLATIONS blocks.
+// Address lives in churchLogoModal.js instead (same unified logo+address
+// system sandbox2 uses), not here.
+const CHURCH_INFO_KEYS = ['memberCard.churchFullName'];
 // Seed departments as a stable baseline; open() below merges in any
 // departments created later via Create Department (sql/059), so
 // renaming one never needs a code change either.
@@ -79,6 +85,7 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
 
     bodyEl.innerHTML = `
       ${renderAppearanceSection()}
+      ${renderSection(t('menuCustomizer.sectionChurchInfo'), CHURCH_INFO_KEYS)}
       ${renderSection(t('menuCustomizer.sectionNav'), NAV_KEYS)}
       ${renderSection(t('menuCustomizer.sectionSidebar'), SIDEBAR_KEYS)}
       ${renderSection(t('menuCustomizer.sectionDepartments'), DEPARTMENT_LABEL_KEYS)}
@@ -184,7 +191,7 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     statusEl.className = 'text-sm text-slate-500';
     statusEl.textContent = t('common.saving');
 
-    const allKeys = [...NAV_KEYS, ...SIDEBAR_KEYS, ...DEPARTMENT_LABEL_KEYS];
+    const allKeys = [...CHURCH_INFO_KEYS, ...NAV_KEYS, ...SIDEBAR_KEYS, ...DEPARTMENT_LABEL_KEYS];
     const rows = allKeys.map((key) => ({
       key,
       label_en: bodyEl.querySelector(`[data-el="en-${cssEscape(key)}"]`).value.trim(),

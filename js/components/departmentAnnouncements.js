@@ -10,30 +10,33 @@ import { confirmDialog } from './confirmDialog.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
 import { t, departmentLabel } from '../i18n.js';
 
+const CHIP_OFF = 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200';
+const CHIP_ON = 'bg-indigo-50 border-indigo-200 text-indigo-700';
+
 export function renderAnnouncements(container, { supabase, departmentId, canPost, isGlobalPoster, canManage, currentUserId }) {
   container.innerHTML = `
-    <h2 class="text-lg font-semibold mb-4">${t('announcements.title')}</h2>
+    <h2 class="text-[13px] font-bold text-slate-900 mb-3">📣 ${t('announcements.title')}</h2>
     ${canPost ? `
-      <form data-el="form" class="space-y-2 mb-4 pb-4 border-b border-slate-200">
+      <form data-el="form" class="space-y-2.5 mb-4 pb-4 border-b border-slate-100">
         ${isGlobalPoster ? `
           <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">${t('announcements.postTo')}</label>
-            <div data-el="targets" class="flex flex-wrap gap-3 mb-2 text-sm text-slate-600"></div>
+            <label class="block text-[11px] font-bold text-slate-500 mb-1.5">${t('announcements.postTo')}</label>
+            <div data-el="targets" class="flex flex-wrap gap-1.5 mb-1"></div>
           </div>
         ` : ''}
         <input type="text" name="title" required placeholder="${t('announcements.titlePlaceholder')}"
-               class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-[12.5px]" />
         <textarea name="body" rows="3" placeholder="${t('announcements.bodyPlaceholder')}"
-                  class="w-full border border-slate-300 rounded-lg px-3 py-2"></textarea>
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-[12.5px]"></textarea>
         <div class="flex items-center gap-3">
-          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+          <button type="submit" class="px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-[12.5px] font-semibold hover:bg-indigo-700">
             ${t('announcements.post')}
           </button>
-          <span data-el="form-status" class="text-sm text-slate-500"></span>
+          <span data-el="form-status" class="text-[11.5px] text-slate-500"></span>
         </div>
       </form>
     ` : ''}
-    <div data-el="list" class="space-y-3"></div>
+    <div data-el="list" class="space-y-2.5"></div>
   `;
 
   const listEl = container.querySelector('[data-el="list"]');
@@ -43,27 +46,46 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
 
   if (targetsEl) loadTargets();
 
+  // Chip-picker replacing a checkbox per department -- "All" toggling
+  // dims (but doesn't hide) the individual chips, same as the old
+  // all-checkbox disabling them, since a poster might still want to
+  // see which departments exist even while targeting all of them.
+  // Each chip tracks its own state via data-on (read/written directly,
+  // not parsed back out of className) so toggling is unambiguous.
   async function loadTargets() {
     const { data } = await supabase.from('departments').select('id, key, name').order('name');
     const departments = data || [];
 
     targetsEl.innerHTML = `
-      <label class="flex items-center gap-1.5 font-medium">
-        <input type="checkbox" data-el="all-departments" /> ${t('announcements.allDepartments')}
-      </label>
+      <button type="button" data-el="all-departments" data-on="false" class="chip-target font-bold">${t('announcements.allDepartments')}</button>
       ${departments.map((d) => `
-        <label class="flex items-center gap-1.5">
-          <input type="checkbox" data-el="dept-target" value="${d.id}" ${d.id === departmentId ? 'checked' : ''} />
-          ${departmentLabel(d.key)}
-        </label>
+        <button type="button" data-el="dept-target" data-id="${d.id}" data-on="${d.id === departmentId}" class="chip-target">${escapeHtml(departmentLabel(d.key))}</button>
       `).join('')}
     `;
 
-    const allCheckbox = targetsEl.querySelector('[data-el="all-departments"]');
-    const deptCheckboxes = targetsEl.querySelectorAll('[data-el="dept-target"]');
-    allCheckbox.addEventListener('change', () => {
-      deptCheckboxes.forEach((cb) => { cb.disabled = allCheckbox.checked; });
+    const allBtn = targetsEl.querySelector('[data-el="all-departments"]');
+    const deptBtns = targetsEl.querySelectorAll('[data-el="dept-target"]');
+    [allBtn, ...deptBtns].forEach(paintChip);
+
+    allBtn.addEventListener('click', () => {
+      const nowOn = allBtn.dataset.on !== 'true';
+      allBtn.dataset.on = String(nowOn);
+      paintChip(allBtn);
+      deptBtns.forEach((btn) => { btn.disabled = nowOn; paintChip(btn); });
     });
+    deptBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        btn.dataset.on = String(btn.dataset.on !== 'true');
+        paintChip(btn);
+      });
+    });
+  }
+
+  function paintChip(btn) {
+    const on = btn.dataset.on === 'true';
+    btn.className = `chip-target ${btn === targetsEl.querySelector('[data-el="all-departments"]') ? 'font-bold' : ''} ${on ? CHIP_ON : CHIP_OFF}`;
+    btn.style.cssText = `font-size:11px; padding:4px 11px; border-radius:999px; border-width:1px; cursor:pointer; transition:all .12s; opacity:${btn.disabled ? '0.4' : '1'};`;
   }
 
   if (form) {
@@ -79,12 +101,14 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
 
       let targetDeptIds;
       if (targetsEl) {
-        const allChecked = targetsEl.querySelector('[data-el="all-departments"]').checked;
-        if (allChecked) {
+        const allOn = targetsEl.querySelector('[data-el="all-departments"]').dataset.on === 'true';
+        if (allOn) {
           const { data: allDepts } = await supabase.from('departments').select('id');
           targetDeptIds = (allDepts || []).map((d) => d.id);
         } else {
-          targetDeptIds = Array.from(targetsEl.querySelectorAll('[data-el="dept-target"]:checked')).map((cb) => cb.value);
+          targetDeptIds = Array.from(targetsEl.querySelectorAll('[data-el="dept-target"]'))
+            .filter((btn) => btn.dataset.on === 'true')
+            .map((btn) => btn.dataset.id);
         }
       } else {
         targetDeptIds = [departmentId];
@@ -133,7 +157,12 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
     }
 
     if (data.length === 0) {
-      listEl.innerHTML = `<p class="text-sm text-slate-500">${t('announcements.none')}</p>`;
+      listEl.innerHTML = `
+        <div class="flex items-start gap-2 py-0.5">
+          <span class="text-lg opacity-50">📣</span>
+          <span class="text-[11.5px] text-slate-400 leading-snug pt-0.5">${t('announcements.none')}</span>
+        </div>
+      `;
       return;
     }
 
@@ -141,14 +170,14 @@ export function renderAnnouncements(container, { supabase, departmentId, canPost
     data.forEach((a) => {
       const canDelete = canManage || a.created_by === currentUserId;
       const row = document.createElement('div');
-      row.className = 'border border-slate-200 rounded-lg p-3';
+      row.className = 'border-l-2 border-indigo-600 pl-3 py-0.5';
       row.innerHTML = `
         <div class="flex items-start justify-between gap-2">
-          <div class="font-medium text-slate-800">${escapeHtml(a.title)}</div>
-          ${canDelete ? `<button type="button" data-action="delete" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('moderation.delete')}</button>` : ''}
+          <div class="text-[12px] font-semibold text-slate-800">${escapeHtml(a.title)}</div>
+          ${canDelete ? `<button type="button" data-action="delete" class="text-[10.5px] font-semibold text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('moderation.delete')}</button>` : ''}
         </div>
-        ${a.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(a.body)}</p>` : ''}
-        <div class="text-xs text-slate-400 mt-2">${escapeHtml(a.author?.full_name || '')} · ${escapeHtml(a.created_at.slice(0, 10))}</div>
+        ${a.body ? `<p class="text-[11px] text-slate-500 mt-0.5 whitespace-pre-wrap">${escapeHtml(a.body)}</p>` : ''}
+        <div class="text-[9.5px] text-slate-400 mt-1">${escapeHtml(a.author?.full_name || '')} · ${escapeHtml(a.created_at.slice(0, 10))}</div>
       `;
       if (canDelete) {
         row.querySelector('[data-action="delete"]').addEventListener('click', async () => {

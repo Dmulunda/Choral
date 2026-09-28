@@ -8,6 +8,7 @@
 import { t } from '../i18n.js';
 import { renderMyAssignmentsPanel } from './myAssignmentsPanel.js';
 import { renderAssigneeBadge } from './assignmentStatusBadge.js';
+import { confirmDialog } from './confirmDialog.js';
 import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
@@ -117,10 +118,17 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
     renderMemberOptions(new Set());
   }
 
-  function renderMemberOptions(unavailableIds) {
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color).
+  function renderMemberOptions(unavailableIds, conflictMap = new Map()) {
     membersSelect.innerHTML = allMembers
       .filter((m) => !unavailableIds.has(m.user_id))
-      .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+      .map((m) => {
+        const conflictDept = conflictMap.get(m.user_id);
+        const note = conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+        return `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}${note}</option>`;
+      })
       .join('');
   }
 
@@ -129,8 +137,14 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
   // exception to preserve the way the other boards need.
   async function filterMemberOptionsForDate(dateStr) {
     if (!dateStr) { renderMemberOptions(new Set()); return; }
-    const { data } = await supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable');
-    renderMemberOptions(new Set((data || []).map((r) => r.user_id)));
+    const [{ data }, { data: conflictRows }] = await Promise.all([
+      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
+    ]);
+    renderMemberOptions(
+      new Set((data || []).map((r) => r.user_id)),
+      new Map((conflictRows || []).map((r) => [r.user_id, r.department_name])),
+    );
   }
 
   async function handleSubmit(e) {
@@ -215,7 +229,10 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
         <div class="border border-slate-200 rounded-lg p-3">
           <div class="flex items-baseline justify-between gap-3">
             <div class="font-medium text-slate-800">${escapeHtml(shift.title)}</div>
-            <div class="text-sm text-slate-500">${escapeHtml(shift.date)}</div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-sm text-slate-500 whitespace-nowrap">${escapeHtml(shift.date)}</div>
+              ${canAdminister ? `<button type="button" data-action="delete" data-shift-id="${shift.id}" class="text-xs font-medium text-rose-600 hover:text-rose-800 whitespace-nowrap">${t('deptScheduling.delete')}</button>` : ''}
+            </div>
           </div>
           ${shift.notes ? `<p class="text-sm text-slate-600 mt-1">${escapeHtml(shift.notes)}</p>` : ''}
           <div class="flex flex-wrap gap-1.5 mt-2">
@@ -233,6 +250,22 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
       `;
     }).join('');
   }
+
+  // Delegated rather than one listener per row -- load() rebuilds
+  // listEl.innerHTML wholesale on every refresh, so per-row listeners
+  // would need re-attaching every time anyway.
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="delete"]');
+    if (!btn) return;
+    const shiftId = btn.dataset.shiftId;
+    if (!(await confirmDialog({ message: t('deptScheduling.confirmDelete') }))) return;
+    const { error } = await supabase.from('department_shifts').delete().eq('id', shiftId);
+    if (error) {
+      window.alert(t('deptScheduling.deleteFailed', { message: error.message }));
+      return;
+    }
+    load();
+  });
 }
 
 function escapeHtml(str) {

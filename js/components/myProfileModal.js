@@ -20,10 +20,31 @@ export function createMyProfileModal({ supabase, userId }) {
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
 
-      <form data-el="form" class="space-y-3 mb-6">
+      <div class="mb-4">
+        <div data-el="card-container"></div>
+      </div>
+
+      <!-- Collapsed by default once a profile already looks complete
+           (open() below decides based on what's already filled in) --
+           the card above is what most people actually came here for;
+           the form is an edit action, not the primary view. -->
+      <button type="button" data-action="toggle-form"
+              class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 mb-3">
+        <span>${t('myProfile.editInfo')}</span>
+        <svg data-el="toggle-arrow" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      <form data-el="form" class="hidden space-y-3">
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.photo')}</label>
           <input type="file" accept="image/*" data-el="photo-input" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.legalName')}</label>
+          <input type="text" name="legal_name" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+          <p class="text-xs text-slate-400 mt-1">${t('myProfile.legalNameHint')}</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.address')}</label>
@@ -54,6 +75,10 @@ export function createMyProfileModal({ supabase, userId }) {
           </div>
         </div>
         <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.birthDate')}</label>
+          <input type="date" name="birth_date" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('myProfile.signature')}</label>
           <p class="text-xs text-slate-400 mb-1">${t('myProfile.signatureHint')}</p>
           <canvas data-el="signature-pad" width="360" height="120" class="w-full border border-slate-300 rounded-lg bg-white touch-none" style="max-width:360px;height:120px;"></canvas>
@@ -64,11 +89,6 @@ export function createMyProfileModal({ supabase, userId }) {
           <span data-el="form-status" class="text-sm text-slate-500"></span>
         </div>
       </form>
-
-      <div class="border-t border-slate-200 pt-4">
-        <h3 class="text-sm font-semibold text-slate-600 mb-3">${t('myProfile.idCardTitle')}</h3>
-        <div data-el="card-container"></div>
-      </div>
     </div>
   `;
   document.body.appendChild(root);
@@ -76,6 +96,8 @@ export function createMyProfileModal({ supabase, userId }) {
   const form = root.querySelector('[data-el="form"]');
   const formStatusEl = root.querySelector('[data-el="form-status"]');
   const cardContainer = root.querySelector('[data-el="card-container"]');
+  const toggleBtn = root.querySelector('[data-action="toggle-form"]');
+  const toggleArrow = root.querySelector('[data-el="toggle-arrow"]');
   const signaturePad = createSignaturePad(root.querySelector('[data-el="signature-pad"]'));
 
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
@@ -83,20 +105,35 @@ export function createMyProfileModal({ supabase, userId }) {
   root.querySelector('[data-action="clear-signature"]').addEventListener('click', () => signaturePad.clear());
   form.addEventListener('submit', handleSubmit);
 
+  function setFormExpanded(expanded) {
+    form.classList.toggle('hidden', !expanded);
+    toggleArrow.classList.toggle('rotate-180', expanded);
+  }
+  toggleBtn.addEventListener('click', () => setFormExpanded(form.classList.contains('hidden')));
+
   async function open() {
     formStatusEl.textContent = '';
     form.reset();
     root.classList.remove('hidden');
     root.classList.add('flex');
 
-    const { data: profile } = await supabase.from('profiles').select('address, sex, parish, birth_country, birth_city, signature_data').eq('id', userId).single();
+    const { data: profile } = await supabase.from('profiles').select('legal_name, address, sex, parish, birth_date, birth_country, birth_city, signature_data').eq('id', userId).single();
+    form.elements.legal_name.value = profile?.legal_name || '';
     form.elements.address.value = profile?.address || '';
     form.elements.sex.value = profile?.sex || '';
     form.elements.parish.value = profile?.parish || '';
+    form.elements.birth_date.value = profile?.birth_date || '';
     form.elements.birth_country.value = profile?.birth_country || '';
     form.elements.birth_city.value = profile?.birth_city || '';
     signaturePad.clear();
     signaturePad.loadFromDataUrl(profile?.signature_data);
+
+    // Collapsed by default once the essentials are already filled in --
+    // an incomplete profile opens with the form already showing, so a
+    // new member isn't left staring at just a half-empty card with no
+    // obvious way to finish it.
+    const looksComplete = !!(profile?.address && profile?.signature_data);
+    setFormExpanded(!looksComplete);
 
     renderMemberIdCard(cardContainer, { supabase, userId });
   }
@@ -112,15 +149,17 @@ export function createMyProfileModal({ supabase, userId }) {
     formStatusEl.textContent = t('common.saving');
 
     const update = {
+      legal_name: form.elements.legal_name.value.trim() || null,
       address: form.elements.address.value.trim() || null,
       sex: form.elements.sex.value || null,
       parish: form.elements.parish.value.trim() || null,
+      birth_date: form.elements.birth_date.value || null,
       birth_country: form.elements.birth_country.value.trim() || null,
       birth_city: form.elements.birth_city.value.trim() || null,
       signature_data: signaturePad.isEmpty() ? null : signaturePad.toDataUrl(),
     };
 
-    const file = form.elements['photo-input']?.files?.[0];
+    const file = form.querySelector('[data-el="photo-input"]')?.files?.[0];
     if (file) {
       const path = `${userId}/${Date.now()}-${file.name}`;
       const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, file);

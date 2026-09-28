@@ -22,6 +22,7 @@
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { createSignaturePad } from './signaturePad.js';
+import { getChurchLogoUrl } from '../churchBranding.js';
 
 const LETTER_TYPES = ['warning', 'suspension'];
 
@@ -492,7 +493,9 @@ export function createDisciplinaryLettersAdminModal({ supabase, currentUserId })
 
 function printLetter(letter, sigs) {
   const dateLabel = new Date(letter.issued_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  const logoUrl = `${window.location.origin}/img/vpd-logo.png`;
+  // Falls back to the default asset only if no church logo has been
+  // uploaded yet -- see js/components/churchLogoModal.js.
+  const logoUrl = getChurchLogoUrl() || `${window.location.origin}/img/vpd-logo.png`;
 
   const html = `
     <!DOCTYPE html>

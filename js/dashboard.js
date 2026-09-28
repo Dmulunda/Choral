@@ -3,11 +3,11 @@
 import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
 import { renderDashboard } from './components/dashboardOverview.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
-import { createBudgetRequestModal } from './components/budgetRequests.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderDateHeader } from './components/dateHeader.js';
 import { renderMeetingControls } from './components/videoMeeting.js';
 import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
+import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
 import { t } from './i18n.js';
 
 export async function renderDashboardTab() {
@@ -26,6 +26,10 @@ export async function renderDashboardTab() {
   if (active) await ensureAgreementsSigned({ supabase, userId: user.id, departmentId: active.id });
 
   container.innerHTML = '';
+
+  const deptSwitchEl = document.createElement('div');
+  container.appendChild(deptSwitchEl);
+  renderDepartmentSwitchShortcut(deptSwitchEl, { activeKey: 'choir' });
 
   const dateHeaderEl = document.createElement('div');
   container.appendChild(dateHeaderEl);
@@ -55,16 +59,7 @@ export async function renderDashboardTab() {
     currentUserId: user.id,
   });
 
-  if (active.role === 'admin' || active.role === 'super_admin') {
-    const budgetBtn = document.createElement('button');
-    budgetBtn.type = 'button';
-    budgetBtn.className = 'mb-6 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-    budgetBtn.textContent = t('finance.requestFunds');
-    container.appendChild(budgetBtn);
-    budgetBtn.addEventListener('click', () => {
-      createBudgetRequestModal({ supabase, departmentId: active.id, currentUserId: user.id }).open();
-    });
-  }
+  // Fund Request moved to the centralized Budget page (js/budgetPage.js).
 
   const dashboardEl = document.createElement('div');
   container.appendChild(dashboardEl);
