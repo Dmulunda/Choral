@@ -118,10 +118,17 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
     renderMemberOptions(new Set());
   }
 
-  function renderMemberOptions(unavailableIds) {
+  // conflictMap (user_id -> department name) flags anyone already
+  // assigned in a DIFFERENT department that day -- a plain-text note,
+  // not a filter (native <option> elements can't render bold/color).
+  function renderMemberOptions(unavailableIds, conflictMap = new Map()) {
     membersSelect.innerHTML = allMembers
       .filter((m) => !unavailableIds.has(m.user_id))
-      .map((m) => `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}</option>`)
+      .map((m) => {
+        const conflictDept = conflictMap.get(m.user_id);
+        const note = conflictDept ? ` (${t('deptScheduling.alreadyAssignedTo', { department: conflictDept })})` : '';
+        return `<option value="${m.user_id}">${escapeHtml(m.member.full_name)}${note}</option>`;
+      })
       .join('');
   }
 
@@ -130,8 +137,14 @@ export function renderShiftBoard(container, { supabase, departmentId, canAdminis
   // exception to preserve the way the other boards need.
   async function filterMemberOptionsForDate(dateStr) {
     if (!dateStr) { renderMemberOptions(new Set()); return; }
-    const { data } = await supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable');
-    renderMemberOptions(new Set((data || []).map((r) => r.user_id)));
+    const [{ data }, { data: conflictRows }] = await Promise.all([
+      supabase.from('availability').select('user_id').eq('date', dateStr).eq('status', 'unavailable'),
+      supabase.rpc('get_all_schedule_conflicts_for_date', { p_date: dateStr, p_exclude_department_id: departmentId }),
+    ]);
+    renderMemberOptions(
+      new Set((data || []).map((r) => r.user_id)),
+      new Map((conflictRows || []).map((r) => [r.user_id, r.department_name])),
+    );
   }
 
   async function handleSubmit(e) {

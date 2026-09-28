@@ -1208,6 +1208,7 @@ const TRANSLATIONS = {
     'deptScheduling.confirmDelete': 'Delete this shift? Assigned members will no longer see it.',
     'deptScheduling.deleteFailed': 'Failed to delete: {message}',
     'deptScheduling.unavailableOnDate': 'unavailable that day',
+    'deptScheduling.alreadyAssignedTo': 'already in {department}',
     'deptScheduling.switchDepartment': 'Make a schedule for:',
 
     'preaching.title': 'Schedule a Service',
@@ -3040,6 +3041,7 @@ const TRANSLATIONS = {
     'deptScheduling.confirmDelete': 'Supprimer ce service ? Les membres assignés ne le verront plus.',
     'deptScheduling.deleteFailed': 'Échec de la suppression : {message}',
     'deptScheduling.unavailableOnDate': 'indisponible ce jour-là',
+    'deptScheduling.alreadyAssignedTo': 'déjà dans {department}',
     'deptScheduling.switchDepartment': 'Créer un planning pour :',
 
     'preaching.title': 'Planifier un service',
