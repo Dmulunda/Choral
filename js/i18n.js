@@ -283,6 +283,10 @@ const TRANSLATIONS = {
     'absence.confirmSubmitMulti': 'Report yourself unavailable on these {count} dates: {dates}? Your departments and church leadership will be notified.',
     'absence.submitFailed': 'Failed to submit: {message}',
     'absence.submitted': 'Reported. Your departments and church leadership have been notified.',
+    'absence.checkingConflicts': 'Checking…',
+    'absence.conflictIntro': 'You can’t report absence for:',
+    'absence.conflictLine': '{date} ({department}) — you’re already scheduled.',
+    'absence.conflictTalkToHead': 'Talk to your head of department to arrange a replacement.',
 
     'schedulingConflict.title': 'Scheduling Conflict',
     'schedulingConflict.confirmLabel': 'Assign Anyway',
@@ -2111,6 +2115,10 @@ const TRANSLATIONS = {
     'absence.confirmSubmitMulti': 'Vous signaler absent(e) ces {count} dates : {dates} ? Vos départements et la direction de l’église seront informés.',
     'absence.submitFailed': "Échec de l'envoi : {message}",
     'absence.submitted': 'Signalé. Vos départements et la direction de l’église ont été informés.',
+    'absence.checkingConflicts': 'Vérification…',
+    'absence.conflictIntro': 'Vous ne pouvez pas signaler une absence pour :',
+    'absence.conflictLine': '{date} ({department}) — vous êtes déjà programmé(e).',
+    'absence.conflictTalkToHead': 'Parlez à votre chef de département pour organiser un remplacement.',
 
     'schedulingConflict.title': 'Conflit d’horaire',
     'schedulingConflict.confirmLabel': 'Assigner quand même',
