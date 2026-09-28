@@ -99,6 +99,30 @@ export function createReportAbsenceModal({ supabase, onReported }) {
       return;
     }
 
+    // Reject before ever confirming/submitting if any picked date
+    // conflicts with an existing assignment -- report_absence_conflict_check()
+    // also notifies that department's admins/secretaries server-side (so
+    // the member doesn't have to separately go find them) and re-derives
+    // the conflicts itself rather than trusting anything from the client.
+    saveBtn.disabled = true;
+    formStatusEl.className = 'text-sm text-slate-500';
+    formStatusEl.textContent = t('absence.checkingConflicts');
+
+    const { data: conflicts, error: conflictError } = await supabase.rpc('report_absence_conflict_check', { p_dates: dates });
+    saveBtn.disabled = false;
+    if (conflictError) {
+      formStatusEl.className = 'text-sm text-rose-600';
+      formStatusEl.textContent = t('absence.submitFailed', { message: conflictError.message });
+      return;
+    }
+    if (conflicts && conflicts.length > 0) {
+      const lines = conflicts.map((c) => t('absence.conflictLine', { date: c.conflict_date, department: c.department_name }));
+      formStatusEl.className = 'text-sm text-rose-600';
+      formStatusEl.textContent = `${t('absence.conflictIntro')} ${lines.join(' ')} ${t('absence.conflictTalkToHead')}`;
+      return;
+    }
+    formStatusEl.textContent = '';
+
     const confirmMessage = dates.length === 1
       ? t('absence.confirmSubmit', { date: dates[0] })
       : t('absence.confirmSubmitMulti', { count: dates.length, dates: dates.join(', ') });
