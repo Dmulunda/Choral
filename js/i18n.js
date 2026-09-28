@@ -261,6 +261,7 @@ const TRANSLATIONS = {
     'serviceProgram.none': 'Nothing scheduled for this date yet.',
     'serviceProgram.you': 'You',
     'serviceProgram.choirLead': 'Lead',
+    'serviceProgram.reportedAbsent': 'Reported absence on this day',
     'serviceProgram.attendanceTitle': 'Attendance',
     'serviceProgram.noAttendance': 'No headcount recorded for this date yet.',
 
@@ -284,9 +285,10 @@ const TRANSLATIONS = {
     'absence.submitFailed': 'Failed to submit: {message}',
     'absence.submitted': 'Reported. Your departments and church leadership have been notified.',
     'absence.checkingConflicts': 'Checking…',
-    'absence.conflictIntro': 'You can’t report absence for:',
-    'absence.conflictLine': '{date} ({department}) — you’re already scheduled.',
-    'absence.conflictTalkToHead': 'Talk to your head of department to arrange a replacement.',
+    'absence.conflictIntro': 'You’re already scheduled/assigned on:',
+    'absence.conflictLine': '{date} ({department}).',
+    'absence.conflictConfirmQuestion': 'Do you still want to report yourself absent?',
+    'absence.conflictTalkToHead': 'Please also speak with your head of department to find a replacement — they’ll be notified automatically too.',
 
     'schedulingConflict.title': 'Scheduling Conflict',
     'schedulingConflict.confirmLabel': 'Assign Anyway',
@@ -2094,6 +2096,7 @@ const TRANSLATIONS = {
     'serviceProgram.none': 'Rien de planifié pour cette date pour le moment.',
     'serviceProgram.you': 'Vous',
     'serviceProgram.choirLead': 'Chef de chorale',
+    'serviceProgram.reportedAbsent': 'A signalé une absence ce jour',
     'serviceProgram.attendanceTitle': 'Fréquentation',
     'serviceProgram.noAttendance': 'Aucun décompte enregistré pour cette date.',
 
@@ -2117,9 +2120,10 @@ const TRANSLATIONS = {
     'absence.submitFailed': "Échec de l'envoi : {message}",
     'absence.submitted': 'Signalé. Vos départements et la direction de l’église ont été informés.',
     'absence.checkingConflicts': 'Vérification…',
-    'absence.conflictIntro': 'Vous ne pouvez pas signaler une absence pour :',
-    'absence.conflictLine': '{date} ({department}) — vous êtes déjà programmé(e).',
-    'absence.conflictTalkToHead': 'Parlez à votre chef de département pour organiser un remplacement.',
+    'absence.conflictIntro': 'Vous êtes déjà programmé(e) ou assigné(e) le :',
+    'absence.conflictLine': '{date} ({department}).',
+    'absence.conflictConfirmQuestion': 'Voulez-vous quand même vous signaler absent(e) ?',
+    'absence.conflictTalkToHead': 'Parlez aussi à votre chef de département pour trouver un remplaçant — il/elle sera également notifié(e) automatiquement.',
 
     'schedulingConflict.title': 'Conflit d’horaire',
     'schedulingConflict.confirmLabel': 'Assigner quand même',
