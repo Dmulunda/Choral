@@ -110,7 +110,14 @@ export function renderServiceProgram(container, { supabase, userId }) {
     const inner = row.status
       ? renderAssigneeBadge({ name, status: row.status, reason: null, workingDepartmentKey: null })
       : `<span class="inline-flex items-center px-2 py-1 rounded-lg text-sm bg-slate-100 text-slate-700">${escapeHtml(name)}</span>`;
-    return `<span class="inline-block ${ringClass}">${inner}${isMe ? `<span class="sr-only">${t('serviceProgram.you')}</span>` : ''}</span>`;
+    // Still shown on the roster (the schedule itself is untouched when
+    // someone reports absence after being scheduled -- see
+    // report_absence()'s warn-and-allow flow), but flagged in red so
+    // whoever's reviewing the roster can see a replacement is needed.
+    const absentNote = row.is_absent
+      ? `<div class="text-xs font-bold text-rose-600 mt-0.5">${t('serviceProgram.reportedAbsent')}</div>`
+      : '';
+    return `<span class="inline-block ${ringClass}">${inner}${absentNote}${isMe ? `<span class="sr-only">${t('serviceProgram.you')}</span>` : ''}</span>`;
   }
 
   function renderAttendance(attendance) {

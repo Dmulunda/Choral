@@ -129,13 +129,21 @@ async function loadWeekServices(todayEl, weekEl, supabase) {
 }
 
 async function buildServiceCardHtml(plan, supabase, uniformMap) {
-  const [{ data: assigned }, { data: approvedRsvps }, { data: planSongs }] = await Promise.all([
-    supabase.from('service_plan_singers').select('profiles ( full_name )').eq('service_plan_id', plan.id),
+  const [{ data: assigned }, { data: approvedRsvps }, { data: planSongs }, { data: absentRows }] = await Promise.all([
+    supabase.from('service_plan_singers').select('singer_id, profiles ( full_name )').eq('service_plan_id', plan.id),
     supabase.from('service_rsvps').select('profiles ( full_name )').eq('service_plan_id', plan.id).eq('status', 'approved'),
     supabase.from('service_plan_songs').select('category, note, songs ( title )').eq('service_plan_id', plan.id).order('position'),
+    // Still shown as programmed (the assignment itself is untouched
+    // when someone reports absence after being scheduled -- see
+    // report_absence()'s warn-and-allow flow), but flagged red so a
+    // replacement doesn't get missed.
+    supabase.from('availability').select('user_id').eq('date', plan.date).eq('status', 'unavailable'),
   ]);
 
-  const assignedNames = (assigned || []).map((row) => row.profiles?.full_name).filter(Boolean);
+  const absentIds = new Set((absentRows || []).map((r) => r.user_id));
+  const assignedNames = (assigned || [])
+    .filter((row) => row.profiles?.full_name)
+    .map((row) => ({ name: row.profiles.full_name, isAbsent: absentIds.has(row.singer_id) }));
   const availableNames = (approvedRsvps || []).map((row) => row.profiles?.full_name).filter(Boolean);
   const praiseSongs = (planSongs || []).filter((row) => row.category === 'praise' && row.songs).map((row) => ({ title: row.songs.title, note: row.note }));
   const worshipSongs = (planSongs || []).filter((row) => row.category === 'worship' && row.songs).map((row) => ({ title: row.songs.title, note: row.note }));
@@ -175,12 +183,21 @@ function renderSongGroup(label, songs) {
   `;
 }
 
-function renderNameGroup(label, names, badgeClass) {
+// entries is either plain name strings (availableNames -- RSVPs don't
+// carry a reported-absence flag) or { name, isAbsent } objects
+// (assignedNames), normalized here so this one renderer handles both.
+function renderNameGroup(label, entries, badgeClass) {
+  const items = entries.map((e) => (typeof e === 'string' ? { name: e, isAbsent: false } : e));
   return `
     <div>
-      <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${escapeHtml(label)} (${names.length})</div>
-      ${names.length > 0
-        ? `<div class="flex flex-wrap gap-1.5">${names.map((name) => `<span class="px-2 py-1 rounded-lg ${badgeClass} text-sm">${escapeHtml(name)}</span>`).join('')}</div>`
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">${escapeHtml(label)} (${items.length})</div>
+      ${items.length > 0
+        ? `<div class="flex flex-wrap gap-1.5">${items.map(({ name, isAbsent }) => `
+            <span class="px-2 py-1 rounded-lg ${badgeClass} text-sm">
+              ${escapeHtml(name)}
+              ${isAbsent ? `<span class="block text-rose-600 font-bold text-xs">${t('serviceProgram.reportedAbsent')}</span>` : ''}
+            </span>
+          `).join('')}</div>`
         : `<p class="text-sm text-slate-400">${t('dashboard.noneYet')}</p>`
       }
     </div>
