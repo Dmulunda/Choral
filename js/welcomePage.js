@@ -6,8 +6,7 @@
 // from what plansModal.js shows a signed-in Super Admin — one plan
 // catalog, two places it's rendered.
 import { supabase } from './supabaseClient.js';
-import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice } from './utils/planPresentation.js';
-import { t } from './i18n.js';
+import { buildLimitBullets, formatPlanPrice } from './utils/planPresentation.js';
 
 document.querySelector('[data-el="year"]').textContent = new Date().getFullYear();
 
@@ -15,11 +14,55 @@ renderFeatures();
 loadPricing();
 wireContactForm();
 
+// Specific to what's actually built (see sql/saas_platform/*.sql and
+// js/components/*.js), not a generic "member management, event
+// planning, reports" list every church-software site has -- each of
+// these names the real mechanism, not a category label.
+const FEATURES = [
+  {
+    title: '14 ministries, seeded on day one',
+    desc: 'Choir, Ushers, Media & Tech, Sunday School, Preaching & Moderation, Security, Finance, Intercession, Evangelism, Welcoming & Socialisation, Cleaning, Interpreting, Social, and Grand Jeune & Couple — already there when a church signs up, not a blank slate to configure.',
+  },
+  {
+    title: 'Scheduling that catches conflicts',
+    desc: "Assigning someone who's already on another department's roster that day shows it right in the picker. Reporting an absence after being scheduled asks you to confirm, and notifies the department head automatically. Someone who's already said they can't make it can't be scheduled over it.",
+  },
+  {
+    title: 'Church Extensions',
+    desc: 'One denomination, several physical locations, each with its own address and admins — with a Global Super Admin, General Overseer, and General Secretary who have real access across every extension, not a read-only summary.',
+  },
+  {
+    title: 'Tax Receipts',
+    desc: 'Track donations through the year and issue official, numbered year-end tax receipts members can use when filing.',
+  },
+  {
+    title: 'Pastor Meeting Booking',
+    desc: 'A public link where anyone can book a meeting with a pastor against real availability the church sets — no back-and-forth over email.',
+  },
+  {
+    title: 'Service Program',
+    desc: "One roster for a given date, aggregated across every department — who's preaching, who's on slides, who's on the door — instead of checking five separate schedules.",
+  },
+  {
+    title: 'Headcount Tally',
+    desc: 'A tap counter for Sunday attendance, shareable by QR code so more than one person can count at once.',
+  },
+  {
+    title: 'Budget & Finance',
+    desc: 'Fund requests, reimbursements, and department-level budgets with review notes and PDF export.',
+  },
+  {
+    title: 'Member ID cards & guest follow-up',
+    desc: "Photo ID cards with department badges (and the extension's name, for a denomination with more than one). A guest follow-up hub that tracks a first-time visitor from check-in through assignment to a department.",
+  },
+];
+
 function renderFeatures() {
   const grid = document.querySelector('[data-el="features-grid"]');
-  grid.innerHTML = BASE_FEATURE_KEYS.map((key) => `
-    <div class="bg-white rounded-xl border border-slate-200 p-4">
-      <p class="text-sm font-medium text-slate-700">${escapeHtml(t(key))}</p>
+  grid.innerHTML = FEATURES.map(({ title, desc }) => `
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <p class="text-sm font-semibold text-[#0B1F3A] mb-1.5">${escapeHtml(title)}</p>
+      <p class="text-sm text-slate-600 leading-relaxed">${escapeHtml(desc)}</p>
     </div>
   `).join('');
 }
