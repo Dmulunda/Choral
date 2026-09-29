@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Runs before anything renders so night mode doesn't flash light
+       first — see js/theme.js for the toggle logic itself. -->
+  <script>
+    if (localStorage.getItem('choir-hub-theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <title>VPD Church Organisation</title>
+  <link rel="icon" type="image/png" href="img/vpd-logo.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0B1F3A" />
+  <link rel="apple-touch-icon" href="img/icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="VPD Church" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Member ID Card (js/components/memberIdCard.js) export support —
+       html2canvas/jsPDF to save it as an actual PNG/PDF file rather
+       than only a browser print-to-PDF. The QR code itself is loaded
+       as an ES module import directly in memberIdCard.js instead (the
+       `qrcode` package ships no browser <script> bundle, only a
+       bundler-ready one — same jsdelivr "+esm" convention already used
+       for @supabase/supabase-js in js/supabaseClient.js). -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- Import People tool (js/components/peopleImportModal.js) — SheetJS
+       reads the admin's uploaded .xlsx/.xls/.csv roster in the browser;
+       exposes the global `XLSX`. -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    @keyframes login-splash-logo-in {
+      0% { opacity: 0; transform: scale(0.55); }
+      60% { opacity: 1; transform: scale(1.08); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes login-splash-logo-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+    #login-splash img {
+      animation: login-splash-logo-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+                 login-splash-logo-pulse 1.8s ease-in-out 0.9s infinite;
+    }
+    @keyframes login-splash-word-drop {
+      0% { opacity: 0; transform: translateY(-28px); }
+      65% { opacity: 1; transform: translateY(6px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    #login-splash .splash-word {
+      display: inline-block;
+      opacity: 0;
+      animation: login-splash-word-drop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    /* ---- App theme (Super Admin's "Customize Menu & Appearance") ----
+       Same override technique as night mode below — Tailwind has no
+       config to hook a real theme into, so these variables (applied by
+       theme.js's applyAppTheme(), defaults matching the app's current
+       indigo/slate look) recolor the small set of utility classes used
+       for primary actions and page-level text/background. Not scoped
+       under html.dark, so the accent color stays consistent across
+       both modes — only text/background defer to night mode's own
+       fixed dark palette when that's active, since those two settings
+       are only meaningful in light mode to begin with. */
+    :root {
+      --theme-primary: #4f46e5;
+      --theme-primary-hover: #4338ca;
+      --theme-text: #1e293b;
+      --theme-bg: #f1f5f9;
+      --theme-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .bg-indigo-600 { background-color: var(--theme-primary) !important; }
+    .hover\:bg-indigo-700:hover { background-color: var(--theme-primary-hover) !important; }
+    .text-indigo-600, .text-indigo-700, .text-indigo-800 { color: var(--theme-primary) !important; }
+    .border-indigo-300 { border-color: var(--theme-primary) !important; }
+    body { font-family: var(--theme-font); }
+    html:not(.dark) body { background-color: var(--theme-bg) !important; }
+    html:not(.dark) body, html:not(.dark) .text-slate-800 { color: var(--theme-text) !important; }
+
+    /* ---- Night mode ----
+       Tailwind is loaded from the CDN with no build step, so there's no
+       tailwind.config to add real `dark:` variants to app-wide. Instead
+       this recolors the recurring "light surface" utility classes
+       whenever <html> has .dark — every card/table/modal in the app
+       already uses this same small palette (bg-white, text-slate-*,
+       border-slate-*, ...), so this covers the whole app without
+       touching the ~20 files that generate that markup. The sidebar
+       (bg-slate-900/800, text-slate-300) is already dark by design and
+       isn't targeted here, so it's unaffected either way. */
+    html.dark body { background-color: #0f172a; }
+    html.dark .bg-white { background-color: #1e293b; }
+    html.dark .bg-slate-50 { background-color: #1e293b; }
+    html.dark .bg-slate-100 { background-color: #334155; }
+    html.dark .text-slate-800 { color: #e2e8f0; }
+    html.dark .text-slate-700 { color: #cbd5e1; }
+    html.dark .text-slate-600 { color: #94a3b8; }
+    html.dark .text-slate-500 { color: #94a3b8; }
+    html.dark .text-slate-400 { color: #64748b; }
+    html.dark .border-slate-100,
+    html.dark .border-slate-200,
+    html.dark .border-slate-300 { border-color: #334155; }
+    html.dark .divide-slate-100 > * + * { border-color: #334155; }
+    html.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.15); }
+    html.dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.15); }
+    html.dark .bg-rose-100 { background-color: rgba(244, 63, 94, 0.2); }
+    html.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15); }
+    html.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.2); }
+    html.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.12); }
+    html.dark .text-indigo-600 { color: #818cf8; }
+    html.dark .text-indigo-700 { color: #a5b4fc; }
+    html.dark .text-indigo-800 { color: #c7d2fe; }
+    html.dark .text-rose-600 { color: #fb7185; }
+    html.dark .text-rose-700 { color: #fda4af; }
+    html.dark .text-rose-800 { color: #fecdd3; }
+    html.dark .text-amber-600 { color: #fbbf24; }
+    html.dark .text-amber-700 { color: #fcd34d; }
+    html.dark .text-emerald-700 { color: #6ee7b7; }
+    /* -900 has no dark-mode target on the rest of the app yet (this is
+       the first place it's used) -- goes brighter than -800's #e2e8f0
+       since -900 means "boldest heading" in light mode too. */
+    html.dark .text-slate-900 { color: #f8fafc; }
+    html.dark .bg-indigo-200 { background-color: rgba(99, 102, 241, 0.35); }
+    html.dark .border-indigo-200 { border-color: #6366f1; }
+    html.dark .border-indigo-100 { border-color: #3730a3; }
+    html.dark input,
+    html.dark select,
+    html.dark textarea { background-color: #1e293b; color: #e2e8f0; border-color: #334155; }
+    html.dark input::placeholder,
+    html.dark textarea::placeholder { color: #64748b; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+  <!-- Faint logo watermark behind every screen. z-0 vs. z-10 on the two
+       screens below is an explicit (not relied-on-DOM-order) stacking
+       guarantee that content always renders above it. -->
+  <div aria-hidden="true" class="fixed inset-0 z-0 pointer-events-none bg-no-repeat bg-center"
+       style="background-image: url('img/vpd-logo.png'); background-size: min(60vw, 640px); opacity: 0.06;"></div>
+
+  <!-- Shown briefly right after a successful sign-in, on top of
+       everything else, while the app underneath finishes loading —
+       see app.js's showSplashThenApp(). -->
+  <div id="login-splash"
+       class="hidden flex-col fixed inset-0 z-[100] items-center justify-center gap-6 bg-gradient-to-br from-[#0a1628] to-[#0B1F3A] transition-opacity duration-700">
+    <img src="img/vpd-logo.png" alt="" class="h-28 sm:h-36 w-auto drop-shadow-2xl" />
+    <p class="flex flex-wrap justify-center gap-x-2.5 gap-y-1 px-6 text-center text-white text-lg sm:text-2xl font-semibold max-w-xl">
+      <span class="splash-word" style="animation-delay: 0.05s">Welcome to</span>
+      <span class="splash-word" style="animation-delay: 0.2s">la communauté</span>
+      <span class="splash-word" style="animation-delay: 0.35s">la voix de la puissance Divine</span>
+      <span class="splash-word" style="animation-delay: 0.5s">Church management</span>
+    </p>
+  </div>
+
+  <!-- Auth gate: shown when there is no active Supabase session -->
+  <div id="auth-screen" class="relative z-10 hidden min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0a1628] to-[#0B1F3A]"></div>
+
+  <!-- Password recovery: shown when arriving via a "reset password" email link -->
+  <div id="password-recovery-screen" class="relative z-10 hidden min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0a1628] to-[#0B1F3A]"></div>
+
+  <div id="app-shell" class="relative z-10 hidden flex flex-col min-h-screen">
+
+    <!-- Top bar: visible at every screen size. Mobile-only brand/menu on
+         the left; desktop instead gets a persistent brand mark, a
+         (currently visual-only) search field, and a New Member
+         shortcut. Language/Theme/Inbox/Notifications/Account controls
+         on the right are always visible. All actual navigation lives
+         in #sidebar below (permanent column on desktop, off-canvas
+         drawer on mobile), not here. -->
+    <header class="flex items-center bg-slate-900 text-white px-4 py-3 sticky top-0 z-20 gap-4">
+      <div class="flex items-center gap-1 md:hidden">
+        <button type="button" id="menu-open-btn" data-i18n-aria-label="menu.open" aria-label="Open menu"
+                class="p-2 -ml-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span class="text-lg font-semibold" data-nav-group="org-name">VPD Church Organisation</span>
+      </div>
+
+      <!-- Desktop-only brand mark — mobile keeps the hamburger+name
+           above instead, since the sidebar itself repeats the full
+           name right below. Text set dynamically (not data-i18n, which
+           would reset it to the placeholder on every language switch) by
+           js/app.js applyTenantBranding() -- see loadMyTenant() in
+           showApp() and the onLangChange handler. -->
+      <div class="hidden md:flex items-center gap-2 shrink-0">
+        <!-- Per-tenant logo replaces this placeholder once tenants.logo_url
+             is known; falls back to it when no logo has been uploaded.
+             Clickable for a Super Admin to jump straight to the upload
+             tool. See sql/saas_platform/09_tenant_logo.sql. -->
+        <button type="button" id="tenant-logo-btn" data-i18n-aria-label="logo.title" aria-label="Church Logo" class="contents">
+          <div id="tenant-logo-placeholder" class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-semibold">VPD</div>
+          <img id="tenant-logo-img" alt="" class="hidden w-8 h-8 rounded-lg object-cover" />
+        </button>
+        <span class="font-semibold whitespace-nowrap" data-nav-group="org-name">VPD Church Organisation</span>
+      </div>
+
+      <!-- Visual placeholder only — no cross-entity search exists yet,
+           this just reserves the layout spot from the design. -->
+      <div class="hidden md:flex flex-1 max-w-md items-center gap-2 bg-slate-800 rounded-lg px-3 py-1.5 text-slate-400 text-sm select-none" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+        </svg>
+        <span class="truncate" data-i18n="header.searchPlaceholder">Search members, cases, departments</span>
+      </div>
+
+      <div class="flex items-center gap-2 ml-auto">
+        <!-- Wrapper carries the "desktop only" responsive rule; the
+             button itself is toggled hidden/flex in plain JS for the
+             pastoral-team role gate, so the two hiding mechanisms never
+             fight each other (see forEachNavGroup usages elsewhere for
+             why hidden+flex are never combined statically on one node). -->
+        <div class="hidden md:block">
+          <button type="button" id="header-new-member-btn"
+                  class="hidden items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg px-3 py-1.5 whitespace-nowrap transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span data-i18n="header.newMember">New member</span>
+          </button>
+        </div>
+
+        <select id="topbar-lang-select" data-i18n-aria-label="sidebar.language" aria-label="Language"
+                class="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2 py-1.5">
+          <option value="en">EN</option>
+          <option value="fr">FR</option>
+        </select>
+
+        <button type="button" id="topbar-theme-toggle" data-i18n-aria-label="sidebar.theme" aria-label="Theme"
+                class="p-2 rounded-lg hover:bg-slate-800">
+          <svg id="topbar-theme-icon-sun" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1.5m0 15V21m9-9h-1.5m-15 0H3m15.364-6.364l-1.06 1.06M6.696 17.304l-1.06 1.06m12.728 0l-1.06-1.06M6.696 6.696l-1.06-1.06M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+          </svg>
+          <svg id="topbar-theme-icon-moon" xmlns="http://www.w3.org/2000/svg" class="hidden w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+          </svg>
+        </button>
+
+        <!-- Messages (internal inbox — direct messages/announcements),
+             a proper envelope icon so it's visually distinct from the
+             bell (Notifications, push permission) beside it. -->
+        <button type="button" id="inbox-btn" data-i18n-aria-label="inbox.title" aria-label="Messages" class="hidden relative p-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <span id="inbox-badge" class="hidden absolute top-0.5 right-0.5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold leading-none"></span>
+        </button>
+
+        <!-- Notifications (push permission on/off) — was a text option
+             buried in the Tools dropdown; now its own icon beside
+             Messages, on every screen size. -->
+        <button type="button" id="notifications-btn" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="p-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        </button>
+
+        <!-- Help / training — opens the tenant's training PDF (uploaded by
+             their Super Admin) so a new user or admin has something to
+             follow along with. See js/components/helpModal.js. -->
+        <button type="button" id="help-btn" data-i18n-aria-label="help.title" aria-label="Help" class="p-2 rounded-lg hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+
+        <div class="hidden md:block w-px h-6 bg-slate-700"></div>
+
+        <!-- Account menu trigger — a circular initials avatar. Opens
+             #account-menu-dialog below (a real centered dialog, same
+             pattern as every other modal in this app, not a small
+             anchored dropdown — easier to read clearly). Desktop only —
+             mobile keeps its own sign-out/profile entries in the
+             sidebar's Tools dropdown and footer row. -->
+        <button type="button" id="account-menu-btn"
+                class="hidden md:flex w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold items-center justify-center transition-colors">
+          <span data-nav-group="current-user-initials">?</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Trial / plan status banner. Hidden by default; app.js shows it
+         with the right text/color once the tenant's status is known
+         (loadMyTenant() in showApp()). See js/tenant.js. -->
+    <div id="trial-banner" class="hidden px-4 py-2 text-sm text-center font-medium">
+      <span data-el="trial-banner-text"></span>
+      <button type="button" data-action="view-plans" class="ml-3 underline hover:no-underline">
+        <span data-i18n="plans.viewPlans">View Plans</span>
+      </button>
+      <button type="button" data-action="dismiss-trial-banner" class="ml-3 underline hover:no-underline">
+        <span data-i18n="trial.dismiss">Dismiss for today</span>
+      </button>
+    </div>
+
+    <!-- Account dialog (desktop only, opened by #account-menu-btn) —
+         Profile/Change Password/View As/Role mode/Sign out, all in one
+         clear, centered box instead of scattered across the bar. -->
+    <div id="account-menu-dialog" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-xl font-bold text-slate-800" data-i18n="sidebar.account">Account</h2>
+          <button type="button" data-action="close-account-menu" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="mb-4">
+          <p class="text-sm text-slate-500 truncate">
+            <span data-i18n="sidebar.signedInAs">Signed in as</span> <span data-nav-group="current-user-name" class="font-medium text-slate-700">Guest</span>
+          </p>
+          <!-- Role badge(s) -- home role (Super Admin/Pastor Admin/...) and,
+               separately, cross-extension reach (Global Super Admin/General
+               Overseer/General Secretary) when the person holds one -- so
+               the two are never ambiguous. Populated/toggled by
+               updateRoleBadge() in js/app.js. -->
+          <p data-nav-group="current-user-role-badge" class="hidden text-xs font-medium text-indigo-600 mt-0.5"></p>
+        </div>
+
+        <div class="space-y-1">
+          <button type="button" data-account-action="my-profile" data-i18n="sidebar.myProfile"
+                  class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100">My Profile</button>
+          <button type="button" data-account-action="change-password" data-i18n="sidebar.changePassword"
+                  class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-slate-700 hover:bg-slate-100">Change Password</button>
+          <div data-nav-group="view-as-wrap" class="hidden">
+            <button type="button" data-account-action="view-as" data-i18n="sidebar.viewAs"
+                    class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-amber-600 hover:bg-amber-50">View As…</button>
+          </div>
+        </div>
+
+        <div data-nav-group="role-switcher-wrap" class="hidden border-t border-slate-200 mt-3 pt-3">
+          <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="sidebar.roleSwitcher">Mode</label>
+          <div class="flex bg-slate-100 rounded-lg p-1">
+            <button type="button" data-nav-group="role-switcher-admin-btn"
+                    class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors" data-i18n="sidebar.superAdminMode">
+              Super Admin
+            </button>
+            <button type="button" data-nav-group="role-switcher-standard-btn"
+                    class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors" data-i18n="sidebar.standardUserMode">
+              Standard User
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="sign-out-btn-desktop" data-i18n="sidebar.signOut"
+                class="w-full text-left px-3 py-2.5 rounded-lg font-medium text-rose-600 hover:bg-rose-50 border-t border-slate-200 mt-3 pt-3">Sign out</button>
+      </div>
+    </div>
+
+    <div class="flex flex-1 flex-col md:flex-row min-h-0">
+
+    <!-- Backdrop (mobile only, shown while the drawer is open) -->
+    <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/50 z-30 md:hidden"></div>
+
+    <!-- Sidebar — an off-canvas drawer on mobile (opened via the
+         hamburger), a permanent static column on desktop (md+). All
+         nav lives here now for both breakpoints; the header above only
+         carries branding/search/account. -->
+    <aside id="sidebar"
+           class="fixed md:static inset-y-0 left-0 z-40 w-64 shrink-0 bg-[#12141c] text-slate-300 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
+      <div class="px-6 py-5 flex items-center justify-between border-b border-slate-800">
+        <span class="text-xl font-semibold text-white" data-nav-group="org-name">VPD Church Organisation</span>
+        <button type="button" id="menu-close-btn" data-i18n-aria-label="menu.close" aria-label="Close menu" class="md:hidden p-1 text-slate-400 hover:text-white">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Church Extensions: only shown for a denomination_admins holder
+           with more than one extension available (see
+           js/denominationExtensions.js). Picking one calls
+           set_acting_as_tenant/clear_acting_as_tenant then reloads --
+           deliberately simple instead of hand-invalidating every cache. -->
+      <div id="extension-switcher-wrap" data-nav-group="extension-switcher-wrap" class="hidden px-6 py-3 border-b border-slate-800">
+        <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="extensions.switcherLabel">Switch Extension</label>
+        <select id="extension-switcher-select" class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2 py-1.5"></select>
+      </div>
+
+      <!-- Global-role holders only: switch between the full cross-
+           department Super Admin experience and previewing their own
+           literal (usually much narrower) department memberships. -->
+      <div id="role-switcher-wrap" data-nav-group="role-switcher-wrap" class="hidden px-6 py-3 border-b border-slate-800">
+        <label class="block text-xs font-medium text-slate-500 mb-1" data-i18n="sidebar.roleSwitcher">Mode</label>
+        <div class="flex bg-slate-800 rounded-lg p-1">
+          <button type="button" id="role-switcher-admin-btn" data-nav-group="role-switcher-admin-btn"
+                  class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.superAdminMode">
+            Super Admin
+          </button>
+          <button type="button" id="role-switcher-standard-btn" data-nav-group="role-switcher-standard-btn"
+                  class="flex-1 py-1 rounded-md text-xs font-medium transition-colors" data-i18n="sidebar.standardUserMode">
+            Standard User
+          </button>
+        </div>
+      </div>
+
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <!-- Always-available for Super Admin/Super Viewer/Pastor Admin/
+             Church Secretary, independent of whichever department is
+             active — a cross-department view, not a per-department one. -->
+        <div id="global-nav-group" data-nav-group="global" class="hidden space-y-0.5 mb-2 pb-2 border-b border-slate-800">
+          <button data-tab-target="super-home"
+                  class="w-full text-left px-3 py-2 rounded-lg text-[12.8px] font-medium transition-colors hover:bg-slate-800 flex items-center gap-2.5">
+            <span class="w-[18px] text-center">🏠</span> <span data-i18n="nav.home">Home</span>
+          </button>
+          <button data-tab-target="tools"
+                  class="w-full text-left px-3 py-2 rounded-lg text-[12.8px] font-medium transition-colors hover:bg-slate-800 flex items-center gap-2.5">
+            <span class="w-[18px] text-center">🧰</span> <span data-i18n="nav.tools">Tools</span>
+          </button>
+        </div>
+
+        <!-- Was a <select> department switcher; now a flat list of
+             icon rows (see departmentIcon() in app.js), built by
+             populateDepartmentSwitcher() -- one row per department the
+             signed-in user actually has approved access to (or every
+             department, for a super admin/viewer). "Home" isn't in this
+             list -- it's the fixed nav-group button above, which also
+             clears the active-department state so this list correctly
+             shows nothing highlighted while on Home or Tools. -->
+        <div id="department-switcher-wrap" class="hidden mb-2 pb-2 border-b border-slate-800">
+          <div class="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500" data-i18n="sidebar.departmentsGroup">Ministries</div>
+          <div id="department-switcher-list" class="space-y-0.5"></div>
+        </div>
+
+        <!-- Visible to every signed-in user regardless of department
+             access — courses aren't department-scoped. -->
+        <div id="unconditional-nav-group" class="space-y-1 mb-2 pb-2 border-b border-slate-800">
+          <button data-tab-target="training" data-nav-group="vpd-academy-nav"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800 flex items-center justify-between gap-2">
+            <span data-i18n="nav.training">VPD Academy</span>
+            <span data-el="vpd-academy-lock" class="hidden text-xs font-normal text-amber-400">🔒 <span data-i18n="entitlements.upgrade">Upgrade</span></span>
+          </button>
+          <!-- Cross-department roster for one service date — deliberately
+               unconditional like Academy above, not gated by department
+               access or plan/entitlement, since its whole point is
+               showing every department to everyone. See js/serviceProgram.js. -->
+          <button data-tab-target="service-program" data-i18n="nav.serviceProgram"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Service Program
+          </button>
+          <!-- Donation totals + official year-end receipt, same
+               unconditional/everyone-gets-it placement as Academy and
+               Service Program above. See js/taxPage.js. -->
+          <button data-tab-target="tax" data-i18n="nav.tax"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Tax / Impôts
+          </button>
+          <!-- Budget nav button is intentionally NOT here — unlike
+               Academy/Service Program above, this one must leave zero
+               trace for anyone who isn't a department admin/secretary or
+               Pastor. js/app.js constructs and appends it into this same
+               div at startup only for hasAnyDeptLeadership() (departments.js),
+               instead of the usual build-it-then-CSS-hide-it pattern used
+               everywhere else in this file. -->
+        </div>
+
+        <!-- Choir-specific tabs — shown only while the Choir department is active.
+             Other departments get their own nav in a later phase; for now they
+             just show a placeholder in the main content area. -->
+        <div id="choir-nav-group" data-nav-group="choir" class="space-y-1">
+          <button data-tab-target="dashboard" data-i18n="nav.dashboard"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Dashboard
+          </button>
+          <button data-tab-target="scheduling" data-i18n="nav.scheduling"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Scheduling
+          </button>
+          <button data-tab-target="songbook" data-i18n="nav.songbook"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Songbook
+          </button>
+          <button data-tab-target="voice-exercises" data-i18n="nav.voiceExercises"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Voice Exercises
+          </button>
+          <button data-tab-target="uniform" data-i18n="nav.uniform"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Uniform
+          </button>
+          <button data-tab-target="members" data-i18n="nav.members" id="members-nav-btn" data-nav-group="members-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Members
+          </button>
+        </div>
+
+        <!-- Shared nav for every non-Choir department — same two tabs
+             (Dashboard/Scheduling), content scoped per-department; the
+             Scheduling tab picks a generic shift board or a bespoke one
+             (Preaching, Media & Tech, Ecodem) depending on which
+             department is active. Finance hides just the Scheduling
+             button (see applyActiveDepartment() in app.js). -->
+        <div id="lightweight-nav-group" data-nav-group="lightweight" class="hidden space-y-1">
+          <button data-tab-target="dept-dashboard" data-i18n="nav.dashboard"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Dashboard
+          </button>
+          <button data-tab-target="dept-scheduling" data-i18n="nav.scheduling" id="dept-scheduling-nav-btn" data-nav-group="dept-scheduling-nav"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Scheduling
+          </button>
+          <!-- Only Ushers gets this one, alongside Choir — see
+               applyActiveDepartment() in app.js. -->
+          <button data-tab-target="uniform" data-i18n="nav.uniform" id="uniform-nav-btn" data-nav-group="uniform-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Uniform
+          </button>
+          <!-- Only Media & Tech gets this one — its own page instead of
+               being buried inside Dashboard, since it's what that
+               department actually lives in during a service. See
+               applyActiveDepartment() in app.js. -->
+          <button data-tab-target="dept-projection" data-i18n="nav.projection" id="dept-projection-nav-btn" data-nav-group="dept-projection-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Projection
+          </button>
+          <!-- Ushers/Welcoming & Socialisation/Ecodem only (see
+               HEADCOUNT_DEPARTMENT_KEYS in deptDashboard.js) — open to
+               every approved member of the department, not just an
+               admin/secretary, unlike every other nav item here, since
+               counting people at the door isn't an admin-only task.
+               See applyActiveDepartment() in app.js. -->
+          <button data-tab-target="headcount-tally" data-i18n="nav.headcountTally" id="headcount-tally-nav-btn" data-nav-group="headcount-tally-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Headcount Tally
+          </button>
+        </div>
+      </nav>
+
+      <!-- Everything from Church Rules through Monthly Report lives in
+           one dropdown instead of a stack of separate buttons — options
+           are rebuilt on the fly (see updateSidebarToolsSelect() in
+           app.js) since each one has its own visibility rule (some
+           need department access, some need an elevated role, some
+           need an active department). Picking an option runs its
+           action immediately, then the select resets to the
+           placeholder — it's a one-shot action menu, not a persistent
+           choice. -->
+      <div class="px-6 py-3 border-t border-slate-800">
+        <select id="sidebar-tools-select" data-i18n-aria-label="sidebar.more" aria-label="More"
+                class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2 py-1.5">
+          <option value=""></option>
+        </select>
+      </div>
+
+      <div id="view-as-wrap" data-nav-group="view-as-wrap" class="hidden px-6 py-3 border-t border-slate-800">
+        <button type="button" id="view-as-btn" data-i18n="sidebar.viewAs"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">
+          View As…
+        </button>
+      </div>
+
+      <!-- A literal (non-global) department admin's lighter counterpart
+           to View-As — no picker, just previews their own active
+           department as a plain member would see it. -->
+      <div id="preview-as-member-wrap" data-nav-group="preview-as-member-wrap" class="hidden px-6 py-3 border-t border-slate-800">
+        <button type="button" id="preview-as-member-btn" data-i18n="sidebar.previewAsMember"
+                class="w-full text-left px-3 py-2 rounded-lg font-medium text-amber-400 transition-colors hover:bg-slate-800">
+          Preview as Member
+        </button>
+      </div>
+
+      <div class="px-6 py-4 border-t border-slate-800 text-sm text-slate-500 flex items-start justify-between gap-2">
+        <span class="min-w-0">
+          <span class="truncate block"><span data-i18n="sidebar.signedInAs">Signed in as</span> <span id="current-user-name" data-nav-group="current-user-name">Guest</span></span>
+          <!-- See the desktop account dialog above for what this shows and why. -->
+          <span data-nav-group="current-user-role-badge" class="hidden text-xs font-medium text-indigo-400 mt-0.5"></span>
+        </span>
+        <button type="button" id="sign-out-btn" data-i18n="sidebar.signOut" class="text-slate-400 hover:text-white shrink-0">Sign out</button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 w-full min-w-0 p-4 pb-24 sm:p-6 sm:pb-24 md:p-8">
+
+      <!-- Shown only while a Super Admin is previewing another user's view -->
+      <div id="view-as-banner" class="hidden items-center justify-between gap-3 bg-amber-100 border border-amber-300 text-amber-900 rounded-xl px-4 py-2.5 mb-4 text-sm">
+        <span data-el="text"></span>
+        <button type="button" id="view-as-exit-btn" data-i18n="viewAs.exit"
+                class="shrink-0 px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700">
+          Exit
+        </button>
+      </div>
+
+      <!-- Shown only while a denomination admin (Global Super Admin/
+           General Overseer/General Secretary) is acting as an extension
+           other than their own home tenant -- see js/tenant.js's
+           isActingAsExtension() and 34_church_extensions.sql. -->
+      <div id="acting-as-extension-banner" class="hidden items-center justify-between gap-3 bg-indigo-100 border border-indigo-300 text-indigo-900 rounded-xl px-4 py-2.5 mb-4 text-sm">
+        <span data-el="text"></span>
+        <button type="button" id="acting-as-extension-exit-btn" data-i18n="extensions.exitActing"
+                class="shrink-0 px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700">
+          Return to my extension
+        </button>
+      </div>
+
+      <section data-tab-panel="dashboard" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.dashboard">Dashboard</h1>
+        <div id="dashboard-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="dashboard.placeholder">Dashboard content will be rendered here.</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="scheduling" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.scheduling">Scheduling</h1>
+        <div id="scheduling-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="scheduling.placeholder">Availability calendar and service plans will be rendered here.</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="songbook" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.songbook">Songbook</h1>
+        <div id="songbook-content" class="bg-white rounded-xl shadow p-4 sm:p-6">
+          <p class="text-slate-500" data-i18n="songbook.placeholder">Song list, lyrics, and track links will be rendered here.</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="voice-exercises" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.voiceExercises">Voice Exercises</h1>
+        <div id="voice-exercises-content" class="bg-white rounded-xl shadow p-4 sm:p-6">
+          <p class="text-slate-500" data-i18n="voiceExercises.placeholder">Warm-up and practice material will be rendered here.</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="uniform" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.uniform">Uniform</h1>
+        <div id="uniform-content"></div>
+      </section>
+
+      <section data-tab-panel="headcount-tally" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.headcountTally">Headcount Tally</h1>
+        <div id="headcount-tally-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="members" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.members">Members</h1>
+        <div id="members-content" class="bg-white rounded-xl shadow p-4 sm:p-6">
+          <p class="text-slate-500" data-i18n="members.placeholder">Member roster and role management will be rendered here.</p>
+        </div>
+      </section>
+
+      <!-- Shared tabs for every "lightweight" department — dept-*-name
+           labels which department is active, since the panel content
+           itself is generic. -->
+      <section data-tab-panel="dept-dashboard" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-el="dept-dashboard-name"></h1>
+        <div id="dept-dashboard-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="dept-scheduling" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-el="dept-scheduling-name"></h1>
+        <div id="dept-scheduling-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Media & Tech only. -->
+      <section data-tab-panel="dept-projection" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.projection">Projection</h1>
+        <div id="dept-projection-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Training: courses/lessons, not tied to the active department
+           switcher at all — same as Home. -->
+      <section data-tab-panel="training" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.training">VPD Academy</h1>
+        <div id="training-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Service Program: one date's roster across every department,
+           not tied to the active department switcher — same as Training. -->
+      <section data-tab-panel="service-program" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.serviceProgram">Service Program</h1>
+        <div id="service-program-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Tax / Impôts: running donation totals + official year-end
+           receipt once Finance finalizes a year. -->
+      <section data-tab-panel="tax" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.tax">Tax / Impôts</h1>
+        <div id="tax-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Budget: Fund Request + Budget Report, centralized (was nested
+           per-department). Only ever populated for hasAnyDeptLeadership()
+           — see the nav button comment above and js/app.js. -->
+      <section data-tab-panel="budget" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.budget">Budget</h1>
+        <div id="budget-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Pastor Meetings: no permanent nav button (reached only via
+           the "Request meeting with pastor" tools-menu entry, same as
+           before) -- every signed-in user gets the booking calendar,
+           extra sections layer in by role. See js/pastorMeetingsPage.js. -->
+      <section data-tab-panel="pastor-meetings" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="pastorBooking.navLabel">Pastor Meetings</h1>
+        <div id="pastor-meetings-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Global User Directory: cross-department, not tied to the
+           active department switcher at all. -->
+      <section data-tab-panel="super-home" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.home">Home</h1>
+        <div id="super-home-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Everything that used to live in Home's flat black link list,
+           grouped by category instead of one long column. -->
+      <section data-tab-panel="tools" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.tools">Tools</h1>
+        <div id="tools-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Shown when the active department has no dedicated dashboard yet -->
+      <section id="department-coming-soon" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-el="dept-name"></h1>
+        <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+          <p class="text-slate-500" data-i18n="department.comingSoon">This department's tools are coming soon.</p>
+        </div>
+        <div id="department-coming-soon-approvals" class="hidden bg-white rounded-xl shadow p-4 sm:p-6">
+          <h2 class="text-lg font-semibold mb-4" data-i18n="approvals.title">Pending Membership Requests</h2>
+          <div data-el="approvals-list"></div>
+        </div>
+      </section>
+
+      <!-- Shown when the signed-in user has no approved department yet -->
+      <section id="no-department-access" class="hidden">
+        <div class="bg-white rounded-xl shadow p-4 sm:p-6">
+          <p class="text-slate-500" data-i18n="department.noAccess">You don't have access to any department yet. Ask an admin to approve your membership.</p>
+        </div>
+      </section>
+
+    </main>
+    </div>
+
+    <!-- Mobile bottom tab bar -- global-reach roles only (same
+         data-nav-group="global" gating as the sidebar's Home/Tools),
+         hidden entirely on desktop via md:hidden regardless of role.
+         Home/Members reuse the real data-tab-target buttons elsewhere
+         on the page (so they share styling/gating/click-handling
+         automatically, see js/app.js's `tabs` loop); Cases/
+         Notifications/More are wired directly in js/app.js since
+         they're not tabs. -->
+    <nav data-nav-group="global" class="hidden md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 flex items-center justify-around h-16"
+         style="padding-bottom: env(safe-area-inset-bottom)">
+      <button type="button" data-tab-target="super-home" data-i18n-aria-label="nav.home" aria-label="Home" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">🏠</button>
+      <button type="button" data-tab-target="members" data-i18n-aria-label="nav.members" aria-label="Members" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">👤</button>
+      <button type="button" data-mobile-nav="cases" data-i18n-aria-label="memberCase.title" aria-label="Member Cases" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">📋</button>
+      <button type="button" data-mobile-nav="notifications" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">🔔</button>
+      <button type="button" data-mobile-nav="more" data-i18n-aria-label="sidebar.more" aria-label="More" class="flex-1 h-16 flex items-center justify-center text-xl text-slate-400">☰</button>
+    </nav>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

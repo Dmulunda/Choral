@@ -2,7 +2,7 @@
   "name": "VPD Church Organisation",
   "short_name": "VPD Church",
   "description": "La Communauté La Voix de la Puissance Divine — church management app",
-  "start_url": "./",
+  "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0B1F3A",
