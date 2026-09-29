@@ -7,20 +7,7 @@
 // confirms a checkout/cancellation. This modal only ever redirects out to
 // Stripe's hosted pages and back; it never writes billing state itself.
 import { t } from '../i18n.js';
-
-// Core functionality included in every tier -- not gated per plan, so
-// not stored in plan_features (that table is only for things a plan
-// can turn on/off, like vpd_academy).
-const BASE_FEATURE_KEYS = [
-  'plans.featureChoirManagement',
-  'plans.featureMemberManagement',
-  'plans.featureDepartmentManagement',
-  'plans.featureProgramsEvents',
-  'plans.featureFinancialManagement',
-  'plans.featurePastoralScheduling',
-  'plans.featureAttendanceTracking',
-  'plans.featureTeamScheduling',
-];
+import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice } from '../utils/planPresentation.js';
 
 export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCustomerId }) {
   const root = document.createElement('div');
@@ -79,12 +66,7 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
       const card = document.createElement('div');
       card.className = `rounded-xl border-2 p-5 flex flex-col ${isCurrent ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200'}`;
 
-      const price = plan.price_cents === 0
-        ? t('plans.free')
-        // toFixed(0) previously rounded 59.99/99.99/199.99 to whole
-        // dollars ($60/$100/$200) -- keep the exact cents, comma as the
-        // decimal separator per how these prices were given (59,99).
-        : `$${(plan.price_cents / 100).toFixed(2).replace('.', ',')}${t('plans.perMonth')}`;
+      const price = formatPlanPrice(plan.price_cents);
 
       // 'vpd_academy' gets its own dedicated bullet below (bundled with
       // the storage figure it implies) instead of appearing twice --
@@ -161,36 +143,6 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
   }
 
   return { open };
-}
-
-function buildLimitBullets(plan, hasCourses) {
-  const bullets = [];
-
-  if (plan.max_extensions === 0) {
-    bullets.push(t('plans.limitNoExtensions'));
-  } else if (plan.max_extensions === null) {
-    bullets.push(t('plans.limitExtensionsUnlimited'));
-  } else {
-    bullets.push(t('plans.limitExtensionsUpTo', { count: plan.max_extensions }));
-  }
-
-  bullets.push(plan.max_super_admins_per_tenant === null
-    ? t('plans.limitSuperAdminsUnlimited')
-    : t('plans.limitSuperAdmins', { count: plan.max_super_admins_per_tenant }));
-
-  bullets.push(plan.max_members === null
-    ? t('plans.limitMembersUnlimited')
-    : t('plans.limitMembers', { count: plan.max_members }));
-
-  bullets.push(t('plans.limitProjection'));
-
-  bullets.push(hasCourses ? t('plans.limitCoursesIncluded') : t('plans.limitCoursesNotIncluded'));
-
-  if (hasCourses) {
-    bullets.push(plan.storage_gb === null ? t('plans.limitStorageUnlimited') : t('plans.limitStorage', { count: plan.storage_gb }));
-  }
-
-  return bullets;
 }
 
 function escapeHtml(str) {

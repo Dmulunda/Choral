@@ -176,7 +176,10 @@ export function renderAuthScreen(container, { supabase }) {
   }
 
   modeButtons.forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
-  setMode('login');
+  // ?mode=new-church lets the marketing site's "Get Started" CTA land
+  // straight on the sign-up-a-new-church tab instead of the login tab.
+  const requestedMode = new URLSearchParams(window.location.search).get('mode');
+  setMode(requestedMode === 'new-church' ? 'new-church' : 'login');
 
   const joinSlug = new URLSearchParams(window.location.search).get('join');
   if (joinSlug) {
