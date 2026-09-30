@@ -33,7 +33,7 @@ export function setLabelOverride(key, labelEn, labelFr) {
 
 const TRANSLATIONS = {
   en: {
-    'app.brand': 'VPD Church Organisation',
+    'app.brand': 'ChurchOnPoint',
     'app.brandShort': 'VPD Academy',
     'header.searchPlaceholder': 'Search members, cases, departments',
     'header.newMember': 'New member',
@@ -127,7 +127,7 @@ const TRANSLATIONS = {
     'welcome.heroTitle': '14 ministries, one login — Choir to Finance, Ushers to Sunday School',
     'welcome.heroSubtitle': "Every department shows up ready to use on day one — no setup checklist. Scheduling that warns you before it double-books someone or assigns a person who already said they can't make it. One roster that shows every department's assignments for a service at a glance.",
     'welcome.aboutTitle': 'Who We Are',
-    'welcome.aboutBody': "Aliviatechurch is the church management system built by AliviaTech. It started as the scheduling and member-management system for a single church, and grew from real requests: a way to track a promised replacement when someone can't make their slot, an official tax receipt at year-end, a public link for booking a meeting with a pastor, a quick tally at the door on a Sunday. When that church opened a second location, the same system grew a way to run several extensions of one denomination — each with its own address and admins — under one login, with a Global Super Admin, General Overseer, and General Secretary who can act across all of them.",
+    'welcome.aboutBody': "ChurchOnPoint is the church management system built by AliviaTech. It started as the scheduling and member-management system for a single church, and grew from real requests: a way to track a promised replacement when someone can't make their slot, an official tax receipt at year-end, a public link for booking a meeting with a pastor, a quick tally at the door on a Sunday. When that church opened a second location, the same system grew a way to run several extensions of one denomination — each with its own address and admins — under one login, with a Global Super Admin, General Overseer, and General Secretary who can act across all of them.",
     'welcome.featuresTitle': "What's actually in it",
     'welcome.featuresSubtitle': 'Not a generic feature list — this is what the app does today.',
     'welcome.featureDeptsTitle': 'Ministries, seeded on day one',
@@ -153,7 +153,7 @@ const TRANSLATIONS = {
     'welcome.loadingPlans': 'Loading plans…',
     'welcome.pricingFailed': "Couldn't load pricing right now — please try again shortly, or contact us below.",
     'welcome.contactTitle': 'Talk to us',
-    'welcome.contactBody': "Have questions, want a walkthrough, or ready to move your church onto Aliviatechurch? Send us a note and we'll get back to you — or reach out directly below.",
+    'welcome.contactBody': "Have questions, want a walkthrough, or ready to move your church onto ChurchOnPoint? Send us a note and we'll get back to you — or reach out directly below.",
     'welcome.previewMailtoNote': "(Email/phone links are shown as plain text in this preview — mailto:/tel: links aren't reliable inside a preview frame, but work normally on the real published page.)",
     'welcome.formSubject': 'Subject',
     'welcome.topicDemo': 'Schedule a Demo',
@@ -2058,7 +2058,7 @@ const TRANSLATIONS = {
   },
 
   fr: {
-    'app.brand': 'VPD Church Organisation',
+    'app.brand': 'ChurchOnPoint',
     'app.brandShort': 'VPD Academy',
     'header.searchPlaceholder': 'Rechercher membres, dossiers, départements',
     'header.newMember': 'Nouveau membre',
@@ -2152,7 +2152,7 @@ const TRANSLATIONS = {
     'welcome.heroTitle': '14 ministères, une seule connexion — de la Chorale à la Finance, du Protocole à l’École du dimanche',
     'welcome.heroSubtitle': "Chaque département est prêt à l'emploi dès le premier jour — sans liste de configuration. Une planification qui vous avertit avant de programmer deux fois la même personne ou d'assigner quelqu'un qui a déjà signalé son indisponibilité. Un seul programme qui montre les affectations de tous les départements pour un service, en un coup d'œil.",
     'welcome.aboutTitle': 'Qui sommes-nous',
-    'welcome.aboutBody': "Aliviatechurch est le système de gestion d'église conçu par AliviaTech. Le projet a commencé comme système de planification et de gestion des membres pour une seule église, et a grandi à partir de besoins réels : un moyen de suivre un remplacement promis quand quelqu'un ne peut pas honorer son créneau, un reçu fiscal officiel en fin d'année, un lien public pour prendre rendez-vous avec un pasteur, un comptage rapide à la porte un dimanche. Quand cette église a ouvert un second site, le même système a développé une façon de gérer plusieurs extensions d'une même dénomination — chacune avec sa propre adresse et ses propres administrateurs — sous une seule connexion, avec un Super Administrateur Général, un Superviseur Général et un Secrétaire Général qui peuvent agir sur toutes les extensions.",
+    'welcome.aboutBody': "ChurchOnPoint est le système de gestion d'église conçu par AliviaTech. Le projet a commencé comme système de planification et de gestion des membres pour une seule église, et a grandi à partir de besoins réels : un moyen de suivre un remplacement promis quand quelqu'un ne peut pas honorer son créneau, un reçu fiscal officiel en fin d'année, un lien public pour prendre rendez-vous avec un pasteur, un comptage rapide à la porte un dimanche. Quand cette église a ouvert un second site, le même système a développé une façon de gérer plusieurs extensions d'une même dénomination — chacune avec sa propre adresse et ses propres administrateurs — sous une seule connexion, avec un Super Administrateur Général, un Superviseur Général et un Secrétaire Général qui peuvent agir sur toutes les extensions.",
     'welcome.featuresTitle': "Ce qu'il y a vraiment dedans",
     'welcome.featuresSubtitle': "Pas une liste de fonctionnalités générique — voici ce que l'application fait aujourd'hui.",
     'welcome.featureDeptsTitle': 'Ministères, prêts dès le premier jour',
@@ -2178,7 +2178,7 @@ const TRANSLATIONS = {
     'welcome.loadingPlans': 'Chargement des forfaits…',
     'welcome.pricingFailed': "Impossible de charger les tarifs pour le moment — veuillez réessayer sous peu, ou nous contacter ci-dessous.",
     'welcome.contactTitle': 'Parlez-nous',
-    'welcome.contactBody': "Des questions, envie d'une démonstration, ou prêt à faire passer votre église sur Aliviatechurch ? Envoyez-nous un message et nous vous répondrons — ou contactez-nous directement ci-dessous.",
+    'welcome.contactBody': "Des questions, envie d'une démonstration, ou prêt à faire passer votre église sur ChurchOnPoint ? Envoyez-nous un message et nous vous répondrons — ou contactez-nous directement ci-dessous.",
     'welcome.previewMailtoNote': "(Les liens courriel/téléphone sont affichés en texte simple dans cet aperçu — les liens mailto:/tel: ne sont pas fiables dans un cadre d'aperçu, mais fonctionnent normalement sur la page publiée réelle.)",
     'welcome.formSubject': 'Sujet',
     'welcome.topicDemo': 'Planifier une démo',

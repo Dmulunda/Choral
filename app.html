@@ -10,15 +10,15 @@
       document.documentElement.classList.add('dark');
     }
   </script>
-  <title>VPD Church Organisation</title>
-  <link rel="icon" type="image/png" href="img/vpd-logo.png" />
+  <title>ChurchOnPoint</title>
+  <link rel="icon" type="image/png" href="img/church-on-point-icon.png" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0B1F3A" />
   <link rel="apple-touch-icon" href="img/icons/apple-touch-icon.png" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="VPD Church" />
+  <meta name="apple-mobile-web-app-title" content="ChurchOnPoint" />
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Member ID Card (js/components/memberIdCard.js) export support —
        html2canvas/jsPDF to save it as an actual PNG/PDF file rather
@@ -141,19 +141,21 @@
        screens below is an explicit (not relied-on-DOM-order) stacking
        guarantee that content always renders above it. -->
   <div aria-hidden="true" class="fixed inset-0 z-0 pointer-events-none bg-no-repeat bg-center"
-       style="background-image: url('img/vpd-logo.png'); background-size: min(60vw, 640px); opacity: 0.06;"></div>
+       style="background-image: url('img/church-on-point-icon.png'); background-size: min(60vw, 640px); opacity: 0.06;"></div>
 
   <!-- Shown briefly right after a successful sign-in, on top of
        everything else, while the app underneath finishes loading —
-       see app.js's showSplashThenApp(). -->
+       see app.js's showSplashThenApp(). This is the ChurchOnPoint
+       platform splash (shown to every tenant regardless of which
+       church they're signing into) -- NOT the place for a specific
+       church's own name; that's tenant.logo_url/org-name, applied once
+       the app shell itself loads. -->
   <div id="login-splash"
        class="hidden flex-col fixed inset-0 z-[100] items-center justify-center gap-6 bg-gradient-to-br from-[#0a1628] to-[#0B1F3A] transition-opacity duration-700">
-    <img src="img/vpd-logo.png" alt="" class="h-28 sm:h-36 w-auto drop-shadow-2xl" />
+    <img src="img/church-on-point-logo.png" alt="" class="h-28 sm:h-36 w-auto drop-shadow-2xl rounded-2xl" />
     <p class="flex flex-wrap justify-center gap-x-2.5 gap-y-1 px-6 text-center text-white text-lg sm:text-2xl font-semibold max-w-xl">
       <span class="splash-word" style="animation-delay: 0.05s">Welcome to</span>
-      <span class="splash-word" style="animation-delay: 0.2s">la communauté</span>
-      <span class="splash-word" style="animation-delay: 0.35s">la voix de la puissance Divine</span>
-      <span class="splash-word" style="animation-delay: 0.5s">Church management</span>
+      <span class="splash-word" style="animation-delay: 0.2s">ChurchOnPoint</span>
     </p>
   </div>
 
@@ -180,7 +182,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span class="text-lg font-semibold" data-nav-group="org-name">VPD Church Organisation</span>
+        <span class="text-lg font-semibold" data-nav-group="org-name">ChurchOnPoint</span>
       </div>
 
       <!-- Desktop-only brand mark — mobile keeps the hamburger+name
@@ -195,10 +197,10 @@
              Clickable for a Super Admin to jump straight to the upload
              tool. See sql/saas_platform/09_tenant_logo.sql. -->
         <button type="button" id="tenant-logo-btn" data-i18n-aria-label="logo.title" aria-label="Church Logo" class="contents">
-          <div id="tenant-logo-placeholder" class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-semibold">VPD</div>
+          <div id="tenant-logo-placeholder" class="w-8 h-8 rounded-lg bg-no-repeat bg-center bg-cover" style="background-image: url('img/church-on-point-icon.png')"></div>
           <img id="tenant-logo-img" alt="" class="hidden w-8 h-8 rounded-lg object-cover" />
         </button>
-        <span class="font-semibold whitespace-nowrap" data-nav-group="org-name">VPD Church Organisation</span>
+        <span class="font-semibold whitespace-nowrap" data-nav-group="org-name">ChurchOnPoint</span>
       </div>
 
       <!-- Visual placeholder only — no cross-entity search exists yet,
@@ -361,7 +363,7 @@
     <aside id="sidebar"
            class="fixed md:static inset-y-0 left-0 z-40 w-64 shrink-0 bg-[#12141c] text-slate-300 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
       <div class="px-6 py-5 flex items-center justify-between border-b border-slate-800">
-        <span class="text-xl font-semibold text-white" data-nav-group="org-name">VPD Church Organisation</span>
+        <span class="text-xl font-semibold text-white" data-nav-group="org-name">ChurchOnPoint</span>
         <button type="button" id="menu-close-btn" data-i18n-aria-label="menu.close" aria-label="Close menu" class="md:hidden p-1 text-slate-400 hover:text-white">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

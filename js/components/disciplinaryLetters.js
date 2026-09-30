@@ -496,7 +496,7 @@ function printLetter(letter, sigs) {
   // Falls back to the platform default only if this tenant hasn't
   // uploaded their own yet -- see js/components/tenantLogoModal.js,
   // same pattern as memberIdCard.js's header.
-  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/vpd-logo.png`;
+  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/church-on-point-icon.png`;
 
   const html = `
     <!DOCTYPE html>

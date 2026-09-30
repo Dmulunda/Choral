@@ -19,7 +19,7 @@ export function renderAuthScreen(container, { supabase }) {
   container.innerHTML = `
     <div class="w-full max-w-md">
       <div class="flex justify-center mb-6">
-        <img src="img/vpd-logo.png" alt="${t('app.brand')}" class="h-24 w-auto drop-shadow-md" />
+        <img src="img/church-on-point-logo.png" alt="${t('app.brand')}" class="h-24 w-auto drop-shadow-md rounded-xl" />
       </div>
 
       <div class="bg-white rounded-xl shadow-xl overflow-hidden">

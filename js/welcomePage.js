@@ -122,7 +122,7 @@ function wireContactForm() {
     const church = form.elements.church.value.trim();
     const message = form.elements.message.value.trim();
 
-    const subject = `Aliviatechurch — ${topic}${church ? ` — ${church}` : ''}`;
+    const subject = `ChurchOnPoint — ${topic}${church ? ` — ${church}` : ''}`;
     const body = [
       `Name: ${name}`,
       `Email: ${email}`,

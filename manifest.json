@@ -1,7 +1,7 @@
 {
-  "name": "VPD Church Organisation",
-  "short_name": "VPD Church",
-  "description": "La Communauté La Voix de la Puissance Divine — church management app",
+  "name": "ChurchOnPoint",
+  "short_name": "ChurchOnPoint",
+  "description": "ChurchOnPoint — church management, on point.",
   "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",

@@ -26,7 +26,7 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { /* non-JSON payload — show with defaults */ }
 
-  event.waitUntil(self.registration.showNotification(data.title || 'VPD Church', {
+  event.waitUntil(self.registration.showNotification(data.title || 'ChurchOnPoint', {
     body: data.body || '',
     icon: 'img/icons/icon-192.png',
     badge: 'img/icons/icon-192.png',

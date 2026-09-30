@@ -89,8 +89,8 @@ const actingAsExtensionExitBtn = document.querySelector('#acting-as-extension-ex
 // Sets the header/sidebar org name and logo from the loaded tenant (see
 // loadMyTenant() in showApp()). Not data-i18n-driven -- a language switch
 // re-runs applyStaticTranslations(), which would otherwise stomp the
-// tenant's actual name back to the static "VPD Church Organisation"
-// placeholder; this is called again from the onLangChange handler below
+// tenant's actual name back to the static "ChurchOnPoint" placeholder
+// (app.brand in i18n.js); this is called again from the onLangChange handler below
 // specifically to survive that.
 function applyTenantBranding() {
   const tenant = getTenant();

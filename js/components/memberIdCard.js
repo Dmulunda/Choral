@@ -92,7 +92,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   const sexLabel = profile.sex === 'M' ? t('memberCard.male') : profile.sex === 'F' ? t('memberCard.female') : '—';
   // Falls back to the platform default only if this tenant hasn't
   // uploaded their own yet -- see js/components/tenantLogoModal.js.
-  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/vpd-logo.png`;
+  const logoUrl = getTenant()?.logo_url || `${window.location.origin}/img/church-on-point-icon.png`;
   const churchName = getTenant()?.name || t('app.brand');
 
   container.innerHTML = `
