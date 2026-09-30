@@ -10,7 +10,7 @@
 // the same card/grid/empty-state conventions instead of a plain stack.
 // Reads which department is active from departments.js rather than
 // taking a param, since it's invoked from app.js's generic lazyTabs table.
-import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer } from './departments.js';
+import { getEffectiveSupabase, getActiveDepartment, canPostAnnouncements, isGlobalAnnouncer, getMyDepartments, getGlobalRole } from './departments.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { renderAnnouncements } from './components/departmentAnnouncements.js';
 import { createUserManagerModal } from './components/userManager.js';
@@ -136,7 +136,19 @@ export async function renderDeptDashboardTab() {
   if (active.key === 'church_program') {
     const churchProgramEl = document.createElement('div');
     fullWidthEl.appendChild(churchProgramEl);
-    renderChurchProgramBoard(churchProgramEl, { supabase, canAdminister, currentUserId: user.id });
+    // Church Bookings (sql/050) are keyed to whichever department the
+    // booker administers, not just Church Program's own admins -- so
+    // this is every department where THIS person holds 'admin' (a
+    // super_admin/global-role holder's synthesized rows all carry
+    // that role string, so their whole department list qualifies).
+    const myBookableDepartments = getMyDepartments()
+      .filter((d) => d.role === 'admin' || d.role === 'super_admin')
+      .map((d) => ({ id: d.id, name: d.name }));
+    renderChurchProgramBoard(churchProgramEl, {
+      supabase, canAdminister, currentUserId: user.id,
+      isSuperAdmin: getGlobalRole() === 'super_admin',
+      myBookableDepartments,
+    });
   } else if (active.key !== 'finance') {
     // Today + This Week render as two cards directly into whatever
     // container they're given -- passing the grid itself means both

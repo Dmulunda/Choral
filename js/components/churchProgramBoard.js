@@ -17,15 +17,27 @@
 // church-wide without a department admin having to re-enter it as a
 // separate program. Those department-sourced entries render read-only
 // (no delete/flyer), tagged with the department they came from.
+//
+// Above all of that: the Church Calendar grid (churchCalendarGrid.js,
+// sql/050) -- a monthly view merging these same Upcoming Events with
+// Church Bookings, the newer "any department can reserve a date for
+// their own event" mechanism. One date, one thing on it -- enforced in
+// the database, not just this UI.
 import { confirmDialog } from './confirmDialog.js';
 import { fetchUpcomingChurchEvents } from './upcomingChurchEvents.js';
+import { renderChurchCalendarGrid } from './churchCalendarGrid.js';
 import { t, departmentLabel } from '../i18n.js';
 import { todayLocal } from '../utils/date.js';
 
 const FLYER_BUCKET = 'church-program-flyers';
 
-export function renderChurchProgramBoard(container, { supabase, canAdminister, currentUserId }) {
+export function renderChurchProgramBoard(container, { supabase, canAdminister, currentUserId, isSuperAdmin, myBookableDepartments }) {
   container.innerHTML = `
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-1">${t('churchCalendar.title')}</h2>
+      <p class="text-sm text-slate-500 mb-4">${t('churchCalendar.intro')}</p>
+      <div data-el="calendar-grid"></div>
+    </div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4">${t('churchProgram.addTitle')}</h2>
@@ -84,6 +96,10 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
 
   form?.addEventListener('submit', handleSubmit);
   container.querySelector('[data-action="add-date"]')?.addEventListener('click', addDate);
+
+  renderChurchCalendarGrid(container.querySelector('[data-el="calendar-grid"]'), {
+    supabase, currentUserId, isSuperAdmin, myBookableDepartments: myBookableDepartments || [],
+  });
 
   loadPrograms();
 
@@ -166,7 +182,11 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
       loadPrograms();
     } catch (error) {
       formStatusEl.className = 'text-sm text-rose-600';
-      formStatusEl.textContent = t('churchProgram.saveFailed', { message: error.message });
+      // sql/050's symmetric conflict trigger -- one of the dates picked
+      // already has a department's Church Booking on it.
+      formStatusEl.textContent = error.message?.includes('DATE_TAKEN_BY_BOOKING')
+        ? t('churchCalendar.dateHasBooking')
+        : t('churchProgram.saveFailed', { message: error.message });
     } finally {
       submitBtn.disabled = false;
     }
