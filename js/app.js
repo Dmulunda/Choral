@@ -20,6 +20,7 @@ import { renderServiceProgramTab } from './serviceProgram.js';
 import { renderTaxTab } from './taxPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
+import { loadSiteAdminStatus, getIsSiteAdmin } from './siteAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
@@ -32,6 +33,8 @@ import { createInviteLinkModal } from './components/inviteLinkModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
+import { createSupportRequestModal } from './components/supportRequestModal.js';
+import { createSiteAdminModal } from './components/siteAdminModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
@@ -806,7 +809,6 @@ headerNewMemberBtn.addEventListener('click', () => {
 // than the real currentUserId in both places below, same as every
 // other identity-sensitive spot in this file.
 const USHER_ATTENDANCE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
-const SUGGESTION_GLOBAL_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 // Same set superAdminHome.js gates its Guest Onboarding button on.
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 
@@ -842,14 +844,6 @@ function updateSidebarToolsSelect() {
   const canRecordAttendance = USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
     || getMyDepartments().some((d) => d.key === 'ushers' && (d.role === 'admin' || d.role === 'secretary'));
 
-  // Mirrors can_submit_suggestions() in sql/040 — deliberately excludes
-  // Super Viewer, since a global-role holder's synthesized department
-  // rows carry the literal global_role string as `role`, which never
-  // equals 'admin'/'secretary', so the department-admin half of this
-  // check naturally only matches a real (non-global) department admin.
-  const canSubmitSuggestion = SUGGESTION_GLOBAL_ROLES.includes(getGlobalRole())
-    || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
-
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
   if (getGlobalRole() === 'super_admin' && !isViewingAs()) options.push({ value: 'plans', label: t('plans.title') });
   if ((getGlobalRole() === 'super_admin' || isGlobalSuperAdminForAnyDenomination()) && !isViewingAs()) options.push({ value: 'church-logo', label: t('sidebar.churchLogo') });
@@ -864,7 +858,13 @@ function updateSidebarToolsSelect() {
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
   options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
   if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
-  if (canSubmitSuggestion) options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
+  // Everyone can suggest an improvement or contact support — no role
+  // gate (sql/049 widened this on purpose; it used to be elevated
+  // roles only). Site Admin is the opposite: a platform-wide role
+  // that isn't tied to any department/tenant role at all.
+  options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
+  options.push({ value: 'support-request', label: t('sidebar.supportRequest') });
+  if (getIsSiteAdmin()) options.push({ value: 'site-admin', label: t('sidebar.siteAdmin') });
   if (hasAccess) {
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
@@ -944,6 +944,10 @@ function runSidebarTool(value) {
     createAttendanceManagerModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'app-suggestion') {
     createAppSuggestionModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'support-request') {
+    createSupportRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'site-admin') {
+    createSiteAdminModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'join-department') {
@@ -1322,6 +1326,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   await loadAppTheme();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
+  await loadSiteAdminStatus();
 
   // A fresh sign-in (not a page-refresh session restore) always resets
   // a global-role holder to Super Admin Mode and their Home console —

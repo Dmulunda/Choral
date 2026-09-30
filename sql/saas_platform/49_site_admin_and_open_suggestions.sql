@@ -292,3 +292,5 @@ grant execute on function public.list_site_admins() to authenticated;
 grant execute on function public.grant_site_admin_by_email(text) to authenticated;
 grant execute on function public.revoke_site_admin(uuid) to authenticated;
 grant execute on function public.is_site_admin() to authenticated;
+
+select pg_notify('pgrst', 'reload schema');
