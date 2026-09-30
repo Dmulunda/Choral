@@ -128,10 +128,10 @@
           <label class="block text-sm font-medium text-slate-600 mb-1" data-i18n="welcome.formMessage">Message</label>
           <textarea name="message" rows="3" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></textarea>
         </div>
-        <button type="submit" class="w-full py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700" data-i18n="welcome.formSend">
+        <button type="submit" data-el="submit-btn" class="w-full py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50" data-i18n="welcome.formSend">
           Send
         </button>
-        <p class="text-xs text-slate-400" data-i18n="welcome.formHint">Opens your email app with this filled in, addressed to info@aliviatech.ca.</p>
+        <p data-el="form-status" class="text-xs text-slate-400" data-i18n="welcome.formHint">Opens your email app with this filled in, addressed to info@aliviatech.ca.</p>
       </form>
     </div>
   </section>

@@ -1,15 +1,18 @@
 // Site Admin console — platform-wide, not scoped to any tenant (see
-// is_site_admin()/sql/049). Three tabs: App Suggestions and Support
-// Requests submitted by anyone on any church on the platform (via the
-// list_*_for_site_admin() RPCs, which bypass each row's own
-// tenant_isolation the same way every other cross-tenant lookup in
-// this app already does), and a simple add/remove-by-email console
-// for who else holds the role.
+// is_site_admin()/sql/049). Four tabs: Website Inquiries (anonymous,
+// pre-signup leads from the marketing page's contact form, sql/053),
+// App Suggestions and Support Requests submitted by anyone on any
+// church on the platform (via the list_*_for_site_admin() RPCs, which
+// bypass each row's own tenant_isolation the same way every other
+// cross-tenant lookup in this app already does), and a simple
+// add/remove-by-email console for who else holds the role.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 
 const SUGGESTION_STATUSES = ['new', 'planned', 'done', 'declined'];
 const REQUEST_STATUSES = ['new', 'answered', 'closed'];
+const INQUIRY_STATUSES = ['new', 'contacted', 'closed'];
+const INQUIRY_TOPIC_KEYS = { demo: 'welcome.topicDemo', general: 'welcome.topicGeneral', support: 'welcome.topicSupport' };
 
 export function createSiteAdminModal({ supabase, currentUserId }) {
   const root = document.createElement('div');
@@ -21,13 +24,15 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
 
-      <div class="flex gap-2 mb-4 border-b border-slate-200">
-        <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">${t('siteAdmin.tabSuggestions')}</button>
+      <div class="flex gap-2 mb-4 border-b border-slate-200 flex-wrap">
+        <button type="button" data-tab="inquiries" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">${t('siteAdmin.tabInquiries')}</button>
+        <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSuggestions')}</button>
         <button type="button" data-tab="requests" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabRequests')}</button>
         <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
       </div>
 
-      <div data-panel="suggestions"></div>
+      <div data-panel="inquiries"></div>
+      <div data-panel="suggestions" class="hidden"></div>
       <div data-panel="requests" class="hidden"></div>
       <div data-panel="manage" class="hidden"></div>
     </div>
@@ -36,11 +41,12 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
 
   const tabBtns = root.querySelectorAll('[data-tab]');
   const panels = {
+    inquiries: root.querySelector('[data-panel="inquiries"]'),
     suggestions: root.querySelector('[data-panel="suggestions"]'),
     requests: root.querySelector('[data-panel="requests"]'),
     manage: root.querySelector('[data-panel="manage"]'),
   };
-  const loaded = { suggestions: false, requests: false, manage: false };
+  const loaded = { inquiries: false, suggestions: false, requests: false, manage: false };
 
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
@@ -56,9 +62,55 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
       btn.classList.toggle('text-slate-500', !active);
     });
     Object.entries(panels).forEach(([key, el]) => el.classList.toggle('hidden', key !== tab));
+    if (tab === 'inquiries' && !loaded.inquiries) loadInquiries();
     if (tab === 'suggestions' && !loaded.suggestions) loadSuggestions();
     if (tab === 'requests' && !loaded.requests) loadRequests();
     if (tab === 'manage' && !loaded.manage) loadManage();
+  }
+
+  async function loadInquiries() {
+    panels.inquiries.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+    const { data, error } = await supabase.rpc('list_website_inquiries_for_site_admin');
+    if (error) {
+      panels.inquiries.innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+    loaded.inquiries = true;
+    if (!data.length) {
+      panels.inquiries.innerHTML = `<p class="text-slate-400">${t('siteAdmin.noInquiries')}</p>`;
+      return;
+    }
+    panels.inquiries.innerHTML = `<div class="space-y-3">${data.map((row) => buildInquiryCard(row)).join('')}</div>`;
+    wireCards(panels.inquiries, 'website_inquiries', loadInquiries);
+  }
+
+  function buildInquiryCard(row) {
+    const topicLabel = t(INQUIRY_TOPIC_KEYS[row.topic] || '') || row.topic;
+    const topicBadge = `<span class="inline-block text-[11px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 mr-2">${escapeHtml(topicLabel)}</span>`;
+    const contactBits = [row.email, row.phone, row.church_name].filter(Boolean).map(escapeHtml).join(' · ');
+    return `
+      <div class="border border-slate-200 rounded-lg p-4" data-row-id="${row.id}">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div class="text-xs text-slate-500">
+            ${topicBadge}<span class="font-medium text-slate-700">${escapeHtml(row.name)}</span>
+            ${contactBits ? ` · ${contactBits}` : ''}
+            · ${new Date(row.created_at).toLocaleDateString()}
+          </div>
+        </div>
+        ${row.message ? `<p class="text-sm text-slate-800 mb-3 whitespace-pre-wrap">${escapeHtml(row.message)}</p>` : ''}
+        <div class="grid sm:grid-cols-[auto_1fr] gap-2 items-start">
+          <select data-el="status" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+            ${INQUIRY_STATUSES.map((s) => `<option value="${s}" ${s === row.status ? 'selected' : ''}>${escapeHtml(t(`siteAdmin.status.${s}`))}</option>`).join('')}
+          </select>
+          <textarea data-el="admin-note" rows="1" placeholder="${escapeHtml(t('siteAdmin.adminNotePlaceholder'))}"
+                    class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">${escapeHtml(row.admin_note || '')}</textarea>
+        </div>
+        <div class="flex items-center gap-2 mt-2">
+          <button type="button" data-action="save" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('siteAdmin.save')}</button>
+          <span data-el="row-status" class="text-xs text-slate-500"></span>
+        </div>
+      </div>
+    `;
   }
 
   async function loadSuggestions() {
@@ -221,10 +273,11 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
   function open() {
     root.classList.remove('hidden');
     root.classList.add('flex');
+    loaded.inquiries = false;
     loaded.suggestions = false;
     loaded.requests = false;
     loaded.manage = false;
-    switchTab('suggestions');
+    switchTab('inquiries');
   }
 
   function close() {

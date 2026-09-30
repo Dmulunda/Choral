@@ -110,18 +110,44 @@ async function loadPricing() {
 
 const TOPIC_KEYS = { demo: 'welcome.topicDemo', general: 'welcome.topicGeneral', support: 'welcome.topicSupport' };
 
-// No backend for the contact form -- opens the visitor's own email
-// client, pre-addressed and pre-filled, straight to info@aliviatech.ca.
+// Saves to website_inquiries first (sql/053) -- a real, reliably-
+// captured backend every Site Admin sees, unlike the old mailto-only
+// flow, which silently went nowhere on a device with no configured
+// email app. Once that's done, still finishes the original mailto
+// flow too (pre-addressed to info@aliviatech.ca) so a visitor who
+// wants to follow up directly by email still can, and Site Admins get
+// both the in-app record and, if the visitor's own client cooperates,
+// a direct email.
 function wireContactForm() {
   const form = document.querySelector('[data-el="contact-form"]');
-  form.addEventListener('submit', (e) => {
+  const submitBtn = form.querySelector('[data-el="submit-btn"]');
+  const statusEl = form.querySelector('[data-el="form-status"]');
+  const hintText = t('welcome.formHint');
+
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const topic = t(TOPIC_KEYS[form.elements.topic.value] || TOPIC_KEYS.general);
+    const topicValue = form.elements.topic.value;
+    const topic = t(TOPIC_KEYS[topicValue] || TOPIC_KEYS.general);
     const name = form.elements.name.value.trim();
     const email = form.elements.email.value.trim();
     const phone = form.elements.phone.value.trim();
     const church = form.elements.church.value.trim();
     const message = form.elements.message.value.trim();
+
+    submitBtn.disabled = true;
+    statusEl.textContent = t('common.saving');
+
+    const { error } = await supabase.from('website_inquiries').insert({
+      topic: topicValue || 'general',
+      name,
+      email,
+      phone,
+      church_name: church || null,
+      message: message || null,
+    });
+
+    submitBtn.disabled = false;
+    statusEl.textContent = error ? t('welcome.formSaveFailed') : hintText;
 
     const subject = `ChurchOnPoint — ${topic}${church ? ` — ${church}` : ''}`;
     const body = [
