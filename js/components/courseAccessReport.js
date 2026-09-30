@@ -1,5 +1,5 @@
 // School-Admin-only "Access & Progress" report — the one place that
-// answers "who has access to VPD Academy, at what level, and how far
+// answers "who has access to COP Academy, at what level, and how far
 // have they gotten": the list of School Admins (who can create/manage
 // courses, sql/044's is_school_admin flag — grantable from the User
 // Directory, not here), plus every student's enrollment status per

@@ -34,7 +34,7 @@ export function setLabelOverride(key, labelEn, labelFr) {
 const TRANSLATIONS = {
   en: {
     'app.brand': 'ChurchOnPoint',
-    'app.brandShort': 'VPD Academy',
+    'app.brandShort': 'COP Academy',
     'header.searchPlaceholder': 'Search members, cases, departments',
     'header.newMember': 'New member',
     'menu.open': 'Open menu',
@@ -748,7 +748,7 @@ const TRANSLATIONS = {
     'disciplinaryLetter.markDisputed': 'Mark as Disputed',
     'disciplinaryLetter.confirmDispute': 'Mark {name}’s letter as disputed? This records that they haven’t acknowledged it.',
 
-    'nav.training': 'VPD Academy',
+    'nav.training': 'COP Academy',
     'nav.serviceProgram': 'Service Program',
     'nav.tax': 'Tax / Impôts',
     'nav.budget': 'Budget',
@@ -913,7 +913,7 @@ const TRANSLATIONS = {
     'courses.grantDone': 'Credited {count} lesson(s) to {name}.',
     'courses.alreadyCredited': 'Already credited',
     'courses.alreadyCreditedWithScore': 'Already credited — {score}/10',
-    'courses.certificateEyebrow': 'VPD Academy',
+    'courses.certificateEyebrow': 'COP Academy',
     'courses.certificatePresentedTo': 'This certifies that',
     'courses.certificateFor': 'has successfully completed the course',
     'courses.certificateAwardedOn': 'Awarded on {date}',
@@ -2059,7 +2059,7 @@ const TRANSLATIONS = {
 
   fr: {
     'app.brand': 'ChurchOnPoint',
-    'app.brandShort': 'VPD Academy',
+    'app.brandShort': 'COP Academy',
     'header.searchPlaceholder': 'Rechercher membres, dossiers, départements',
     'header.newMember': 'Nouveau membre',
     'menu.open': 'Ouvrir le menu',
@@ -2773,7 +2773,7 @@ const TRANSLATIONS = {
     'disciplinaryLetter.markDisputed': 'Marquer comme contestée',
     'disciplinaryLetter.confirmDispute': 'Marquer la lettre de {name} comme contestée ? Cela indique qu’elle/il ne l’a pas signée.',
 
-    'nav.training': 'VPD Academy',
+    'nav.training': 'COP Academy',
     'nav.serviceProgram': 'Programme du service',
     'nav.tax': 'Impôts / Tax',
     'nav.budget': 'Budget',
@@ -2938,7 +2938,7 @@ const TRANSLATIONS = {
     'courses.alreadyCredited': 'Déjà crédité',
     'courses.alreadyCreditedWithScore': 'Déjà crédité — {score}/10',
     'courses.certificateTitle': "Certificat d'achèvement",
-    'courses.certificateEyebrow': 'VPD Academy',
+    'courses.certificateEyebrow': 'COP Academy',
     'courses.certificatePresentedTo': 'Ceci certifie que',
     'courses.certificateFor': 'a complété avec succès le cours',
     'courses.certificateAwardedOn': 'Décerné le {date}',
