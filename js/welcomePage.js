@@ -119,6 +119,7 @@ function wireContactForm() {
     const topic = t(TOPIC_KEYS[form.elements.topic.value] || TOPIC_KEYS.general);
     const name = form.elements.name.value.trim();
     const email = form.elements.email.value.trim();
+    const phone = form.elements.phone.value.trim();
     const church = form.elements.church.value.trim();
     const message = form.elements.message.value.trim();
 
@@ -126,6 +127,7 @@ function wireContactForm() {
     const body = [
       `Name: ${name}`,
       `Email: ${email}`,
+      `Phone: ${phone}`,
       church ? `Church: ${church}` : null,
       '',
       message,
