@@ -1,7 +1,6 @@
-// Role-Restricted App Suggestion Portal — visible only to elevated
-// roles (global role holders, department admins/secretaries; the
-// button itself is gated in app.js, and sql/040's RLS policy is the
-// real enforcement either way). A submission fans out to exactly one
+// App Suggestion Portal — open to every signed-in member (was
+// elevated roles only; widened by direct DB change, see the RLS
+// policy on app_suggestions). A submission fans out to exactly one
 // person — whichever profile has is_primary_admin set — via a
 // notification, not a general admin log.
 import { t } from '../i18n.js';

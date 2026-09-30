@@ -635,7 +635,6 @@ headerNewMemberBtn.addEventListener('click', () => {
 // than the real currentUserId in both places below, same as every
 // other identity-sensitive spot in this file.
 const USHER_ATTENDANCE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
-const SUGGESTION_GLOBAL_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 // Same set superAdminHome.js gates its Guest Onboarding button on.
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 
@@ -671,14 +670,6 @@ function updateSidebarToolsSelect() {
   const canRecordAttendance = USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
     || getMyDepartments().some((d) => d.key === 'ushers' && (d.role === 'admin' || d.role === 'secretary'));
 
-  // Mirrors can_submit_suggestions() in sql/040 — deliberately excludes
-  // Super Viewer, since a global-role holder's synthesized department
-  // rows carry the literal global_role string as `role`, which never
-  // equals 'admin'/'secretary', so the department-admin half of this
-  // check naturally only matches a real (non-global) department admin.
-  const canSubmitSuggestion = SUGGESTION_GLOBAL_ROLES.includes(getGlobalRole())
-    || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary');
-
   const options = [{ value: 'church-rules', label: t('sidebar.churchRules') }];
   if (!isViewingAs()) options.push({ value: 'change-password', label: t('sidebar.changePassword') });
   if (!isViewingAs()) options.push({ value: 'my-profile', label: t('sidebar.myProfile') });
@@ -690,7 +681,9 @@ function updateSidebarToolsSelect() {
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
   options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
   if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
-  if (canSubmitSuggestion) options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
+  // Everyone can suggest an improvement — no role gate (sql/047
+  // widened this on purpose; it used to be elevated roles only).
+  options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   if (hasAccess) {
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
