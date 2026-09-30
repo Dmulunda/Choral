@@ -20,8 +20,15 @@
 // church-wide without a department admin having to re-enter it as a
 // separate program. Those department-sourced entries render read-only
 // (no edit/delete/flyer), tagged with the department they came from.
+//
+// Above all of that: the Church Calendar grid (churchCalendarGrid.js) --
+// a monthly view merging these same Upcoming Events with Church
+// Bookings, the newer "any department can reserve a date for their own
+// event" mechanism. One date, one thing on it -- enforced in the
+// database, not just this UI.
 import { confirmDialog } from './confirmDialog.js';
 import { fetchUpcomingChurchEvents } from './upcomingChurchEvents.js';
+import { renderChurchCalendarGrid } from './churchCalendarGrid.js';
 import { t, departmentLabel } from '../i18n.js';
 import { todayLocal, formatDateLocal } from '../utils/date.js';
 
@@ -43,8 +50,13 @@ function generateRecurringDates(startStr, untilStr, interval) {
   return dates;
 }
 
-export function renderChurchProgramBoard(container, { supabase, canAdminister, currentUserId }) {
+export function renderChurchProgramBoard(container, { supabase, canAdminister, currentUserId, isSuperAdmin, myBookableDepartments }) {
   container.innerHTML = `
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-1">${t('churchCalendar.title')}</h2>
+      <p class="text-sm text-slate-500 mb-4">${t('churchCalendar.intro')}</p>
+      <div data-el="calendar-grid"></div>
+    </div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
         <h2 class="text-lg font-semibold mb-4" data-el="form-title">${t('churchProgram.addTitle')}</h2>
@@ -131,6 +143,10 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
     recurringOptionsEl.classList.toggle('hidden', !recurringCheckbox.checked);
   });
   cancelEditBtn?.addEventListener('click', exitEditMode);
+
+  renderChurchCalendarGrid(container.querySelector('[data-el="calendar-grid"]'), {
+    supabase, currentUserId, isSuperAdmin, myBookableDepartments: myBookableDepartments || [],
+  });
 
   loadPrograms();
 
@@ -271,9 +287,15 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
       loadPrograms();
     } catch (error) {
       formStatusEl.className = 'text-sm text-rose-600';
-      formStatusEl.textContent = editingProgramId
-        ? t('churchProgram.updateFailed', { message: error.message })
-        : t('churchProgram.saveFailed', { message: error.message });
+      // Symmetric conflict trigger -- one of the dates picked already
+      // has a department's Church Booking on it.
+      if (error.message?.includes('DATE_TAKEN_BY_BOOKING')) {
+        formStatusEl.textContent = t('churchCalendar.dateHasBooking');
+      } else {
+        formStatusEl.textContent = editingProgramId
+          ? t('churchProgram.updateFailed', { message: error.message })
+          : t('churchProgram.saveFailed', { message: error.message });
+      }
     } finally {
       submitBtn.disabled = false;
     }
