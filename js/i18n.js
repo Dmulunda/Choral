@@ -924,6 +924,8 @@ const TRANSLATIONS = {
 
     'menuCustomizer.title': 'Customize Menu & Appearance',
     'menuCustomizer.intro': 'Rename any navigation label, quick-action item, or department name, and set the app-wide colors and font — in both languages.',
+    'menuCustomizer.editingTenant': 'Editing: {name}. Changes here only affect this church — no one else’s.',
+    'menuCustomizer.editingActingAs': 'You are acting as {name}. Changes here will apply to THIS extension, not your home church.',
     'menuCustomizer.saveAll': 'Save All Changes',
     'menuCustomizer.loadFailed': 'Failed to load: {message}',
     'menuCustomizer.sectionNav': 'Navigation Menu',
@@ -2950,6 +2952,8 @@ const TRANSLATIONS = {
 
     'menuCustomizer.title': 'Personnaliser le menu et l’apparence',
     'menuCustomizer.intro': "Renommez n'importe quel libellé de navigation, élément du menu d'actions rapides, ou nom de département, et définissez les couleurs et la police de l'application — dans les deux langues.",
+    'menuCustomizer.editingTenant': 'Modification de : {name}. Ces changements n’affectent que cette église — aucune autre.',
+    'menuCustomizer.editingActingAs': 'Vous agissez en tant que {name}. Ces changements s’appliqueront à CETTE extension, pas à votre église d’origine.',
     'menuCustomizer.saveAll': 'Enregistrer tout',
     'menuCustomizer.loadFailed': 'Échec du chargement : {message}',
     'menuCustomizer.sectionNav': 'Menu de navigation',

@@ -13,6 +13,7 @@
 import { t, getBuiltInLabel, setLabelOverride } from '../i18n.js';
 import { DEPARTMENT_KEYS } from '../departments.js';
 import { getFontChoices, applyAppTheme } from '../theme.js';
+import { getTenant, isActingAsExtension } from '../tenant.js';
 
 const NAV_KEYS = ['nav.dashboard', 'nav.scheduling', 'nav.songbook', 'nav.voiceExercises', 'nav.members', 'nav.home', 'nav.training'];
 const SIDEBAR_KEYS = ['sidebar.churchRules', 'sidebar.attendance', 'sidebar.appSuggestion', 'sidebar.reportAbsence', 'sidebar.departmentRules', 'sidebar.monthlyReport', 'sidebar.guestCases', 'sidebar.memberCases'];
@@ -32,7 +33,8 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
         <h2 class="text-xl font-bold">${t('menuCustomizer.title')}</h2>
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
-      <p class="text-sm text-slate-500 mb-4">${t('menuCustomizer.intro')}</p>
+      <p class="text-sm text-slate-500 mb-3">${t('menuCustomizer.intro')}</p>
+      <div data-el="editing-banner" class="mb-4"></div>
       <div data-el="body"></div>
       <div class="flex items-center gap-3 mt-4 pt-4 border-t border-slate-200">
         <button type="button" data-action="save-all" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
@@ -45,6 +47,7 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
   document.body.appendChild(root);
 
   const bodyEl = root.querySelector('[data-el="body"]');
+  const editingBannerEl = root.querySelector('[data-el="editing-banner"]');
   const statusEl = root.querySelector('[data-el="status"]');
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
@@ -60,6 +63,7 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
     root.classList.add('flex');
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     statusEl.textContent = '';
+    renderEditingBanner();
 
     const [{ data, error }, { data: themeRow, error: themeError }, { data: deptRows }] = await Promise.all([
       supabase.from('menu_labels').select('key, label_en, label_fr'),
@@ -104,6 +108,25 @@ export function createMenuCustomizerModal({ supabase, currentUserId }) {
       bodyEl.querySelector('[data-el="theme-font"]').value = THEME_DEFAULTS.font_family;
       previewTheme();
     });
+  }
+
+  // Every change here is saved scoped to exactly one tenant (verified
+  // at the RLS/current_tenant_id() level — see sql/saas_platform's
+  // tenant_isolation policy on menu_labels/app_theme) -- this banner
+  // exists purely so a Global Super Admin can SEE which one before
+  // saving, since "acting as" a different Church Extension (see
+  // tenant.js/denominationExtensions.js) is a real, deliberate way for
+  // that tenant to change, and it's easy to forget you're still acting
+  // as one from an earlier visit.
+  function renderEditingBanner() {
+    const tenant = getTenant();
+    const acting = isActingAsExtension();
+    editingBannerEl.innerHTML = `
+      <div class="flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${acting ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-slate-50 text-slate-600 border border-slate-200'}">
+        <span>${acting ? '⚠️' : '🏷️'}</span>
+        <span>${t(acting ? 'menuCustomizer.editingActingAs' : 'menuCustomizer.editingTenant', { name: tenant?.name || '' })}</span>
+      </div>
+    `;
   }
 
   function previewTheme() {
