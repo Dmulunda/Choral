@@ -663,6 +663,16 @@
         </div>
       </section>
 
+      <!-- Offerings: Church Offering Registration, Finance-only
+           (hasFinanceOversight()) -- see the nav button comment near
+           updateBudgetNavVisibility() and js/app.js. -->
+      <section data-tab-panel="offerings" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.offerings">Offerings</h1>
+        <div id="offerings-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
       <!-- Pastor Meetings: no permanent nav button (reached only via
            the "Request meeting with pastor" tools-menu entry, same as
            before) -- every signed-in user gets the booking calendar,
