@@ -19,9 +19,14 @@
 //   - generate_quarter / send_retention_email: called only by this
 //     project's own pg_cron (via pg_net), authenticated with a shared
 //     secret (CRON_SECRET) rather than a user JWT.
-//   - download_url: called by a signed-in Finance team member from
-//     offeringsBoard.js, authenticated with their real JWT, then
-//     re-checks can_manage_finance()'s logic server-side.
+//   - download_url / generate_for_period: called by a signed-in
+//     Finance team member from offeringsBoard.js / offeringsImport.js,
+//     authenticated with their real JWT, then re-checks
+//     can_manage_finance()'s logic server-side. generate_for_period is
+//     generate_quarter's same PDF-build logic, used when Finance
+//     imports historical records into an already-closed month and that
+//     month needs a PDF (re)generated on demand instead of waiting for
+//     the nightly cron.
 //
 // Deploy: `supabase functions deploy offering-reports --no-verify-jwt`.
 // Needs these secrets set (Dashboard -> Edge Functions ->
@@ -136,6 +141,68 @@ async function buildOfferingPdf({ periodStart, periodEnd, offerings }) {
   return await doc.save();
 }
 
+async function generateAndStorePeriodPdf(admin, r2, endpoint, periodId) {
+  const { data: period, error: periodError } = await admin
+    .from('offering_report_periods')
+    .select('id, period_start, period_end')
+    .eq('id', periodId)
+    .maybeSingle();
+  if (periodError) return { error: periodError.message, status: 500 };
+  if (!period) return { error: 'Period not found', status: 404 };
+
+  const { data: offerings, error: offeringsError } = await admin
+    .from('offerings')
+    .select('donor_name, offering_date, amount_cents, offering_type')
+    .eq('report_period_id', periodId)
+    .order('offering_date', { ascending: true });
+  if (offeringsError) return { error: offeringsError.message, status: 500 };
+
+  const pdfBytes = await buildOfferingPdf({
+    periodStart: period.period_start, periodEnd: period.period_end, offerings: offerings || [],
+  });
+
+  const storageKey = `${period.id}.pdf`;
+  const putResp = await r2.fetch(`${endpoint}/${storageKey}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/pdf' },
+    body: pdfBytes,
+  });
+  if (!putResp.ok) return { error: `R2 upload failed: ${await putResp.text()}`, status: 500 };
+
+  await admin.from('offering_report_periods')
+    .update({ pdf_storage_path: storageKey, generated_at: new Date().toISOString(), status: 'closed' })
+    .eq('id', periodId);
+
+  return { storage_path: storageKey };
+}
+
+// Shared by download_url / generate_for_period.
+async function resolveFinanceCaller(admin, req) {
+  const jwt = (req.headers.get('Authorization') ?? '').replace('Bearer ', '');
+  if (!jwt) return { error: 'Missing authorization', status: 401 };
+  const { data: { user: caller }, error: callerError } = await admin.auth.getUser(jwt);
+  if (callerError || !caller) return { error: 'Invalid session', status: 401 };
+
+  const { data: callerProfile } = await admin.from('profiles').select('global_role').eq('id', caller.id).single();
+  if (!callerProfile) return { error: 'Profile not found', status: 404 };
+
+  let canManage = FINANCE_OVERSIGHT_ROLES.includes(callerProfile.global_role);
+  if (!canManage) {
+    const { data: financeMembership } = await admin
+      .from('department_memberships')
+      .select('role, departments!inner(key)')
+      .eq('user_id', caller.id)
+      .eq('status', 'approved')
+      .eq('departments.key', 'finance')
+      .in('role', ['admin', 'secretary'])
+      .maybeSingle();
+    canManage = !!financeMembership;
+  }
+  if (!canManage) return { error: 'Only the Finance team can manage offering reports', status: 403 };
+
+  return { callerProfile };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
 
@@ -167,38 +234,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'generate_quarter') {
-      const { data: period, error: periodError } = await admin
-        .from('offering_report_periods')
-        .select('id, period_start, period_end')
-        .eq('id', periodId)
-        .maybeSingle();
-      if (periodError) return json({ error: periodError.message }, 500);
-      if (!period) return json({ error: 'Period not found' }, 404);
-
-      const { data: offerings, error: offeringsError } = await admin
-        .from('offerings')
-        .select('donor_name, offering_date, amount_cents, offering_type')
-        .eq('report_period_id', periodId)
-        .order('offering_date', { ascending: true });
-      if (offeringsError) return json({ error: offeringsError.message }, 500);
-
-      const pdfBytes = await buildOfferingPdf({
-        periodStart: period.period_start, periodEnd: period.period_end, offerings: offerings || [],
-      });
-
-      const storageKey = `${period.id}.pdf`;
-      const putResp = await r2.fetch(`${endpoint}/${storageKey}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/pdf' },
-        body: pdfBytes,
-      });
-      if (!putResp.ok) return json({ error: `R2 upload failed: ${await putResp.text()}` }, 500);
-
-      await admin.from('offering_report_periods')
-        .update({ pdf_storage_path: storageKey, generated_at: new Date().toISOString(), status: 'closed' })
-        .eq('id', periodId);
-
-      return json({ success: true, storage_path: storageKey });
+      const result = await generateAndStorePeriodPdf(admin, r2, endpoint, periodId);
+      if (result.error) return json({ error: result.error }, result.status);
+      return json({ success: true, storage_path: result.storage_path });
     }
 
     // send_retention_email
@@ -263,27 +301,8 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'download_url') {
-    const jwt = (req.headers.get('Authorization') ?? '').replace('Bearer ', '');
-    if (!jwt) return json({ error: 'Missing authorization' }, 401);
-    const { data: { user: caller }, error: callerError } = await admin.auth.getUser(jwt);
-    if (callerError || !caller) return json({ error: 'Invalid session' }, 401);
-
-    const { data: callerProfile } = await admin.from('profiles').select('global_role').eq('id', caller.id).single();
-    if (!callerProfile) return json({ error: 'Profile not found' }, 404);
-
-    let canManage = FINANCE_OVERSIGHT_ROLES.includes(callerProfile.global_role);
-    if (!canManage) {
-      const { data: financeMembership } = await admin
-        .from('department_memberships')
-        .select('role, departments!inner(key)')
-        .eq('user_id', caller.id)
-        .eq('status', 'approved')
-        .eq('departments.key', 'finance')
-        .in('role', ['admin', 'secretary'])
-        .maybeSingle();
-      canManage = !!financeMembership;
-    }
-    if (!canManage) return json({ error: 'Only the Finance team can download offering reports' }, 403);
+    const { error, status } = await resolveFinanceCaller(admin, req);
+    if (error) return json({ error }, status);
 
     const { data: period, error: periodError } = await admin
       .from('offering_report_periods')
@@ -295,6 +314,20 @@ Deno.serve(async (req) => {
 
     const url = await presignGet(r2, endpoint, period.pdf_storage_path, DOWNLOAD_URL_TTL_SECONDS);
     return json({ url });
+  }
+
+  // ---- Client-facing action: a signed-in Finance team member just
+  // imported historical records into an already-closed month
+  // (offeringsImport.js) and that month's PDF needs to be generated
+  // (or regenerated, to include the newly-imported rows) on demand,
+  // instead of waiting for the nightly cron. ----
+  if (action === 'generate_for_period') {
+    const { error, status } = await resolveFinanceCaller(admin, req);
+    if (error) return json({ error }, status);
+
+    const result = await generateAndStorePeriodPdf(admin, r2, endpoint, periodId);
+    if (result.error) return json({ error: result.error }, result.status);
+    return json({ success: true, storage_path: result.storage_path });
   }
 
   return json({ error: `Unknown action: ${action}` }, 400);

@@ -1,16 +1,31 @@
 // Church Offering Registration — record individual offerings (name,
-// date, amount, type) and see the current quarter's running ledger.
-// Finance-only (can_manage_finance(), sql/054) end to end: the RLS
-// insert/select policies are the real gate, this UI just mirrors it.
-// Every 3 months the open period is automatically closed into a PDF
-// and a new one starts (sql/055, server-side cron) — this page always
-// shows whichever period is still open, plus a read-only history of
-// past (closed) periods and their PDFs once generated.
+// date, amount, type, payment method) and see the current month's
+// running ledger. Finance-only (can_manage_finance(), sql/054) end to
+// end: the RLS insert/select policies are the real gate, this UI just
+// mirrors it. Every month the open period is automatically closed
+// into a PDF and a new one starts (sql/058, server-side cron, like a
+// bank statement) — this page always shows whichever period is still
+// open, plus a read-only history of past (closed) periods and their
+// PDFs once generated.
+//
+// Optionally linking an offering to a real member (sql/057) mirrors
+// it into donation_entries — the existing Tax Receipts system — so it
+// counts toward that member's annual receipt automatically. Left
+// unlinked (the default, free-text name), an offering is recorded but
+// never counted toward anyone's receipt, same as an unmatched
+// donation_entries row already works.
+//
+// "Import Historical Records" (offeringsImport.js) is the same idea in
+// bulk — Excel/CSV, or a best-effort PDF parse, of whatever a church
+// used before this system, reviewed row by row before anything is
+// written.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { getGlobalRole } from '../departments.js';
+import { createOfferingsImportModal } from './offeringsImport.js';
 
 const OFFERING_TYPES = ['tithe', 'general', 'sacrifice', 'construction', 'other'];
+const PAYMENT_METHODS = ['cash', 'transfer', 'check', 'other'];
 
 function centsToDollarsStr(cents) {
   return (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -21,11 +36,16 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
 
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('offerings.recordTitle')}</h2>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-semibold">${t('offerings.recordTitle')}</h2>
+        <button type="button" data-el="import-open-btn" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('offerings.importButton')}</button>
+      </div>
       <form data-el="form" class="grid sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.donorName')}</label>
-          <input type="text" name="donor_name" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="text" name="donor_name" list="offerings-member-list" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <datalist id="offerings-member-list"></datalist>
+          <p data-el="member-link-status" class="text-xs text-slate-400 mt-1"></p>
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.date')}</label>
@@ -40,6 +60,16 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
           <select name="offering_type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
             ${OFFERING_TYPES.map((v) => `<option value="${v}">${escapeHtml(t(`offerings.type.${v}`))}</option>`).join('')}
           </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.paymentMethod')}</label>
+          <select name="payment_method" data-el="payment-method-select" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            ${PAYMENT_METHODS.map((v) => `<option value="${v}">${escapeHtml(t(`offerings.paymentMethod.${v}`))}</option>`).join('')}
+          </select>
+        </div>
+        <div data-el="payment-method-other-wrap" class="hidden">
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.paymentMethodOtherSpecify')}</label>
+          <input type="text" name="payment_method_other" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
         <div class="sm:col-span-2 flex items-center gap-3">
           <button type="submit" data-el="submit-btn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">
@@ -71,9 +101,46 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   const listEl = container.querySelector('[data-el="list"]');
   const periodTotalEl = container.querySelector('[data-el="period-total"]');
   const reportsListEl = container.querySelector('[data-el="reports-list"]');
+  const memberListEl = container.querySelector('#offerings-member-list');
+  const memberLinkStatusEl = container.querySelector('[data-el="member-link-status"]');
+  const paymentMethodSelect = form.querySelector('[data-el="payment-method-select"]');
+  const paymentMethodOtherWrap = form.querySelector('[data-el="payment-method-other-wrap"]');
+  const importOpenBtn = container.querySelector('[data-el="import-open-btn"]');
+
+  const importModal = createOfferingsImportModal({
+    supabase,
+    currentUserId,
+    onImported: () => { loadCurrentPeriod(); loadReportHistory(); },
+  });
+  importOpenBtn.addEventListener('click', () => importModal.open());
 
   form.elements.offering_date.valueAsDate = new Date();
   form.addEventListener('submit', handleSubmit);
+
+  paymentMethodSelect.addEventListener('change', () => {
+    paymentMethodOtherWrap.classList.toggle('hidden', paymentMethodSelect.value !== 'other');
+  });
+
+  // Optional member link: typing (or picking, via the datalist) a
+  // name that exactly matches a real member silently links this
+  // offering to them -- sql/057's trigger then mirrors it into
+  // donation_entries so it counts toward their tax receipt. Anything
+  // that doesn't match a member is just free text, same as before.
+  let membersByName = new Map();
+  loadMemberOptions();
+  form.elements.donor_name.addEventListener('input', updateMemberLinkStatus);
+
+  async function loadMemberOptions() {
+    const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
+    membersByName = new Map((data || []).map((p) => [p.full_name, p.id]));
+    memberListEl.innerHTML = (data || []).map((p) => `<option value="${escapeAttr(p.full_name)}"></option>`).join('');
+  }
+
+  function updateMemberLinkStatus() {
+    const matched = membersByName.get(form.elements.donor_name.value.trim());
+    memberLinkStatusEl.textContent = matched ? t('offerings.memberLinked') : '';
+    memberLinkStatusEl.className = matched ? 'text-xs text-emerald-600 mt-1' : 'text-xs text-slate-400 mt-1';
+  }
 
   loadCurrentPeriod();
   loadReportHistory();
@@ -84,10 +151,18 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     const offering_date = form.elements.offering_date.value;
     const amountDollars = parseFloat(form.elements.amount.value);
     const offering_type = form.elements.offering_type.value;
+    const payment_method = form.elements.payment_method.value;
+    const payment_method_other = payment_method === 'other' ? form.elements.payment_method_other.value.trim() : null;
+    const member_id = membersByName.get(donor_name) || null;
 
     if (!donor_name || !offering_date || !(amountDollars > 0)) {
       formStatusEl.className = 'text-sm text-rose-600';
       formStatusEl.textContent = t('offerings.missingFields');
+      return;
+    }
+    if (payment_method === 'other' && !payment_method_other) {
+      formStatusEl.className = 'text-sm text-rose-600';
+      formStatusEl.textContent = t('offerings.specifyPaymentMethod');
       return;
     }
 
@@ -100,6 +175,9 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       offering_date,
       amount_cents: Math.round(amountDollars * 100),
       offering_type,
+      payment_method,
+      payment_method_other,
+      member_id,
       recorded_by: currentUserId,
     });
 
@@ -114,18 +192,20 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     formStatusEl.textContent = t('offerings.saved');
     form.reset();
     form.elements.offering_date.valueAsDate = new Date();
+    paymentMethodOtherWrap.classList.add('hidden');
+    memberLinkStatusEl.textContent = '';
     loadCurrentPeriod();
   }
 
   // "Current period" = every offering not yet rolled into a closed
-  // quarterly report (report_period_id is null) -- sql/055's cron
-  // tags them once it closes the quarter, at which point they drop
-  // off this list and the next entry starts a fresh one.
+  // monthly report (report_period_id is null) -- sql/058's cron tags
+  // them once it closes the month, at which point they drop off this
+  // list and the next entry starts a fresh one.
   async function loadCurrentPeriod() {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     const { data, error } = await supabase
       .from('offerings')
-      .select('id, donor_name, offering_date, amount_cents, offering_type, recorded_by, recorder:profiles!recorded_by ( full_name )')
+      .select('id, donor_name, offering_date, amount_cents, offering_type, payment_method, payment_method_other, member_id, recorded_by, recorder:profiles!recorded_by ( full_name )')
       .is('report_period_id', null)
       .order('offering_date', { ascending: false })
       .order('created_at', { ascending: false });
@@ -152,6 +232,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
               <th class="py-2 pr-3">${t('offerings.date')}</th>
               <th class="py-2 pr-3">${t('offerings.donorName')}</th>
               <th class="py-2 pr-3">${t('offerings.type')}</th>
+              <th class="py-2 pr-3">${t('offerings.paymentMethod')}</th>
               <th class="py-2 pr-3 text-right">${t('offerings.amount')}</th>
               <th class="py-2 pr-3">${t('offerings.recordedBy')}</th>
               <th class="py-2"></th>
@@ -164,11 +245,18 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     const rowsEl = listEl.querySelector('[data-el="rows"]');
     rowsEl.innerHTML = data.map((row) => {
       const canEdit = row.recorded_by === currentUserId || isSuperAdmin;
+      const paymentLabel = row.payment_method === 'other' && row.payment_method_other
+        ? row.payment_method_other
+        : t(`offerings.paymentMethod.${row.payment_method}`);
+      const nameCell = row.member_id
+        ? `${escapeHtml(row.donor_name)} <span class="text-emerald-600" title="${escapeAttr(t('offerings.memberLinked'))}">✓</span>`
+        : escapeHtml(row.donor_name);
       return `
         <tr class="border-b border-slate-100" data-row-id="${row.id}">
           <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(row.offering_date)}</td>
-          <td class="py-2 pr-3">${escapeHtml(row.donor_name)}</td>
+          <td class="py-2 pr-3">${nameCell}</td>
           <td class="py-2 pr-3">${escapeHtml(t(`offerings.type.${row.offering_type}`))}</td>
+          <td class="py-2 pr-3">${escapeHtml(paymentLabel)}</td>
           <td class="py-2 pr-3 text-right whitespace-nowrap">$${centsToDollarsStr(row.amount_cents)}</td>
           <td class="py-2 pr-3 text-slate-500">${escapeHtml(row.recorder?.full_name || '—')}</td>
           <td class="py-2 text-right">${canEdit ? `<button type="button" data-action="delete" class="text-xs text-rose-600 hover:text-rose-700">${t('offerings.delete')}</button>` : ''}</td>
