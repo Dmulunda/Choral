@@ -14,9 +14,15 @@
 // unlinked (the default, free-text name), an offering is recorded but
 // never counted toward anyone's receipt, same as an unmatched
 // donation_entries row already works.
+//
+// "Import Historical Records" (offeringsImport.js) is the same idea in
+// bulk — Excel/CSV, or a best-effort PDF parse, of whatever a church
+// used before this system, reviewed row by row before anything is
+// written.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { getGlobalRole } from '../departments.js';
+import { createOfferingsImportModal } from './offeringsImport.js';
 
 const OFFERING_TYPES = ['tithe', 'general', 'sacrifice', 'construction', 'other'];
 const PAYMENT_METHODS = ['cash', 'transfer', 'check', 'other'];
@@ -30,7 +36,10 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
 
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-4">${t('offerings.recordTitle')}</h2>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-semibold">${t('offerings.recordTitle')}</h2>
+        <button type="button" data-el="import-open-btn" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('offerings.importButton')}</button>
+      </div>
       <form data-el="form" class="grid sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.donorName')}</label>
@@ -96,6 +105,14 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   const memberLinkStatusEl = container.querySelector('[data-el="member-link-status"]');
   const paymentMethodSelect = form.querySelector('[data-el="payment-method-select"]');
   const paymentMethodOtherWrap = form.querySelector('[data-el="payment-method-other-wrap"]');
+  const importOpenBtn = container.querySelector('[data-el="import-open-btn"]');
+
+  const importModal = createOfferingsImportModal({
+    supabase,
+    currentUserId,
+    onImported: () => { loadCurrentPeriod(); loadReportHistory(); },
+  });
+  importOpenBtn.addEventListener('click', () => importModal.open());
 
   form.elements.offering_date.valueAsDate = new Date();
   form.addEventListener('submit', handleSubmit);
