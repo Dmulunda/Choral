@@ -19,6 +19,7 @@ import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
 import { renderTaxTab } from './taxPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
+import { renderOfferingsPageTab } from './offeringsPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { loadSiteAdminStatus, getIsSiteAdmin } from './siteAdmin.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
@@ -49,7 +50,7 @@ import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
-  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
+  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership, hasFinanceOversight,
 } from './departments.js';
 import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft, isActingAsExtension } from './tenant.js';
 import {
@@ -364,6 +365,7 @@ const lazyTabs = {
   'service-program': renderServiceProgramTab,
   tax: renderTaxTab,
   budget: renderBudgetPageTab,
+  offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
 };
 let loadedTabs = new Set();
@@ -479,6 +481,32 @@ function updateBudgetNavVisibility() {
   }
 }
 
+// Same construct-only-if-visible treatment as Budget above, but gated
+// on hasFinanceOversight() specifically (not hasAnyDeptLeadership()) --
+// "only the finance team" means this is narrower than Budget's
+// audience (which also includes any department admin submitting their
+// own fund request); Offerings mirrors can_manage_finance() exactly.
+let offeringsNavBtn = null;
+function updateOfferingsNavVisibility() {
+  if (hasFinanceOversight()) {
+    if (!offeringsNavBtn) {
+      offeringsNavBtn = document.createElement('button');
+      offeringsNavBtn.dataset.tabTarget = 'offerings';
+      offeringsNavBtn.setAttribute('data-i18n', 'nav.offerings');
+      offeringsNavBtn.className = 'w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800';
+      offeringsNavBtn.textContent = t('nav.offerings');
+      offeringsNavBtn.addEventListener('click', () => {
+        activateTab('offerings');
+        closeSidebar();
+      });
+      unconditionalNavGroupEl.appendChild(offeringsNavBtn);
+    }
+  } else if (offeringsNavBtn) {
+    offeringsNavBtn.remove();
+    offeringsNavBtn = null;
+  }
+}
+
 // ---- Department switcher ----
 // Only Choir has real screens today — other departments show a
 // placeholder until their own phase ships. The switcher itself only
@@ -528,6 +556,7 @@ function applyActiveDepartment() {
   // Home itself lives inside this same nav group.
   forEachNavGroup('global', (el) => el.classList.toggle('hidden', !hasGlobalReach()));
   updateBudgetNavVisibility();
+  updateOfferingsNavVisibility();
   updateSidebarToolsSelect();
 
   if (!active) {
