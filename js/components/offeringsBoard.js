@@ -209,17 +209,27 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-sm">
         <span>${escapeHtml(row.period_start)} — ${escapeHtml(row.period_end)}</span>
         <span>${row.pdf_storage_path
-          ? `<a href="#" data-storage-path="${escapeAttr(row.pdf_storage_path)}" class="text-indigo-600 hover:text-indigo-700 font-medium" data-action="download">${t('offerings.downloadPdf')}</a>`
+          ? `<a href="#" data-period-id="${escapeAttr(row.id)}" class="text-indigo-600 hover:text-indigo-700 font-medium" data-action="download">${t('offerings.downloadPdf')}</a>`
           : `<span class="text-slate-400">${t('offerings.pdfPending')}</span>`}</span>
       </div>
     `).join('');
 
+    // PDFs live in Cloudflare R2 (offering-reports Edge Function), not
+    // Supabase Storage -- the function re-checks can_manage_finance()
+    // itself server-side before handing back a short-lived signed URL,
+    // same "never trust the client" pattern as course-video-r2.
     reportsListEl.querySelectorAll('[data-action="download"]').forEach((link) => {
       link.addEventListener('click', async (e) => {
         e.preventDefault();
-        const path = link.dataset.storagePath;
-        const { data: signed } = await supabase.storage.from('offering-reports').createSignedUrl(path, 3600);
-        if (signed?.signedUrl) window.open(signed.signedUrl, '_blank');
+        const periodId = link.dataset.periodId;
+        const { data, error } = await supabase.functions.invoke('offering-reports', {
+          body: { action: 'download_url', period_id: periodId },
+        });
+        if (error || !data?.url) {
+          window.alert(t('offerings.downloadFailed', { message: error?.message || 'Unknown error' }));
+          return;
+        }
+        window.open(data.url, '_blank');
       });
     });
   }

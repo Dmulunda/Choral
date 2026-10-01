@@ -781,6 +781,7 @@ const TRANSLATIONS = {
     'offerings.reportsIntro': 'A PDF report is generated automatically every 3 months. Records are kept for 5 years, then emailed to the admin and removed.',
     'offerings.noReports': 'No quarterly reports yet.',
     'offerings.downloadPdf': 'Download PDF',
+    'offerings.downloadFailed': 'Failed to get download link: {message}',
     'offerings.pdfPending': 'Not generated yet',
 
     'users.setSchoolAdmin': 'Make School Admin',
@@ -2841,6 +2842,7 @@ const TRANSLATIONS = {
     'offerings.reportsIntro': "Un rapport PDF est généré automatiquement tous les 3 mois. Les dossiers sont conservés pendant 5 ans, puis envoyés par courriel à l'administrateur et supprimés.",
     'offerings.noReports': 'Aucun rapport trimestriel pour le moment.',
     'offerings.downloadPdf': 'Télécharger le PDF',
+    'offerings.downloadFailed': 'Échec de la récupération du lien : {message}',
     'offerings.pdfPending': 'Pas encore généré',
 
     'users.setSchoolAdmin': 'Nommer administrateur de formation',
