@@ -35,7 +35,7 @@ import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createSupportRequestModal } from './components/supportRequestModal.js';
-import { createSiteAdminModal } from './components/siteAdminModal.js';
+import { renderSiteAdminTab } from './siteAdminPage.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
@@ -367,9 +367,14 @@ const lazyTabs = {
   budget: renderBudgetPageTab,
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
+  'site-admin': renderSiteAdminTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
+// Whatever tab was active right before jumping into Site Admin --
+// powers that page's own Back button (no top-level tab in this app has
+// one otherwise; everything else relies on the global sidebar Home icon).
+let siteAdminReturnTab = 'dashboard';
 
 // activateTab() only toggles a panel's visibility -- it never unmounts
 // or re-renders an already-loaded tab's DOM, so a tab whose data was
@@ -412,6 +417,9 @@ function activateTab(name) {
     lazyTabs[name]();
   }
 }
+
+document.querySelector('[data-tab-panel="site-admin"] [data-el="site-admin-back"]')
+  ?.addEventListener('click', () => activateTab(siteAdminReturnTab || 'dashboard'));
 
 // Choir and every other department name the "same kind" of page
 // differently (dashboard/dept-dashboard, scheduling/dept-scheduling) —
@@ -976,7 +984,8 @@ function runSidebarTool(value) {
   } else if (value === 'support-request') {
     createSupportRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'site-admin') {
-    createSiteAdminModal({ supabase: effectiveSupabase, currentUserId }).open();
+    siteAdminReturnTab = currentTabName;
+    activateTab('site-admin');
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'join-department') {

@@ -1,13 +1,15 @@
-// Site Admin console — platform-wide, not scoped to any tenant (see
-// is_site_admin()/sql/049). Six tabs: Website Inquiries (anonymous,
-// pre-signup leads from the marketing page's contact form, sql/053),
-// App Suggestions and Support Requests submitted by anyone on any
-// church on the platform (via the list_*_for_site_admin() RPCs, which
-// bypass each row's own tenant_isolation the same way every other
-// cross-tenant lookup in this app already does), Churches (every
-// tenant, basic usage, storage, soft-delete/restore -- sql/060/062),
-// and a simple add/remove-by-email console for who else holds the
-// role.
+// Site Admin — a full page (not a popup, per Site Admin feedback),
+// reached only via the tools-menu "Site Admin" entry, same pattern as
+// js/pastorMeetingsPage.js's own modal-to-page conversion. Six tabs:
+// Website Inquiries (anonymous, pre-signup leads from the marketing
+// page's contact form, sql/053), App Suggestions and Support Requests
+// submitted by anyone on any church on the platform (via the
+// list_*_for_site_admin() RPCs, which bypass each row's own
+// tenant_isolation the same way every other cross-tenant lookup in
+// this app already does), Churches (every tenant, basic usage,
+// storage, soft-delete/restore -- sql/060/062), Training Sandbox
+// (sql/064 -- see below), and a simple add/remove-by-email console
+// for who else holds the role.
 //
 // Suggestions/Requests/Manage also pull in Main (the separate single-
 // tenant app at app.eglisevpd.com, sql/main_53_site_admin.sql) via a
@@ -21,14 +23,40 @@
 // suggestions/requests (any signed-in member), or by email for
 // anonymous website_inquiries (site-admin-usage Edge Function's
 // reply_to_inquiry action, since there's no account to notify).
-import { t } from '../i18n.js';
-import { confirmDialog } from './confirmDialog.js';
+//
+// Training Sandbox (sql/064): a single shared "Site Admin Training"
+// tenant (fixed slug, seeded with the same 15 default departments
+// every real church gets) that any Site Admin can enter with REAL
+// write access -- deliberately NOT the read-only View-As proxy
+// (js/departments.js's startViewAs/getEffectiveSupabase, which blocks
+// every mutating call at the network layer; that's the right tool for
+// "preview what a member sees", the wrong one for "practice actually
+// doing things"). Entering/exiting reuses profiles.acting_as_tenant_id
+// (the same column the denomination/Church-Extensions feature added) --
+// a full page reload re-derives the whole app from whatever
+// current_tenant_id() now resolves to, exactly like switching
+// extensions -- so once inside, the entire app (sidebar, department
+// list, everything) just IS the training tenant, no special-casing
+// needed anywhere else. The existing "Acting as {name}" banner
+// (js/app.js, built for extension-switching) fires automatically too,
+// since it's driven by the same acting_as_tenant_id column.
+// Per-department Admin/Member is a REAL department_memberships row
+// (set_training_department_role()), toggled by deleting and
+// re-inserting -- every existing RLS check just works unmodified.
+// Everything in the training tenant is wiped clean every 48 hours by
+// a cron job (purge_training_sandbox()) -- nothing there is ever
+// meant to persist.
+import { t } from './i18n.js';
+import { confirmDialog } from './components/confirmDialog.js';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { getEffectiveSupabase } from './departments.js';
+import { getTenant } from './tenant.js';
 
 const SUGGESTION_STATUSES = ['new', 'planned', 'done', 'declined'];
 const REQUEST_STATUSES = ['new', 'answered', 'closed'];
 const INQUIRY_STATUSES = ['new', 'contacted', 'closed'];
 const INQUIRY_TOPIC_KEYS = { demo: 'welcome.topicDemo', general: 'welcome.topicGeneral', support: 'welcome.topicSupport' };
+const TRAINING_TENANT_SLUG = 'site-admin-training';
 
 const MAIN_URL = 'https://ezrwmplohjvttwosqvrn.supabase.co';
 const MAIN_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6cndtcGxvaGp2dHR3b3NxdnJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MzkxMjksImV4cCI6MjEwMjQxNTEyOX0.YzGP5gfb0GhGNGRylK4g_lBH4-mERiOmClqCQ_UrO_M';
@@ -61,48 +89,49 @@ function centsOrBytesToSize(bytes) {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function createSiteAdminModal({ supabase, currentUserId }) {
-  const root = document.createElement('div');
-  root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
-  root.innerHTML = `
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="text-xl font-bold">${t('siteAdmin.title')}</h2>
-        <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
-      </div>
+export async function renderSiteAdminTab() {
+  const supabase = getEffectiveSupabase();
+  const container = document.querySelector('#site-admin-content');
+  container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
-      <div data-el="main-connect" class="flex items-center gap-2 mb-4 text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"></div>
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    container.innerHTML = `<p class="text-slate-500">${t('scheduling.pleaseSignIn')}</p>`;
+    return;
+  }
+  const currentUserId = user.id;
 
-      <div class="flex gap-2 mb-4 border-b border-slate-200 flex-wrap">
-        <button type="button" data-tab="inquiries" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">${t('siteAdmin.tabInquiries')}</button>
-        <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSuggestions')}</button>
-        <button type="button" data-tab="requests" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabRequests')}</button>
-        <button type="button" data-tab="churches" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabChurches')}</button>
-        <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
-      </div>
+  container.innerHTML = `
+    <div data-el="main-connect" class="flex items-center gap-2 mb-4 text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"></div>
 
-      <div data-panel="inquiries"></div>
-      <div data-panel="suggestions" class="hidden"></div>
-      <div data-panel="requests" class="hidden"></div>
-      <div data-panel="churches" class="hidden"></div>
-      <div data-panel="manage" class="hidden"></div>
+    <div class="flex gap-2 mb-4 border-b border-slate-200 flex-wrap">
+      <button type="button" data-tab="inquiries" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">${t('siteAdmin.tabInquiries')}</button>
+      <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSuggestions')}</button>
+      <button type="button" data-tab="requests" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabRequests')}</button>
+      <button type="button" data-tab="churches" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabChurches')}</button>
+      <button type="button" data-tab="sandbox" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSandbox')}</button>
+      <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
     </div>
+
+    <div data-panel="inquiries"></div>
+    <div data-panel="suggestions" class="hidden"></div>
+    <div data-panel="requests" class="hidden"></div>
+    <div data-panel="churches" class="hidden"></div>
+    <div data-panel="sandbox" class="hidden"></div>
+    <div data-panel="manage" class="hidden"></div>
   `;
-  document.body.appendChild(root);
 
-  const mainConnectEl = root.querySelector('[data-el="main-connect"]');
-  const tabBtns = root.querySelectorAll('[data-tab]');
+  const mainConnectEl = container.querySelector('[data-el="main-connect"]');
+  const tabBtns = container.querySelectorAll('[data-tab]');
   const panels = {
-    inquiries: root.querySelector('[data-panel="inquiries"]'),
-    suggestions: root.querySelector('[data-panel="suggestions"]'),
-    requests: root.querySelector('[data-panel="requests"]'),
-    churches: root.querySelector('[data-panel="churches"]'),
-    manage: root.querySelector('[data-panel="manage"]'),
+    inquiries: container.querySelector('[data-panel="inquiries"]'),
+    suggestions: container.querySelector('[data-panel="suggestions"]'),
+    requests: container.querySelector('[data-panel="requests"]'),
+    churches: container.querySelector('[data-panel="churches"]'),
+    sandbox: container.querySelector('[data-panel="sandbox"]'),
+    manage: container.querySelector('[data-panel="manage"]'),
   };
-  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, manage: false };
-
-  root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
-  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, sandbox: false, manage: false };
 
   tabBtns.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
@@ -119,6 +148,7 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
     if (tab === 'suggestions' && !loaded.suggestions) loadSuggestions();
     if (tab === 'requests' && !loaded.requests) loadRequests();
     if (tab === 'churches' && !loaded.churches) loadChurches();
+    if (tab === 'sandbox' && !loaded.sandbox) loadSandbox();
     if (tab === 'manage' && !loaded.manage) loadManage();
   }
 
@@ -446,6 +476,79 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
     });
   }
 
+  // ---- Training Sandbox ----
+  async function loadSandbox() {
+    panels.sandbox.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+    loaded.sandbox = true;
+    const inSandbox = getTenant()?.slug === TRAINING_TENANT_SLUG;
+
+    if (!inSandbox) {
+      panels.sandbox.innerHTML = `
+        <p class="text-sm text-slate-600 mb-4">${t('siteAdmin.sandboxIntro')}</p>
+        <button type="button" data-action="enter-sandbox" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">${t('siteAdmin.enterSandbox')}</button>
+      `;
+      panels.sandbox.querySelector('[data-action="enter-sandbox"]').addEventListener('click', async () => {
+        const { error } = await supabase.rpc('enter_training_sandbox');
+        if (error) { window.alert(error.message); return; }
+        window.location.reload();
+      });
+      return;
+    }
+
+    const [{ data: departments, error: deptError }, { data: memberships, error: memError }] = await Promise.all([
+      supabase.from('departments').select('id, key, name').order('name'),
+      supabase.from('department_memberships').select('department_id, role').eq('user_id', currentUserId),
+    ]);
+    if (deptError || memError) {
+      panels.sandbox.innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: (deptError || memError).message })}</p>`;
+      return;
+    }
+    const roleByDept = new Map((memberships || []).map((m) => [m.department_id, m.role]));
+
+    panels.sandbox.innerHTML = `
+      <div class="bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm rounded-lg px-3 py-2 mb-4 flex items-center justify-between gap-2">
+        <span>${t('siteAdmin.sandboxActive')}</span>
+        <button type="button" data-action="exit-sandbox" class="font-medium text-indigo-700 hover:text-indigo-900">${t('siteAdmin.exitSandbox')}</button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">${t('siteAdmin.sandboxDeptIntro')}</p>
+      <div data-el="dept-list" class="divide-y border border-slate-200 rounded-lg"></div>
+    `;
+
+    panels.sandbox.querySelector('[data-action="exit-sandbox"]').addEventListener('click', async () => {
+      const { error } = await supabase.rpc('exit_training_sandbox');
+      if (error) { window.alert(error.message); return; }
+      window.location.reload();
+    });
+
+    const deptListEl = panels.sandbox.querySelector('[data-el="dept-list"]');
+    deptListEl.innerHTML = (departments || []).map((d) => {
+      const currentRole = roleByDept.get(d.id) || null;
+      return `
+        <div class="flex items-center justify-between px-3 py-2" data-department-key="${escapeAttr(d.key)}">
+          <div>
+            <p class="text-sm font-medium text-slate-800">${escapeHtml(d.name)}</p>
+            <p class="text-xs text-slate-500">${currentRole ? t('siteAdmin.currentlyActingAs', { role: t(`siteAdmin.role.${currentRole}`) }) : t('siteAdmin.notJoined')}</p>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" data-action="set-role" data-role="admin" class="text-xs px-2 py-1 rounded ${currentRole === 'admin' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${t('siteAdmin.role.admin')}</button>
+            <button type="button" data-action="set-role" data-role="member" class="text-xs px-2 py-1 rounded ${currentRole === 'member' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${t('siteAdmin.role.member')}</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    deptListEl.querySelectorAll('[data-action="set-role"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const key = btn.closest('[data-department-key]').dataset.departmentKey;
+        const role = btn.dataset.role;
+        const { error } = await supabase.rpc('set_training_department_role', { p_department_key: key, p_role: role });
+        if (error) { window.alert(error.message); return; }
+        loaded.sandbox = false;
+        loadSandbox();
+      });
+    });
+  }
+
   // ---- Manage Site Admins (SAAS + Main) ----
   async function loadManage() {
     panels.manage.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
@@ -547,22 +650,10 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
     return div.innerHTML;
   }
 
-  function open() {
-    root.classList.remove('hidden');
-    root.classList.add('flex');
-    loaded.inquiries = false;
-    loaded.suggestions = false;
-    loaded.requests = false;
-    loaded.churches = false;
-    loaded.manage = false;
-    renderMainConnect();
-    switchTab('inquiries');
+  function escapeAttr(str) {
+    return escapeHtml(str).replaceAll('"', '&quot;');
   }
 
-  function close() {
-    root.classList.add('hidden');
-    root.classList.remove('flex');
-  }
-
-  return { open };
+  renderMainConnect();
+  switchTab('inquiries');
 }
