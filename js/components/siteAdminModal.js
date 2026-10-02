@@ -39,6 +39,19 @@ function getMainClient() {
   return mainClient;
 }
 
+// supabase-js's functions.invoke() only gives a generic "Edge Function
+// returned a non-2xx status code" in error.message -- the real reason
+// (the JSON body this function's own error responses carry) is on
+// error.context, a raw Response object whose body hasn't been read yet.
+async function extractFunctionErrorMessage(error) {
+  if (!error) return 'Unknown error';
+  try {
+    const body = await error.context?.clone().json();
+    if (body?.error) return body.error;
+  } catch { /* context wasn't JSON (e.g. a network failure) -- fall through */ }
+  return error.message || 'Unknown error';
+}
+
 function centsOrBytesToSize(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -230,7 +243,7 @@ export function createSiteAdminModal({ supabase, currentUserId }) {
         });
         if (error || data?.error) {
           replyStatusEl.className = 'text-xs text-rose-600';
-          replyStatusEl.textContent = t('siteAdmin.replyFailed', { message: error?.message || data?.error });
+          replyStatusEl.textContent = t('siteAdmin.replyFailed', { message: data?.error || await extractFunctionErrorMessage(error) });
           return;
         }
         replyStatusEl.className = 'text-xs text-emerald-600';
