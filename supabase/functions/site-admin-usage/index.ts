@@ -5,15 +5,18 @@
 // genuinely needs an Edge Function, since it lives outside Postgres
 // entirely and has to be listed via the S3 API.
 //
-// Two R2 "areas" today, each potentially its own bucket (course-video-r2
-// and offering-reports each have their OWN Edge Function secrets, even
-// though the client code is identical -- they may or may not point at
-// the same actual bucket):
+// Two R2 "areas" today, both read from the one shared R2_BUCKET secret
+// (Supabase Edge Function secrets are project-wide, not per-function --
+// course-video-r2 and offering-reports already read the exact same
+// R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET this
+// function does, with nothing new to configure):
 //   - course videos: keys are `${lesson_id}/...` -- attributed via a
 //     join through `lessons.tenant_id`.
 //   - offering report PDFs: keys are `${tenant_id}/${period_id}.pdf`
 //     (or `main/...` for a single-tenant DB) -- attributed directly
 //     from the key's own prefix.
+// Told apart by key shape (a lesson id vs. a tenant id/"main"), not by
+// which secret found them, since they're the same bucket either way.
 //
 // Auth: JWT-authenticated, re-checks is_site_admin() server-side via
 // the service-role client (same "never trust the client" pattern as
@@ -22,17 +25,9 @@
 // dashboard by a signed-in person.
 //
 // Deploy: `supabase functions deploy site-admin-usage --no-verify-jwt`.
-// Needs, for each R2 area actually in use (set only the ones that
-// apply -- an area with no bucket secrets configured is skipped, not
-// treated as an error):
-//   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (shared
-//     across the whole R2 account, same values already set on
-//     course-video-r2/offering-reports)
-//   R2_BUCKET_COURSE_VIDEOS -- the bucket course-video-r2 uploads into
-//   R2_BUCKET_OFFERING_REPORTS -- the bucket offering-reports uploads into
-//   (if both functions actually share one bucket, set both of these
-//   to that same bucket name -- objects are told apart by key shape,
-//   not by which secret found them)
+// No new secrets needed -- R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/
+// R2_SECRET_ACCESS_KEY/R2_BUCKET and RESEND_API_KEY are already set
+// project-wide from course-video-r2/offering-reports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { AwsClient } from 'https://esm.sh/aws4fetch@1.0.20';
 
@@ -156,23 +151,27 @@ Deno.serve(async (req) => {
     byTenant[tenantId] = (byTenant[tenantId] || 0) + bytes;
   }
 
-  // ---- Course videos: key is `${lesson_id}/...` ----
-  const courseR2 = getR2(Deno.env.get('R2_BUCKET_COURSE_VIDEOS'));
-  if (courseR2) {
-    const objects = await listAllObjects(courseR2);
-    const lessonIds = [...new Set(objects.map((o) => o.key.split('/')[0]))];
-    const { data: lessons } = await admin.from('lessons').select('id, tenant_id').in('id', lessonIds);
-    const tenantByLesson = new Map((lessons || []).map((l) => [l.id, l.tenant_id]));
-    for (const o of objects) addBytes(tenantByLesson.get(o.key.split('/')[0]), o.size);
-  }
+  // One shared bucket holds both course-video-r2's `${lesson_id}/...`
+  // keys and offering-reports' `${tenant_id}/${period_id}.pdf` (or
+  // `main/...`) keys, mixed together -- told apart per object by
+  // checking its first path segment against both lessons and tenants,
+  // not by which secret found it (there's only the one R2_BUCKET).
+  const r2 = getR2(Deno.env.get('R2_BUCKET'));
+  if (r2) {
+    const objects = await listAllObjects(r2);
+    const firstSegments = [...new Set(objects.map((o) => o.key.split('/')[0]))];
 
-  // ---- Offering report PDFs: key is `${tenant_id}/${period_id}.pdf` ----
-  const offeringR2 = getR2(Deno.env.get('R2_BUCKET_OFFERING_REPORTS'));
-  if (offeringR2) {
-    const objects = await listAllObjects(offeringR2);
+    const { data: lessons } = await admin.from('lessons').select('id, tenant_id').in('id', firstSegments);
+    const tenantByLesson = new Map((lessons || []).map((l) => [l.id, l.tenant_id]));
+
+    const { data: tenants } = await admin.from('tenants').select('id').in('id', firstSegments);
+    const tenantIds = new Set((tenants || []).map((t) => t.id));
+
     for (const o of objects) {
       const prefix = o.key.split('/')[0];
-      addBytes(prefix === 'main' ? null : prefix, o.size);
+      if (tenantByLesson.has(prefix)) addBytes(tenantByLesson.get(prefix), o.size);
+      else if (tenantIds.has(prefix)) addBytes(prefix, o.size);
+      else addBytes(null, o.size); // "main" (single-tenant offering-reports) or unrecognized
     }
   }
 
