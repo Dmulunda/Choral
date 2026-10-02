@@ -88,6 +88,11 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       <div data-el="list"></div>
     </div>
 
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">${t('offerings.recentlyRemovedTitle')}</h2>
+      <div data-el="removed-list"></div>
+    </div>
+
     <div class="bg-white rounded-xl shadow p-4 sm:p-6">
       <h2 class="text-lg font-semibold mb-4">${t('offerings.reportsTitle')}</h2>
       <p class="text-sm text-slate-500 mb-4">${t('offerings.reportsIntro')}</p>
@@ -101,6 +106,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   const listEl = container.querySelector('[data-el="list"]');
   const periodTotalEl = container.querySelector('[data-el="period-total"]');
   const reportsListEl = container.querySelector('[data-el="reports-list"]');
+  const removedListEl = container.querySelector('[data-el="removed-list"]');
   const memberListEl = container.querySelector('#offerings-member-list');
   const memberLinkStatusEl = container.querySelector('[data-el="member-link-status"]');
   const paymentMethodSelect = form.querySelector('[data-el="payment-method-select"]');
@@ -110,7 +116,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   const importModal = createOfferingsImportModal({
     supabase,
     currentUserId,
-    onImported: () => { loadCurrentPeriod(); loadReportHistory(); },
+    onImported: () => { loadCurrentPeriod(); loadReportHistory(); loadRecentlyRemoved(); },
   });
   importOpenBtn.addEventListener('click', () => importModal.open());
 
@@ -144,6 +150,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
 
   loadCurrentPeriod();
   loadReportHistory();
+  loadRecentlyRemoved();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -207,6 +214,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       .from('offerings')
       .select('id, donor_name, offering_date, amount_cents, offering_type, payment_method, payment_method_other, member_id, recorded_by, recorder:profiles!recorded_by ( full_name )')
       .is('report_period_id', null)
+      .is('removed_at', null)
       .order('offering_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -271,8 +279,49 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
         const name = row.querySelector('td:nth-child(2)').textContent;
         const ok = await confirmDialog({ message: t('offerings.deleteConfirm', { name }) });
         if (!ok) return;
-        await supabase.from('offerings').delete().eq('id', id);
+        // Soft delete (sql/063) -- recoverable for 90 days via the
+        // "Recently removed" section below, same removed_at/restore
+        // shape as members already use, not a real DELETE.
+        await supabase.from('offerings').update({ removed_at: new Date().toISOString(), removed_by: currentUserId }).eq('id', id);
         loadCurrentPeriod();
+        loadRecentlyRemoved();
+      });
+    });
+  }
+
+  // "Recently removed" -- same tenant's own Finance team only (not
+  // Site Admin, see sql/063) can see and restore an offering they
+  // soft-deleted, until the 90-day purge cron takes it for good.
+  async function loadRecentlyRemoved() {
+    removedListEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+    const { data, error } = await supabase
+      .from('offerings')
+      .select('id, donor_name, offering_date, amount_cents, removed_at')
+      .not('removed_at', 'is', null)
+      .order('removed_at', { ascending: false });
+
+    if (error) {
+      removedListEl.innerHTML = `<p class="text-sm text-rose-600">${t('offerings.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      removedListEl.innerHTML = `<p class="text-sm text-slate-400">${t('offerings.noneRemoved')}</p>`;
+      return;
+    }
+
+    removedListEl.innerHTML = data.map((row) => `
+      <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-sm" data-row-id="${row.id}">
+        <span>${escapeHtml(row.offering_date)} — ${escapeHtml(row.donor_name)} — $${centsToDollarsStr(row.amount_cents)}</span>
+        <button type="button" data-action="restore" class="text-indigo-600 hover:text-indigo-700 font-medium">${t('offerings.restore')}</button>
+      </div>
+    `).join('');
+
+    removedListEl.querySelectorAll('[data-action="restore"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.closest('[data-row-id]').dataset.rowId;
+        await supabase.from('offerings').update({ removed_at: null, removed_by: null }).eq('id', id);
+        loadCurrentPeriod();
+        loadRecentlyRemoved();
       });
     });
   }
