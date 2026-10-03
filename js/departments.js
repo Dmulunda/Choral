@@ -91,6 +91,27 @@ export function hasFinanceOversight() {
   return getMyDepartments().some((d) => d.key === 'finance' && (d.role === 'admin' || d.role === 'secretary'));
 }
 
+// Mirrors can_record_offerings() (sql/066) -- any approved Finance
+// membership at all (admin/secretary/member), not just oversight-level
+// like hasFinanceOversight() above. Widens who can even see the
+// Offerings page/nav entry to the whole Finance team, not just its
+// leads -- recording day-to-day entries shouldn't require being an
+// admin or secretary.
+export function canRecordOfferings() {
+  if (hasFinanceOversight()) return true;
+  return getMyDepartments().some((d) => d.key === 'finance');
+}
+
+// Mirrors can_delete_offerings() (sql/066) -- deliberately narrower
+// than hasFinanceOversight(): Finance department ADMIN specifically
+// (or one of the three global oversight roles), not a Finance
+// secretary or plain member. Removing a financial record is a
+// different bar than recording one.
+export function canDeleteOfferings() {
+  if (hasGlobalReach() && FINANCE_OVERSIGHT_ROLES.includes(globalRole)) return true;
+  return getMyDepartments().some((d) => d.key === 'finance' && d.role === 'admin');
+}
+
 // Whether this session should see the Budget nav item at all -- either
 // full cross-department oversight above, or leadership (admin/secretary)
 // of at least one ordinary department, entitling them to that

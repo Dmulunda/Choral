@@ -21,7 +21,7 @@
 // written.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
-import { getGlobalRole } from '../departments.js';
+import { canDeleteOfferings } from '../departments.js';
 import { createOfferingsImportModal } from './offeringsImport.js';
 
 const OFFERING_TYPES = ['tithe', 'general', 'sacrifice', 'construction', 'other'];
@@ -32,7 +32,10 @@ function centsToDollarsStr(cents) {
 }
 
 export function renderOfferingsBoard(container, { supabase, currentUserId }) {
-  const isSuperAdmin = getGlobalRole() === 'super_admin';
+  // sql/066: deleting an offering is narrower than recording one --
+  // Finance Admin (or global oversight), not a Finance secretary or
+  // plain member, and requires a reason. Mirrors can_delete_offerings().
+  const canDelete = canDeleteOfferings();
 
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
@@ -272,7 +275,6 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     `;
     const rowsEl = listEl.querySelector('[data-el="rows"]');
     rowsEl.innerHTML = data.map((row) => {
-      const canEdit = row.recorded_by === currentUserId || isSuperAdmin;
       const paymentLabel = row.payment_method === 'other' && row.payment_method_other
         ? row.payment_method_other
         : t(`offerings.paymentMethod.${row.payment_method}`);
@@ -289,7 +291,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
           <td class="py-2 pr-3">${escapeHtml(paymentLabel)}</td>
           <td class="py-2 pr-3 text-right whitespace-nowrap">$${centsToDollarsStr(row.amount_cents)}</td>
           <td class="py-2 pr-3 text-slate-500">${escapeHtml(row.recorder?.full_name || '—')}</td>
-          <td class="py-2 text-right">${canEdit ? `<button type="button" data-action="delete" class="text-xs text-rose-600 hover:text-rose-700">${t('offerings.delete')}</button>` : ''}</td>
+          <td class="py-2 text-right">${canDelete ? `<button type="button" data-action="delete" class="text-xs text-rose-600 hover:text-rose-700">${t('offerings.delete')}</button>` : ''}</td>
         </tr>
       `;
     }).join('');
@@ -299,12 +301,25 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
         const row = btn.closest('[data-row-id]');
         const id = row.dataset.rowId;
         const name = row.querySelector('td:nth-child(2)').textContent;
-        const ok = await confirmDialog({ message: t('offerings.deleteConfirm', { name }) });
-        if (!ok) return;
+        // sql/066 requires a reason whenever an offering is removed --
+        // the trigger rejects the update without one regardless of what
+        // this dialog does, but asking for it up front avoids a round
+        // trip failure.
+        const reason = await confirmDialog({
+          message: t('offerings.deleteConfirm', { name }),
+          reasonLabel: t('offerings.deleteReasonLabel'),
+          reasonPlaceholder: t('offerings.deleteReasonPlaceholder'),
+        });
+        if (!reason) return;
         // Soft delete (sql/063) -- recoverable for 90 days via the
         // "Recently removed" section below, same removed_at/restore
         // shape as members already use, not a real DELETE.
-        await supabase.from('offerings').update({ removed_at: new Date().toISOString(), removed_by: currentUserId }).eq('id', id);
+        const { error } = await supabase.from('offerings').update({
+          removed_at: new Date().toISOString(),
+          removed_by: currentUserId,
+          removed_reason: reason,
+        }).eq('id', id);
+        if (error) { window.alert(t('offerings.deleteFailed', { message: error.message })); return; }
         loadCurrentPeriod();
         loadRecentlyRemoved();
       });
@@ -318,7 +333,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     removedListEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     const { data, error } = await supabase
       .from('offerings')
-      .select('id, donor_name, offering_date, amount_cents, removed_at')
+      .select('id, donor_name, offering_date, amount_cents, removed_at, removed_reason')
       .not('removed_at', 'is', null)
       .order('removed_at', { ascending: false });
 
@@ -332,16 +347,20 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     }
 
     removedListEl.innerHTML = data.map((row) => `
-      <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-sm" data-row-id="${row.id}">
-        <span>${escapeHtml(row.offering_date)} — ${escapeHtml(row.donor_name)} — $${centsToDollarsStr(row.amount_cents)}</span>
-        <button type="button" data-action="restore" class="text-indigo-600 hover:text-indigo-700 font-medium">${t('offerings.restore')}</button>
+      <div class="py-2 border-b border-slate-100 last:border-0 text-sm" data-row-id="${row.id}">
+        <div class="flex items-center justify-between">
+          <span>${escapeHtml(row.offering_date)} — ${escapeHtml(row.donor_name)} — $${centsToDollarsStr(row.amount_cents)}</span>
+          ${canDelete ? `<button type="button" data-action="restore" class="text-indigo-600 hover:text-indigo-700 font-medium">${t('offerings.restore')}</button>` : ''}
+        </div>
+        ${row.removed_reason ? `<p class="text-xs text-slate-400 mt-0.5">${t('offerings.deleteReasonLabel')}: ${escapeHtml(row.removed_reason)}</p>` : ''}
       </div>
     `).join('');
 
     removedListEl.querySelectorAll('[data-action="restore"]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = btn.closest('[data-row-id]').dataset.rowId;
-        await supabase.from('offerings').update({ removed_at: null, removed_by: null }).eq('id', id);
+        const { error: restoreError } = await supabase.from('offerings').update({ removed_at: null, removed_by: null, removed_reason: null }).eq('id', id);
+        if (restoreError) { window.alert(t('offerings.restoreFailed', { message: restoreError.message })); return; }
         loadCurrentPeriod();
         loadRecentlyRemoved();
       });

@@ -50,7 +50,8 @@ import {
   loadMyDepartments, getMyDepartments, getActiveDepartment, setActiveDepartmentKey,
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
-  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership, hasFinanceOversight,
+  isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
+  canRecordOfferings,
 } from './departments.js';
 import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft, isActingAsExtension } from './tenant.js';
 import {
@@ -490,13 +491,14 @@ function updateBudgetNavVisibility() {
 }
 
 // Same construct-only-if-visible treatment as Budget above, but gated
-// on hasFinanceOversight() specifically (not hasAnyDeptLeadership()) --
-// "only the finance team" means this is narrower than Budget's
-// audience (which also includes any department admin submitting their
-// own fund request); Offerings mirrors can_manage_finance() exactly.
+// on canRecordOfferings() -- any approved Finance team member
+// (admin/secretary/member), not just oversight-level like
+// hasFinanceOversight(). Recording day-to-day offerings shouldn't
+// require being a Finance admin/secretary; deleting one still does
+// (see offeringsBoard.js's own canDeleteOfferings() check).
 let offeringsNavBtn = null;
 function updateOfferingsNavVisibility() {
-  if (hasFinanceOversight()) {
+  if (canRecordOfferings()) {
     if (!offeringsNavBtn) {
       offeringsNavBtn = document.createElement('button');
       offeringsNavBtn.dataset.tabTarget = 'offerings';
