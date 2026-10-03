@@ -18,6 +18,7 @@ import { todayLocal } from '../utils/date.js';
 import { getGlobalRole } from '../departments.js';
 import { notifyDepartment } from '../utils/notifyDepartment.js';
 import { checkAndConfirmAssignment } from '../utils/schedulingConflicts.js';
+import { createPreachingScheduleImportModal } from './preachingScheduleImport.js';
 
 export function renderPreachingSchedule(container, { supabase, departmentId, canAdminister, userId }) {
   // Super Admin keeps the ability to correct an already-past entry;
@@ -29,7 +30,10 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     <div data-el="my-assignments"></div>
     ${canAdminister ? `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4">${t('preaching.title')}</h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">${t('preaching.title')}</h2>
+          <button type="button" data-action="import-pdf" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">${t('deptCalendar.importPdf')}</button>
+        </div>
         <p class="text-xs text-slate-500 mb-3">${t('preaching.multipleHint')}</p>
         <p data-el="edit-indicator" class="hidden text-sm text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2 mb-3">
           ${t('preaching.editingEntry')}
@@ -133,6 +137,11 @@ export function renderPreachingSchedule(container, { supabase, departmentId, can
     form.elements.date.addEventListener('change', () => refreshAvailabilityForDate(form.elements.date.value));
     form.addEventListener('submit', handleSubmit);
     container.querySelector('[data-action="cancel-edit"]').addEventListener('click', resetForm);
+
+    const importModal = createPreachingScheduleImportModal({
+      supabase, departmentId, currentUserId: userId, onImported: load,
+    });
+    container.querySelector('[data-action="import-pdf"]').addEventListener('click', () => importModal.open());
   }
 
   load();
