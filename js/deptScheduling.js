@@ -14,7 +14,16 @@ import { renderEcodemBoard } from './components/ecodemBoard.js';
 import { renderAvailabilityCalendar } from './components/calendar.js';
 import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
 import { renderUpcomingChurchEvents } from './components/upcomingChurchEvents.js';
+import { renderDepartmentCalendarGrid } from './components/departmentCalendarGrid.js';
+import { createDepartmentCalendarImportModal } from './components/departmentCalendarImport.js';
 import { t } from './i18n.js';
+
+// Departments that additionally get a month-grid calendar (above the
+// generic shift list every lightweight department already has),
+// manually editable or PDF-importable. Currently just Intercession;
+// the component itself is generic enough that adding another
+// department here is a one-line change.
+const CALENDAR_DEPARTMENTS = new Set(['intercession']);
 
 const BESPOKE_BOARDS = {
   preaching: renderPreachingSchedule,
@@ -34,6 +43,7 @@ export async function renderDeptSchedulingTab() {
   const userId = getViewAsTarget()?.id || user?.id;
 
   const canAdminister = active.role === 'admin' || active.role === 'super_admin';
+  const showCalendar = CALENDAR_DEPARTMENTS.has(active.key);
   container.innerHTML = `
     <div data-el="dept-switch"></div>
     <div data-el="church-events"></div>
@@ -41,6 +51,12 @@ export async function renderDeptSchedulingTab() {
       <h2 class="text-lg font-semibold mb-4">${t('calendar.myAvailability')}</h2>
       <div data-el="availability"></div>
     </div>
+    ${showCalendar ? `
+      <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">${t('deptCalendar.title')}</h2>
+        <div data-el="calendar"></div>
+      </div>
+    ` : ''}
     <div data-el="board"></div>
   `;
 
@@ -54,6 +70,17 @@ export async function renderDeptSchedulingTab() {
     // active department is passed through so the calendar can also
     // show teammates' status (sql/080).
     renderAvailabilityCalendar(container.querySelector('[data-el="availability"]'), { supabase, userId, departmentId: active.id });
+  }
+
+  if (showCalendar) {
+    const importModal = createDepartmentCalendarImportModal({
+      supabase, departmentId: active.id, currentUserId: userId,
+      onImported: () => calendar.reload(),
+    });
+    const calendar = renderDepartmentCalendarGrid(container.querySelector('[data-el="calendar"]'), {
+      supabase, departmentId: active.id, canAdminister, currentUserId: userId,
+      onImportClick: () => importModal.open(),
+    });
   }
 
   const renderBoard = BESPOKE_BOARDS[active.key] || renderShiftBoard;
