@@ -25,6 +25,10 @@ export function createPrayerRequestModal({ supabase, currentUserId }) {
           <textarea name="request_text" rows="4" required placeholder="${t('prayerRequest.textPlaceholder')}"
                      class="w-full border border-slate-300 rounded-lg px-3 py-2"></textarea>
         </div>
+        <label class="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" name="anonymous" class="rounded border-slate-300">
+          ${t('prayerRequest.anonymousLabel')}
+        </label>
         <div class="flex items-center gap-3">
           <button type="submit" data-el="submit-btn"
                   class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">
@@ -66,6 +70,7 @@ export function createPrayerRequestModal({ supabase, currentUserId }) {
   async function handleSubmit(e) {
     e.preventDefault();
     const requestText = form.elements.request_text.value.trim();
+    const isAnonymous = form.elements.anonymous.checked;
 
     if (!requestText) {
       formStatusEl.className = 'text-sm text-rose-600';
@@ -77,7 +82,10 @@ export function createPrayerRequestModal({ supabase, currentUserId }) {
     formStatusEl.className = 'text-sm text-slate-500';
     formStatusEl.textContent = t('common.saving');
 
-    const { error } = await supabase.from('prayer_requests').insert({ user_id: currentUserId, request_text: requestText });
+    const { error } = await supabase.from('prayer_requests').insert({
+      user_id: isAnonymous ? null : currentUserId,
+      request_text: requestText,
+    });
 
     submitBtn.disabled = false;
     if (error) {
@@ -183,7 +191,7 @@ export function createPrayerRequestQueueModal({ supabase }) {
     el.innerHTML = `
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="font-medium text-slate-800">${escapeHtml(row.requester?.full_name || '')}</div>
+          <div class="font-medium text-slate-800">${row.requester?.full_name ? escapeHtml(row.requester.full_name) : `<span class="italic text-slate-400">${t('prayerRequest.anonymousSubmitter')}</span>`}</div>
           <div class="text-xs text-slate-400">${escapeHtml(new Date(row.created_at).toLocaleDateString())}</div>
           <p class="text-sm text-slate-600 mt-1">${escapeHtml(row.request_text)}</p>
         </div>
