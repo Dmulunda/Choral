@@ -21,6 +21,13 @@
 // offering counts toward that member's tax receipt exactly like one
 // entered by hand.
 //
+// Likely duplicates (same donor name + date + amount as an offering
+// already on file, or repeated within this same batch -- catches
+// re-uploading the same file, or re-uploading with an overlapping
+// date range) are detected once per file (markDuplicates()) and
+// automatically excluded from the import, reported as a count rather
+// than reviewed row by row.
+//
 // A row can also link to a Guest Donor (sql/065) instead -- a real
 // church member who gives but has no app account. The donor-identity
 // column offers existing members AND existing guest donors (fuzzy-
@@ -265,6 +272,42 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
     guestDonors = guests || [];
   }
 
+  // A row is a likely duplicate if an offering already on file (or an
+  // earlier row already in THIS same batch) has the exact same donor
+  // name, date, and amount -- catches re-uploading the same file, or
+  // re-uploading with an overlapping date range (e.g. Jan–Oct, then
+  // Jul–Dec next time). Name is trimmed/lowercased for the comparison
+  // so trivial formatting differences don't hide a real duplicate,
+  // but otherwise this is an exact match, not fuzzy -- two different
+  // people who happen to share a name, date, and amount are rare
+  // enough that a stricter match would risk hiding real duplicates.
+  function offeringSignature(name, date, amountDollars) {
+    return `${String(name || '').trim().toLowerCase()}|${date}|${Math.round(Number(amountDollars) * 100)}`;
+  }
+
+  async function markDuplicates(targetRows) {
+    const validDates = targetRows.map((r) => r.donation_date).filter(Boolean);
+    if (validDates.length === 0) return;
+    const minDate = validDates.reduce((a, b) => (b < a ? b : a));
+    const maxDate = validDates.reduce((a, b) => (b > a ? b : a));
+
+    const { data: existing, error } = await supabase
+      .from('offerings')
+      .select('donor_name, offering_date, amount_cents')
+      .gte('offering_date', minDate)
+      .lte('offering_date', maxDate)
+      .is('removed_at', null);
+    if (error) return; // best-effort -- an import shouldn't hard-fail just because this check couldn't run
+
+    const seen = new Set((existing || []).map((o) => offeringSignature(o.donor_name, o.offering_date, o.amount_cents / 100)));
+    for (const row of targetRows) {
+      if (!row.raw_name || !row.donation_date || !(row.amount > 0)) continue;
+      const sig = offeringSignature(row.raw_name, row.donation_date, row.amount);
+      row.isDuplicate = seen.has(sig);
+      seen.add(sig); // a second occurrence of the same signature within this batch is also a duplicate
+    }
+  }
+
   async function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -308,8 +351,11 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
         newGuestName: '',
         newGuestEmail: '',
         suggestedScore: best ? best.score : null,
+        isDuplicate: false,
       };
     });
+
+    await markDuplicates(rows);
 
     renderPreview();
     uploadStepEl.classList.add('hidden');
@@ -355,14 +401,16 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
       if (row.amount === null || row.amount <= 0) warnings.push(t('offeringsImport.warnMissingAmount'));
       if (!row.memberId && !row.guestDonorId && !(row.isNewGuest && row.newGuestName.trim())) warnings.push(t('offeringsImport.warnNoMember'));
 
-      const statusHtml = warnings.length > 0
-        ? `<span class="text-amber-600">${escapeHtml(warnings.join('; '))}</span>`
-        : row.suggestedScore !== null
-          ? `<span class="text-emerald-600">${t('offeringsImport.statusSuggested', { score: row.suggestedScore })}</span>`
-          : `<span class="text-emerald-600">${t('offeringsImport.statusOk')}</span>`;
+      const statusHtml = row.isDuplicate
+        ? `<span class="text-slate-500 font-medium">${t('offeringsImport.statusDuplicate')}</span>`
+        : warnings.length > 0
+          ? `<span class="text-amber-600">${escapeHtml(warnings.join('; '))}</span>`
+          : row.suggestedScore !== null
+            ? `<span class="text-emerald-600">${t('offeringsImport.statusSuggested', { score: row.suggestedScore })}</span>`
+            : `<span class="text-emerald-600">${t('offeringsImport.statusOk')}</span>`;
 
       return `
-        <tr data-row-index="${row.index}" class="${row.raw_name ? '' : 'bg-rose-50'}">
+        <tr data-row-index="${row.index}" class="${row.isDuplicate ? 'bg-slate-100 opacity-60' : row.raw_name ? '' : 'bg-rose-50'}">
           <td class="px-2 py-1.5"><input type="text" data-field="raw_name" data-row="${row.index}" value="${escapeAttr(row.raw_name)}" class="w-full border border-slate-200 rounded px-2 py-1" /></td>
           <td class="px-2 py-1.5"><input type="date" data-field="donation_date" data-row="${row.index}" value="${row.donation_date}" class="w-full border border-slate-200 rounded px-2 py-1" /></td>
           <td class="px-2 py-1.5"><input type="number" step="0.01" min="0" data-field="amount" data-row="${row.index}" value="${row.amount ?? ''}" class="w-24 border border-slate-200 rounded px-2 py-1" /></td>
@@ -432,13 +480,19 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
     row[field] = e.target.value;
   }
 
+  function importableRows() {
+    return rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0 && !r.isDuplicate);
+  }
+
   function updateSummary() {
-    const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0);
+    const validRows = importableRows();
     const matchedCount = validRows.filter((r) => r.memberId || r.guestDonorId || (r.isNewGuest && r.newGuestName.trim())).length;
     const unmatchedCount = validRows.length - matchedCount;
-    const skippedCount = rows.length - validRows.length;
+    const duplicateCount = rows.filter((r) => r.isDuplicate).length;
+    const skippedCount = rows.length - validRows.length - duplicateCount;
 
-    summaryEl.textContent = t('offeringsImport.summary', { matched: matchedCount, unmatched: unmatchedCount, skipped: skippedCount });
+    summaryEl.textContent = t('offeringsImport.summary', { matched: matchedCount, unmatched: unmatchedCount, skipped: skippedCount })
+      + (duplicateCount > 0 ? ' ' + t('offeringsImport.summaryDuplicates', { count: duplicateCount }) : '');
     importBtn.disabled = validRows.length === 0;
   }
 
@@ -459,12 +513,15 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
   }
 
   async function runImport() {
-    const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0);
+    const validRows = importableRows();
     const matchedCount = validRows.filter((r) => r.memberId || r.guestDonorId || (r.isNewGuest && r.newGuestName.trim())).length;
     const unmatchedCount = validRows.length - matchedCount;
+    const duplicateCount = rows.filter((r) => r.isDuplicate).length;
 
+    const confirmMsg = t('offeringsImport.confirmMessage', { matched: matchedCount, unmatched: unmatchedCount })
+      + (duplicateCount > 0 ? ' ' + t('offeringsImport.confirmMessageDuplicates', { count: duplicateCount }) : '');
     if (!(await confirmDialog({
-      message: t('offeringsImport.confirmMessage', { matched: matchedCount, unmatched: unmatchedCount }),
+      message: confirmMsg,
       confirmLabel: t('offeringsImport.startImport'),
       danger: false,
     }))) return;
@@ -538,6 +595,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
     }
 
     logLine(t('offeringsImport.allDone', { count: validRows.length }), 'success');
+    if (duplicateCount > 0) logLine(t('offeringsImport.allDoneDuplicatesSkipped', { count: duplicateCount }), 'info');
 
     const pastPeriodIds = Array.from(periodIdByMonth.entries()).filter(([key]) => key !== thisMonth);
     if (pastPeriodIds.length > 0) {
