@@ -109,7 +109,12 @@ function currentMonthKey() {
 // reliable than Excel/CSV -- every row it produces still goes through
 // the same editable preview as a spreadsheet import, nothing is ever
 // applied without review) ----
-const PDFJS_VERSION = '3.11.174';
+// 3.11.174 (the first version tried here) never shipped an ESM build at
+// all -- only build/pdf.min.js (UMD/global), no .mjs -- which made this
+// dynamic import() 404 against the CDN every time. pdfjs-dist only
+// started publishing build/pdf.min.mjs/pdf.worker.min.mjs from 4.x on;
+// confirmed reachable on jsdelivr before pinning.
+const PDFJS_VERSION = '4.0.379';
 let pdfjsLibPromise = null;
 function loadPdfJs() {
   if (!pdfjsLibPromise) {
