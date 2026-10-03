@@ -5,10 +5,23 @@
 // oversight-only third tab (hasFinanceOversight()) -- matches how the
 // Reimbursements inbox there is oversight-only too, since this is a
 // church-wide financial/legal feature, not a per-department one.
+//
+// Guest Donors (sql/065): a real church member who gives but has no
+// app account -- offeringsBoard.js/offeringsImport.js can link an
+// offering to a lightweight guest_donors row (name + email) instead of
+// a real member_id, which flows through to donation_entries exactly
+// like a member-linked one. finalize_tax_receipt_year() issues them a
+// receipt the same way, provided they have an email on file; since
+// they have no account to log in and download it themselves, Finance
+// emails it to them here -- the PDF is built client-side with the
+// exact same code the member-facing download button uses
+// (js/utils/taxReceiptPdf.js), then handed to the offering-reports
+// Edge Function's send_tax_receipt_email action as base64.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { createTaxReceiptSettingsModal } from './taxReceiptSettingsModal.js';
 import { createTaxDonationImportModal } from './taxDonationImport.js';
+import { receiptPdfAvailable, buildReceiptPdfBlob, blobToBase64 } from '../utils/taxReceiptPdf.js';
 
 export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId }) {
   container.innerHTML = `
@@ -17,9 +30,14 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
       <button type="button" data-action="import" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('taxAdmin.importButton')}</button>
     </div>
     <div data-el="years-list"><p class="text-sm text-slate-500">${t('common.loading')}</p></div>
+
+    <h3 class="text-base font-semibold text-slate-800 mt-6 mb-1">${t('taxAdmin.guestDonorsTitle')}</h3>
+    <p class="text-xs text-slate-500 mb-3">${t('taxAdmin.guestDonorsIntro')}</p>
+    <div data-el="guest-donors-list"><p class="text-sm text-slate-500">${t('common.loading')}</p></div>
   `;
 
   const yearsListEl = container.querySelector('[data-el="years-list"]');
+  const guestDonorsListEl = container.querySelector('[data-el="guest-donors-list"]');
 
   const settingsModal = createTaxReceiptSettingsModal({ supabase, currentUserId });
   const importModal = createTaxDonationImportModal({ supabase, currentUserId, onImported: loadYears });
@@ -28,6 +46,7 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
   container.querySelector('[data-action="import"]').addEventListener('click', () => importModal.open());
 
   loadYears();
+  loadGuestDonors();
 
   async function loadYears() {
     yearsListEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
@@ -103,15 +122,130 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
 
     const result = Array.isArray(data) ? data[0] : data;
     const skipped = result?.skipped_members || [];
+    const skippedGuests = result?.skipped_guests || [];
     let message = t('taxAdmin.finalizeSuccess', { count: result?.issued_count ?? 0 });
     if (skipped.length > 0) {
       message += '\n\n' + t('taxAdmin.finalizeSkipped', { names: skipped.map((m) => m.full_name).join(', ') });
     }
+    if (skippedGuests.length > 0) {
+      message += '\n\n' + t('taxAdmin.finalizeSkippedGuests', { names: skippedGuests.map((g) => g.full_name).join(', ') });
+    }
     window.alert(message);
     loadYears();
+    loadGuestDonors();
+  }
+
+  // ---- Guest Donors (sql/065) ----
+  async function loadGuestDonors() {
+    guestDonorsListEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+
+    const [{ data: guests, error: guestsError }, { data: entries, error: entriesError }, { data: receipts, error: receiptsError }] = await Promise.all([
+      supabase.from('guest_donors').select('id, name, email').order('name'),
+      supabase.from('donation_entries').select('guest_donor_id, amount').not('guest_donor_id', 'is', null),
+      supabase.from('tax_receipts').select('id, guest_donor_id, fiscal_year, receipt_number, total_amount, issued_at, legal_name_snapshot, tenant_info_snapshot').not('guest_donor_id', 'is', null),
+    ]);
+
+    if (guestsError || entriesError || receiptsError) {
+      guestDonorsListEl.innerHTML = `<p class="text-sm text-rose-600">${t('taxAdmin.loadFailed', { message: (guestsError || entriesError || receiptsError).message })}</p>`;
+      return;
+    }
+
+    const totalByGuest = new Map();
+    (entries || []).forEach((e) => {
+      totalByGuest.set(e.guest_donor_id, (totalByGuest.get(e.guest_donor_id) || 0) + Number(e.amount));
+    });
+    const receiptsByGuest = new Map();
+    (receipts || []).forEach((r) => {
+      if (!receiptsByGuest.has(r.guest_donor_id)) receiptsByGuest.set(r.guest_donor_id, []);
+      receiptsByGuest.get(r.guest_donor_id).push(r);
+    });
+
+    if (!guests || guests.length === 0) {
+      guestDonorsListEl.innerHTML = `<p class="text-sm text-slate-400">${t('taxAdmin.noGuestDonors')}</p>`;
+      return;
+    }
+
+    guestDonorsListEl.innerHTML = guests.map((g) => {
+      const total = totalByGuest.get(g.id) || 0;
+      const receiptsForGuest = (receiptsByGuest.get(g.id) || []).sort((a, b) => b.fiscal_year - a.fiscal_year);
+      return `
+        <div class="border border-slate-200 rounded-lg p-3 mb-2" data-guest-id="${g.id}">
+          <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <div class="flex-1 min-w-[160px]">
+              <input type="text" data-el="name" value="${escapeAttr(g.name)}" class="font-semibold text-slate-800 border border-transparent hover:border-slate-300 focus:border-slate-300 rounded px-1.5 py-0.5 -ml-1.5 w-full" />
+              <input type="email" data-el="email" value="${escapeAttr(g.email || '')}" placeholder="${escapeAttr(t('taxAdmin.guestEmailPlaceholder'))}" class="text-sm text-slate-500 border border-transparent hover:border-slate-300 focus:border-slate-300 rounded px-1.5 py-0.5 -ml-1.5 w-full" />
+            </div>
+            <div class="text-right">
+              <div class="text-sm text-slate-600">${t('taxAdmin.guestTotal', { amount: formatAmount(total) })}</div>
+              <button type="button" data-action="save-guest" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">${t('taxAdmin.saveGuest')}</button>
+              <span data-el="save-status" class="text-xs text-slate-500 ml-1"></span>
+            </div>
+          </div>
+          ${receiptsForGuest.length > 0 ? `
+            <div class="divide-y divide-slate-100 border-t border-slate-100 pt-1">
+              ${receiptsForGuest.map((r) => `
+                <div class="flex items-center justify-between py-1.5 text-sm" data-receipt-id="${r.id}">
+                  <span class="text-slate-600">${r.fiscal_year} — ${escapeHtml(r.receipt_number)} — ${formatAmount(r.total_amount)}</span>
+                  <span>
+                    <button type="button" data-action="email-receipt" class="text-xs text-emerald-600 hover:text-emerald-700 font-medium">${t('taxAdmin.emailReceipt')}</button>
+                    <span data-el="email-status" class="text-xs text-slate-500 ml-1"></span>
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    guestDonorsListEl.querySelectorAll('[data-guest-id]').forEach((row) => {
+      const guestId = row.dataset.guestId;
+      row.querySelector('[data-action="save-guest"]').addEventListener('click', async () => {
+        const statusEl = row.querySelector('[data-el="save-status"]');
+        const name = row.querySelector('[data-el="name"]').value.trim();
+        const email = row.querySelector('[data-el="email"]').value.trim() || null;
+        if (!name) return;
+        statusEl.textContent = t('common.saving');
+        const { error } = await supabase.from('guest_donors').update({ name, email }).eq('id', guestId);
+        statusEl.textContent = error ? t('taxAdmin.saveGuestFailed', { message: error.message }) : t('taxAdmin.saved');
+        if (!error) setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      });
+      row.querySelectorAll('[data-receipt-id]').forEach((receiptRow) => {
+        const receiptId = receiptRow.dataset.receiptId;
+        receiptRow.querySelector('[data-action="email-receipt"]').addEventListener('click', async () => {
+          const statusEl = receiptRow.querySelector('[data-el="email-status"]');
+          const receipt = (receipts || []).find((r) => r.id === receiptId);
+          if (!receipt) return;
+          if (!receiptPdfAvailable()) { statusEl.textContent = t('taxMember.exportUnavailable'); return; }
+          statusEl.textContent = t('common.saving');
+          const blob = await buildReceiptPdfBlob(receipt);
+          const pdf_base64 = await blobToBase64(blob);
+          const { data, error } = await supabase.functions.invoke('offering-reports', {
+            body: { action: 'send_tax_receipt_email', receipt_id: receiptId, pdf_base64 },
+          });
+          if (error || data?.error) {
+            statusEl.className = 'text-xs text-rose-600 ml-1';
+            statusEl.textContent = t('taxAdmin.emailReceiptFailed', { message: data?.error || error?.message || 'Unknown error' });
+            return;
+          }
+          statusEl.className = 'text-xs text-emerald-600 ml-1';
+          statusEl.textContent = t('taxAdmin.emailReceiptSent');
+        });
+      });
+    });
   }
 }
 
 function formatAmount(amount) {
   return '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replaceAll('"', '&quot;');
 }

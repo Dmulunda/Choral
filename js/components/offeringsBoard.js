@@ -132,20 +132,38 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   // offering to them -- sql/057's trigger then mirrors it into
   // donation_entries so it counts toward their tax receipt. Anything
   // that doesn't match a member is just free text, same as before.
+  //
+  // Guest Donors (sql/065): a real church member who gives but has no
+  // app account. Matching a name against the datalist's guest entries
+  // links guest_donor_id instead of member_id -- same donation_entries
+  // mirror and tax-receipt eligibility, just a lighter identity than a
+  // full account. Finance manages guest donors (adding an email so
+  // they can actually be sent their receipt) from the Tax Receipts
+  // board, not here -- this page only ever links to an existing one.
   let membersByName = new Map();
+  let guestDonorsByName = new Map();
   loadMemberOptions();
   form.elements.donor_name.addEventListener('input', updateMemberLinkStatus);
 
   async function loadMemberOptions() {
-    const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
-    membersByName = new Map((data || []).map((p) => [p.full_name, p.id]));
-    memberListEl.innerHTML = (data || []).map((p) => `<option value="${escapeAttr(p.full_name)}"></option>`).join('');
+    const [{ data: members }, { data: guests }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('guest_donors').select('id, name').order('name'),
+    ]);
+    membersByName = new Map((members || []).map((p) => [p.full_name, p.id]));
+    guestDonorsByName = new Map((guests || []).map((g) => [g.name, g.id]));
+    memberListEl.innerHTML = [
+      ...(members || []).map((p) => p.full_name),
+      ...(guests || []).map((g) => g.name),
+    ].map((name) => `<option value="${escapeAttr(name)}"></option>`).join('');
   }
 
   function updateMemberLinkStatus() {
-    const matched = membersByName.get(form.elements.donor_name.value.trim());
-    memberLinkStatusEl.textContent = matched ? t('offerings.memberLinked') : '';
-    memberLinkStatusEl.className = matched ? 'text-xs text-emerald-600 mt-1' : 'text-xs text-slate-400 mt-1';
+    const name = form.elements.donor_name.value.trim();
+    const matchedMember = membersByName.get(name);
+    const matchedGuest = !matchedMember && guestDonorsByName.get(name);
+    memberLinkStatusEl.textContent = matchedMember ? t('offerings.memberLinked') : matchedGuest ? t('offerings.guestDonorLinked') : '';
+    memberLinkStatusEl.className = (matchedMember || matchedGuest) ? 'text-xs text-emerald-600 mt-1' : 'text-xs text-slate-400 mt-1';
   }
 
   loadCurrentPeriod();
@@ -161,6 +179,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     const payment_method = form.elements.payment_method.value;
     const payment_method_other = payment_method === 'other' ? form.elements.payment_method_other.value.trim() : null;
     const member_id = membersByName.get(donor_name) || null;
+    const guest_donor_id = member_id ? null : (guestDonorsByName.get(donor_name) || null);
 
     if (!donor_name || !offering_date || !(amountDollars > 0)) {
       formStatusEl.className = 'text-sm text-rose-600';
@@ -185,6 +204,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       payment_method,
       payment_method_other,
       member_id,
+      guest_donor_id,
       recorded_by: currentUserId,
     });
 
@@ -212,7 +232,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     const { data, error } = await supabase
       .from('offerings')
-      .select('id, donor_name, offering_date, amount_cents, offering_type, payment_method, payment_method_other, member_id, recorded_by, recorder:profiles!recorded_by ( full_name )')
+      .select('id, donor_name, offering_date, amount_cents, offering_type, payment_method, payment_method_other, member_id, guest_donor_id, recorded_by, recorder:profiles!recorded_by ( full_name )')
       .is('report_period_id', null)
       .is('removed_at', null)
       .order('offering_date', { ascending: false })
@@ -258,7 +278,9 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
         : t(`offerings.paymentMethod.${row.payment_method}`);
       const nameCell = row.member_id
         ? `${escapeHtml(row.donor_name)} <span class="text-emerald-600" title="${escapeAttr(t('offerings.memberLinked'))}">✓</span>`
-        : escapeHtml(row.donor_name);
+        : row.guest_donor_id
+          ? `${escapeHtml(row.donor_name)} <span class="text-indigo-600" title="${escapeAttr(t('offerings.guestDonorLinked'))}">✓</span>`
+          : escapeHtml(row.donor_name);
       return `
         <tr class="border-b border-slate-100" data-row-id="${row.id}">
           <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(row.offering_date)}</td>

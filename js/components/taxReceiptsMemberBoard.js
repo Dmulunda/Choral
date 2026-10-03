@@ -6,16 +6,13 @@
 // and -- for any year Finance has finalized -- their official receipt
 // with a Download PDF button.
 //
-// PDF generation reuses memberIdCard.js's exact pattern: render the
-// receipt as a styled on-page template, screenshot it with
-// html2canvas, embed the PNG into a jsPDF doc, hand it to the same
-// share-sheet-first / download-link-fallback delivery every other PDF
-// export in this app already uses.
+// PDF building (html2canvas + jsPDF against a styled on-page template)
+// lives in js/utils/taxReceiptPdf.js -- shared with
+// taxReceiptsAdminBoard.js, which builds the identical PDF for a Guest
+// Donor (no app account) and emails it instead of downloading it.
 import { t } from '../i18n.js';
 import { createMyProfileModal } from './myProfileModal.js';
-
-const RECEIPT_WIDTH = 850;
-const RECEIPT_HEIGHT = 1100;
+import { receiptPdfAvailable, buildReceiptPdfBlob, shareOrDownloadPdf } from '../utils/taxReceiptPdf.js';
 
 export async function renderTaxReceiptsMemberBoard(container, { supabase, userId }) {
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
@@ -106,72 +103,8 @@ function formatAmount(amount) {
 }
 
 async function downloadReceiptPdf(receipt, statusEl) {
-  if (!window.html2canvas || !window.jspdf) { statusEl.textContent = t('taxMember.exportUnavailable'); return; }
+  if (!receiptPdfAvailable()) { statusEl.textContent = t('taxMember.exportUnavailable'); return; }
   statusEl.textContent = t('common.loading');
-
-  const settings = receipt.tenant_info_snapshot || {};
-  const wrap = document.createElement('div');
-  wrap.style.cssText = `position:fixed;left:-9999px;top:0;width:${RECEIPT_WIDTH}px;height:${RECEIPT_HEIGHT}px;background:#ffffff;padding:48px;box-sizing:border-box;font-family:Georgia,serif;color:#1e293b;`;
-  wrap.innerHTML = `
-    <div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:16px;margin-bottom:24px;">
-      <div style="font-size:20px;font-weight:700;">${escapeHtml(settings.legal_name || '')}</div>
-      ${settings.address ? `<div style="font-size:12px;color:#475569;margin-top:4px;">${escapeHtml(settings.address)}</div>` : ''}
-      ${settings.charity_registration_number ? `<div style="font-size:12px;color:#475569;margin-top:2px;">${escapeHtml(t('taxReceiptDoc.charityNumberLabel'))}: ${escapeHtml(settings.charity_registration_number)}</div>` : ''}
-    </div>
-    <div style="text-align:center;font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:24px;">
-      ${escapeHtml(t('taxReceiptDoc.title'))}
-    </div>
-    <table style="width:100%;font-size:14px;border-collapse:collapse;">
-      <tr><td style="padding:6px 0;color:#64748b;">${escapeHtml(t('taxReceiptDoc.receiptNumberLabel'))}</td><td style="padding:6px 0;text-align:right;font-weight:600;">${escapeHtml(receipt.receipt_number)}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;">${escapeHtml(t('taxReceiptDoc.issuedOnLabel'))}</td><td style="padding:6px 0;text-align:right;">${escapeHtml(new Date(receipt.issued_at).toLocaleDateString())}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;">${escapeHtml(t('taxReceiptDoc.fiscalYearLabel'))}</td><td style="padding:6px 0;text-align:right;">${receipt.fiscal_year}</td></tr>
-      <tr><td style="padding:14px 0 6px;color:#64748b;border-top:1px solid #e2e8f0;">${escapeHtml(t('taxReceiptDoc.donorNameLabel'))}</td><td style="padding:14px 0 6px;text-align:right;font-weight:600;border-top:1px solid #e2e8f0;">${escapeHtml(receipt.legal_name_snapshot)}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;">${escapeHtml(t('taxReceiptDoc.totalAmountLabel'))}</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:18px;">${formatAmount(receipt.total_amount)}</td></tr>
-    </table>
-    <p style="font-size:11px;color:#64748b;margin-top:32px;line-height:1.5;">${escapeHtml(t('taxReceiptDoc.disclaimer'))}</p>
-    <div style="margin-top:56px;display:flex;justify-content:space-between;align-items:flex-end;">
-      <div>
-        ${settings.signature_data ? `<img src="${settings.signature_data}" style="height:60px;display:block;margin-bottom:4px;" />` : '<div style="height:60px;"></div>'}
-        <div style="border-top:1px solid #1e293b;padding-top:4px;font-size:12px;">
-          ${escapeHtml(settings.signing_authority_name || '')}${settings.signing_authority_title ? ` — ${escapeHtml(settings.signing_authority_title)}` : ''}
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(wrap);
-
-  try {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'px', format: [RECEIPT_WIDTH, RECEIPT_HEIGHT] });
-    const canvas = await window.html2canvas(wrap, { backgroundColor: '#ffffff', scale: 2 });
-    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, RECEIPT_WIDTH, RECEIPT_HEIGHT);
-    const blob = doc.output('blob');
-    await shareOrDownload(new File([blob], `tax-receipt-${receipt.fiscal_year}.pdf`, { type: 'application/pdf' }), statusEl);
-  } finally {
-    wrap.remove();
-  }
-}
-
-async function shareOrDownload(file, statusEl) {
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file] });
-      statusEl.textContent = '';
-      return;
-    } catch (err) {
-      if (err?.name === 'AbortError') { statusEl.textContent = ''; return; }
-    }
-  }
-  const link = document.createElement('a');
-  link.download = file.name;
-  link.href = URL.createObjectURL(file);
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
-  statusEl.textContent = '';
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  const blob = await buildReceiptPdfBlob(receipt);
+  await shareOrDownloadPdf(new File([blob], `tax-receipt-${receipt.fiscal_year}.pdf`, { type: 'application/pdf' }), statusEl);
 }

@@ -20,6 +20,14 @@
 // existing offerings trigger (sql/057) -- so an imported historical
 // offering counts toward that member's tax receipt exactly like one
 // entered by hand.
+//
+// A row can also link to a Guest Donor (sql/065) instead -- a real
+// church member who gives but has no app account. The donor-identity
+// column offers existing members AND existing guest donors (fuzzy-
+// matched together, whichever scores higher), plus a "+ New guest
+// donor" option that reveals inline name/email inputs; new guests are
+// created once per distinct name+email in the batch, then linked the
+// same way a member match is.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { findBestMatch } from '../utils/nameMatch.js';
@@ -238,6 +246,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
   const progressEl = root.querySelector('[data-el="progress"]');
 
   let profiles = [];
+  let guestDonors = [];
   let rows = [];
 
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
@@ -248,14 +257,18 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
   importBtn.addEventListener('click', runImport);
 
   async function loadProfiles() {
-    const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
-    profiles = data || [];
+    const [{ data: members }, { data: guests }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('guest_donors').select('id, name').order('name'),
+    ]);
+    profiles = members || [];
+    guestDonors = guests || [];
   }
 
   async function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (profiles.length === 0) await loadProfiles();
+    if (profiles.length === 0 && guestDonors.length === 0) await loadProfiles();
 
     const isPdf = /\.pdf$/i.test(file.name);
     let parsedRows;
@@ -273,8 +286,14 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
       return;
     }
 
+    // Fuzzy-match against members first, then Guest Donors (sql/065 --
+    // real church members with no app account) -- whichever scores
+    // higher wins, since the same name could plausibly exist in both.
     rows = parsedRows.map((row, index) => {
-      const suggested = row.raw_name ? findBestMatch(row.raw_name, profiles) : null;
+      const memberMatch = row.raw_name ? findBestMatch(row.raw_name, profiles) : null;
+      const guestMatch = row.raw_name ? findBestMatch(row.raw_name, guestDonors.map((g) => ({ id: g.id, full_name: g.name }))) : null;
+      const best = !memberMatch ? guestMatch : !guestMatch ? memberMatch : (memberMatch.score >= guestMatch.score ? memberMatch : guestMatch);
+      const bestIsGuest = best && best === guestMatch;
       return {
         index,
         raw_name: row.raw_name,
@@ -283,8 +302,12 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
         offering_type: row.offering_type,
         payment_method: row.payment_method,
         payment_method_other: row.payment_method_other,
-        memberId: suggested ? suggested.id : null,
-        suggestedScore: suggested ? suggested.score : null,
+        memberId: best && !bestIsGuest ? best.id : null,
+        guestDonorId: best && bestIsGuest ? best.id : null,
+        isNewGuest: false,
+        newGuestName: '',
+        newGuestEmail: '',
+        suggestedScore: best ? best.score : null,
       };
     });
 
@@ -330,7 +353,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
       if (!row.raw_name) warnings.push(t('offeringsImport.warnMissingName'));
       if (!row.donation_date) warnings.push(t('offeringsImport.warnMissingDate'));
       if (row.amount === null || row.amount <= 0) warnings.push(t('offeringsImport.warnMissingAmount'));
-      if (!row.memberId) warnings.push(t('offeringsImport.warnNoMember'));
+      if (!row.memberId && !row.guestDonorId && !(row.isNewGuest && row.newGuestName.trim())) warnings.push(t('offeringsImport.warnNoMember'));
 
       const statusHtml = warnings.length > 0
         ? `<span class="text-amber-600">${escapeHtml(warnings.join('; '))}</span>`
@@ -357,10 +380,20 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
               : ''}
           </td>
           <td class="px-2 py-1.5">
-            <select data-field="memberId" data-row="${row.index}" class="w-full border border-slate-200 rounded px-2 py-1">
-              <option value="">${t('offeringsImport.noMember')}</option>
-              ${profiles.map((p) => `<option value="${p.id}" ${row.memberId === p.id ? 'selected' : ''}>${escapeHtml(p.full_name)}</option>`).join('')}
+            <select data-field="donorIdentity" data-row="${row.index}" class="w-full border border-slate-200 rounded px-2 py-1 mb-1">
+              <option value="" ${!row.memberId && !row.guestDonorId && !row.isNewGuest ? 'selected' : ''}>${t('offeringsImport.noMember')}</option>
+              ${profiles.length ? `<optgroup label="${escapeAttr(t('offeringsImport.optgroupMembers'))}">
+                ${profiles.map((p) => `<option value="m:${p.id}" ${row.memberId === p.id ? 'selected' : ''}>${escapeHtml(p.full_name)}</option>`).join('')}
+              </optgroup>` : ''}
+              ${guestDonors.length ? `<optgroup label="${escapeAttr(t('offeringsImport.optgroupGuests'))}">
+                ${guestDonors.map((g) => `<option value="g:${g.id}" ${row.guestDonorId === g.id ? 'selected' : ''}>${escapeHtml(g.name)}</option>`).join('')}
+              </optgroup>` : ''}
+              <option value="new" ${row.isNewGuest ? 'selected' : ''}>${t('offeringsImport.newGuestDonor')}</option>
             </select>
+            ${row.isNewGuest ? `
+              <input type="text" data-field="newGuestName" data-row="${row.index}" value="${escapeAttr(row.newGuestName)}" placeholder="${escapeAttr(t('offeringsImport.newGuestNamePlaceholder'))}" class="w-full border border-slate-200 rounded px-2 py-1 mb-1" />
+              <input type="email" data-field="newGuestEmail" data-row="${row.index}" value="${escapeAttr(row.newGuestEmail)}" placeholder="${escapeAttr(t('offeringsImport.newGuestEmailPlaceholder'))}" class="w-full border border-slate-200 rounded px-2 py-1" />
+            ` : ''}
           </td>
           <td class="px-2 py-1.5 text-xs">${statusHtml}</td>
         </tr>
@@ -376,7 +409,19 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
     const row = rows.find((r) => r.index === Number(e.target.dataset.row));
     if (!row) return;
 
-    if (field === 'memberId') { row.memberId = e.target.value || null; row.suggestedScore = null; renderPreview(); return; }
+    if (field === 'donorIdentity') {
+      const value = e.target.value;
+      row.memberId = null;
+      row.guestDonorId = null;
+      row.isNewGuest = false;
+      row.suggestedScore = null;
+      if (value === 'new') { row.isNewGuest = true; row.newGuestName = row.newGuestName || row.raw_name; }
+      else if (value.startsWith('m:')) row.memberId = value.slice(2);
+      else if (value.startsWith('g:')) row.guestDonorId = value.slice(2);
+      renderPreview();
+      return;
+    }
+    if (field === 'newGuestName' || field === 'newGuestEmail') { row[field] = e.target.value; return; }
     if (field === 'amount') { row.amount = toAmount(e.target.value); return; }
     if (field === 'payment_method') {
       row.payment_method = e.target.value;
@@ -389,7 +434,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
 
   function updateSummary() {
     const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0);
-    const matchedCount = validRows.filter((r) => r.memberId).length;
+    const matchedCount = validRows.filter((r) => r.memberId || r.guestDonorId || (r.isNewGuest && r.newGuestName.trim())).length;
     const unmatchedCount = validRows.length - matchedCount;
     const skippedCount = rows.length - validRows.length;
 
@@ -415,7 +460,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
 
   async function runImport() {
     const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0);
-    const matchedCount = validRows.filter((r) => r.memberId).length;
+    const matchedCount = validRows.filter((r) => r.memberId || r.guestDonorId || (r.isNewGuest && r.newGuestName.trim())).length;
     const unmatchedCount = validRows.length - matchedCount;
 
     if (!(await confirmDialog({
@@ -426,6 +471,30 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
 
     importBtn.disabled = true;
     progressEl.innerHTML = '';
+
+    // New Guest Donors (sql/065): one insert per distinct name+email in
+    // this batch -- two rows for the same guest in one spreadsheet
+    // share a single guest_donors row rather than creating a duplicate
+    // each time.
+    const newGuestKey = (row) => `${row.newGuestName.trim()}\u0000${row.newGuestEmail.trim()}`;
+    const newGuestRows = validRows.filter((r) => r.isNewGuest && r.newGuestName.trim());
+    const guestIdByKey = new Map();
+    for (const row of newGuestRows) {
+      const key = newGuestKey(row);
+      if (guestIdByKey.has(key)) continue;
+      const { data, error } = await supabase.from('guest_donors').insert({
+        name: row.newGuestName.trim(),
+        email: row.newGuestEmail.trim() || null,
+        created_by: currentUserId,
+      }).select('id').single();
+      if (error) {
+        logLine(t('offeringsImport.batchFailed', { message: error.message }), 'error');
+        importBtn.disabled = false;
+        return;
+      }
+      guestIdByKey.set(key, data.id);
+    }
+    for (const row of newGuestRows) row.guestDonorId = guestIdByKey.get(newGuestKey(row));
 
     // Rows in the still-open current month join the normal ledger
     // (report_period_id null, same as a manual entry). Rows in a past
@@ -456,6 +525,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
         payment_method: row.payment_method,
         payment_method_other: row.payment_method_other,
         member_id: row.memberId,
+        guest_donor_id: row.guestDonorId,
         recorded_by: currentUserId,
         report_period_id: key === thisMonth ? null : periodIdByMonth.get(key),
       };

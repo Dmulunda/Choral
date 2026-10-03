@@ -18,16 +18,21 @@
 //     project's own pg_cron (via pg_net), authenticated with a shared
 //     secret (CRON_SECRET) rather than a user JWT -- there's no signed-
 //     in user in that context at all.
-//   - download_url / generate_for_period: called by a signed-in Finance
-//     team member from offeringsBoard.js / offeringsImport.js,
-//     authenticated with their real JWT, then re-checks
-//     can_manage_finance()'s logic server-side (mirrors course-video-r2's
-//     isSchoolAdmin/enrollment re-check) -- never trusts that the
-//     browser only shows this to the right person. generate_for_period
-//     is generate_quarter's same PDF-build logic, used when Finance
-//     imports historical records into an already-closed month and that
-//     month needs a PDF (re)generated on demand instead of waiting for
-//     the nightly cron.
+//   - download_url / generate_for_period / send_tax_receipt_email:
+//     called by a signed-in Finance team member from offeringsBoard.js /
+//     offeringsImport.js / taxReceiptsAdminBoard.js, authenticated with
+//     their real JWT, then re-checks can_manage_finance()'s logic
+//     server-side (mirrors course-video-r2's isSchoolAdmin/enrollment
+//     re-check) -- never trusts that the browser only shows this to the
+//     right person. generate_for_period is generate_quarter's same
+//     PDF-build logic, used when Finance imports historical records
+//     into an already-closed month and that month needs a PDF
+//     (re)generated on demand instead of waiting for the nightly cron.
+//     send_tax_receipt_email (sql/065) emails a guest donor's (no app
+//     account) tax receipt -- the PDF is built client-side in Finance's
+//     own browser (same code the member-facing download button uses)
+//     and handed to this action as base64, nothing generated or stored
+//     here.
 //
 // Deploy: `supabase functions deploy offering-reports --no-verify-jwt`.
 // Needs these secrets set (Dashboard -> Edge Functions ->
@@ -146,6 +151,57 @@ async function buildOfferingPdf({ tenantName, periodStart, periodEnd, offerings 
   return await doc.save();
 }
 
+// Guest Donors (sql/065): a real church member who gives but has no
+// app account can't download their own receipt the way a signed-in
+// member does (taxReceiptsMemberBoard.js's client-side html2canvas +
+// jsPDF build) -- Finance builds the exact same PDF in their own
+// browser (js/utils/taxReceiptPdf.js, shared with the member board)
+// and this action just emails whatever Blob it's handed, base64-
+// encoded, to the guest's address on file. No PDF generation or
+// storage happens server-side.
+async function sendTaxReceiptEmail(admin, callerProfile, body) {
+  const { receipt_id, pdf_base64 } = body;
+  if (!receipt_id || !pdf_base64) return { error: 'receipt_id and pdf_base64 are required', status: 400 };
+
+  const { data: receipt, error: receiptError } = await admin
+    .from('tax_receipts')
+    .select('tenant_id, fiscal_year, legal_name_snapshot, guest_donor_id')
+    .eq('id', receipt_id)
+    .maybeSingle();
+  if (receiptError) return { error: receiptError.message, status: 500 };
+  if (!receipt) return { error: 'Receipt not found', status: 404 };
+  if (receipt.tenant_id !== callerProfile.tenant_id) return { error: 'Not authorized for this receipt', status: 403 };
+  if (!receipt.guest_donor_id) return { error: 'This receipt belongs to a member with an account, not a guest donor', status: 400 };
+
+  const { data: guest, error: guestError } = await admin
+    .from('guest_donors').select('name, email').eq('id', receipt.guest_donor_id).maybeSingle();
+  if (guestError) return { error: guestError.message, status: 500 };
+  if (!guest?.email) return { error: 'This guest donor has no email on file', status: 400 };
+
+  const resendKey = Deno.env.get('RESEND_API_KEY');
+  if (!resendKey) return { error: 'RESEND_API_KEY is not configured on this function', status: 500 };
+  const fromAddress = Deno.env.get('OFFERING_EMAIL_FROM') || Deno.env.get('BOOKING_EMAIL_FROM') || 'onboarding@resend.dev';
+
+  const html = `
+    <p>Hi ${escapeHtml(guest.name || '')},</p>
+    <p>Attached is your official tax receipt for ${escapeHtml(String(receipt.fiscal_year))}.</p>
+  `;
+  const resendResp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: fromAddress,
+      to: [guest.email],
+      subject: `Your ${receipt.fiscal_year} Tax Receipt`,
+      html,
+      attachments: [{ filename: `tax-receipt-${receipt.fiscal_year}.pdf`, content: pdf_base64 }],
+    }),
+  });
+  if (!resendResp.ok) return { error: `Email send failed: ${await resendResp.text()}`, status: 502 };
+
+  return { success: true };
+}
+
 async function generateAndStorePeriodPdf(admin, r2, endpoint, periodId) {
   const { data: period, error: periodError } = await admin
     .from('offering_report_periods')
@@ -229,6 +285,19 @@ Deno.serve(async (req) => {
     return json({ error: 'Invalid JSON body' }, 400);
   }
   const action = body?.action;
+  const admin = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
+
+  // send_tax_receipt_email needs neither a period nor R2 -- it emails a
+  // client-built PDF straight through, nothing stored. Every other
+  // action below operates on a stored period's PDF, hence R2 + period_id.
+  if (action === 'send_tax_receipt_email') {
+    const { error, status, callerProfile } = await resolveFinanceCaller(admin, req);
+    if (error) return json({ error }, status);
+    const result = await sendTaxReceiptEmail(admin, callerProfile, body);
+    if (result.error) return json({ error: result.error }, result.status);
+    return json(result);
+  }
+
   const periodId = body?.period_id;
   if (!periodId) return json({ error: 'period_id is required' }, 400);
 
@@ -240,8 +309,6 @@ Deno.serve(async (req) => {
     return json({ error: 'R2 is not configured on this function (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET)' }, 500);
   }
   const { client: r2, endpoint } = getR2({ accountId, accessKeyId, secretAccessKey, bucket });
-
-  const admin = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
 
   // ---- Cron-only actions: shared-secret auth, no signed-in user ----
   if (action === 'generate_quarter' || action === 'send_retention_email') {
