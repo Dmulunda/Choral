@@ -110,7 +110,13 @@
   <!-- Pricing -->
   <section id="pricing" class="max-w-6xl mx-auto px-4 sm:px-6 py-16">
     <h2 class="text-2xl sm:text-3xl font-bold text-[#0B1F3A] text-center mb-2" data-i18n="welcome.pricingTitle">Pricing</h2>
-    <p class="text-center text-slate-500 mb-10" data-i18n="welcome.pricingSubtitle">Every plan starts with a full-featured trial — no card required to try it.</p>
+    <p class="text-center text-slate-500 mb-6" data-i18n="welcome.pricingSubtitle">Every plan starts with a full-featured trial — no card required to try it.</p>
+    <div class="flex justify-center mb-8">
+      <div class="inline-flex rounded-lg border border-slate-200 p-1">
+        <button type="button" data-action="pricing-interval-monthly" class="px-3 py-1.5 rounded-md text-sm font-medium"></button>
+        <button type="button" data-action="pricing-interval-yearly" class="px-3 py-1.5 rounded-md text-sm font-medium"></button>
+      </div>
+    </div>
     <div data-el="pricing-grid" class="grid sm:grid-cols-3 gap-5">
       <p class="col-span-3 text-center text-slate-400" data-i18n="welcome.loadingPlans">Loading plans…</p>
     </div>

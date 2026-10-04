@@ -51,6 +51,14 @@ export function buildLimitBullets(plan, hasCourses) {
 // toFixed(0) would round 59.99/99.99/199.99 to whole dollars
 // ($60/$100/$200) -- keep the exact cents, comma as the decimal
 // separator per how these prices were originally given (59,99).
-export function formatPlanPrice(priceCents) {
-  return priceCents === 0 ? t('plans.free') : `$${(priceCents / 100).toFixed(2).replace('.', ',')}${t('plans.perMonth')}`;
+export function formatPlanPrice(priceCents, billingInterval = 'monthly') {
+  if (priceCents === 0) return t('plans.free');
+  const suffix = billingInterval === 'yearly' ? t('plans.perYear') : t('plans.perMonth');
+  return `$${(priceCents / 100).toFixed(2).replace('.', ',')}${suffix}`;
+}
+
+// The "≈ $X/mo billed annually" subtitle shown under a yearly card's
+// price -- same comma-decimal convention as formatPlanPrice above.
+export function formatMonthlyEquivalent(yearlyPriceCents) {
+  return `$${(yearlyPriceCents / 1200).toFixed(2).replace('.', ',')}`;
 }

@@ -6,9 +6,16 @@
 // from what plansModal.js shows a signed-in Super Admin — one plan
 // catalog, two places it's rendered.
 import { supabase } from './supabaseClient.js';
-import { buildLimitBullets, formatPlanPrice } from './utils/planPresentation.js';
+import { buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from './utils/planPresentation.js';
 import { getLang, setLang, onLangChange, loadLabelOverrides, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import { DEPARTMENT_KEYS } from './departments.js';
+
+let allPlans = [];
+let selectedPricingInterval = 'monthly';
+const pricingIntervalMonthlyBtn = document.querySelector('[data-action="pricing-interval-monthly"]');
+const pricingIntervalYearlyBtn = document.querySelector('[data-action="pricing-interval-yearly"]');
+pricingIntervalMonthlyBtn.addEventListener('click', () => { selectedPricingInterval = 'monthly'; renderPricing(); });
+pricingIntervalYearlyBtn.addEventListener('click', () => { selectedPricingInterval = 'yearly'; renderPricing(); });
 
 document.querySelector('[data-el="year"]').textContent = new Date().getFullYear();
 document.documentElement.lang = getLang();
@@ -79,7 +86,7 @@ async function loadPricing() {
   const { data: plans, error } = await supabase
     .from('plans')
     .select(`
-      id, key, name, price_cents,
+      id, key, name, price_cents, billing_interval, plan_group,
       max_extensions, max_super_admins_per_tenant, max_members, storage_gb,
       plan_features ( features ( key, name ) )
     `)
@@ -90,13 +97,32 @@ async function loadPricing() {
     return;
   }
 
-  grid.innerHTML = plans.map((plan) => {
+  allPlans = plans;
+  renderPricing();
+}
+
+function renderPricing() {
+  pricingIntervalMonthlyBtn.textContent = t('plans.billedMonthly');
+  pricingIntervalYearlyBtn.textContent = t('plans.billedYearly');
+  const activeClass = 'bg-indigo-600 text-white';
+  const inactiveClass = 'text-slate-600 hover:bg-slate-100';
+  pricingIntervalMonthlyBtn.className = `px-3 py-1.5 rounded-md text-sm font-medium ${selectedPricingInterval === 'monthly' ? activeClass : inactiveClass}`;
+  pricingIntervalYearlyBtn.className = `px-3 py-1.5 rounded-md text-sm font-medium ${selectedPricingInterval === 'yearly' ? activeClass : inactiveClass}`;
+
+  const grid = document.querySelector('[data-el="pricing-grid"]');
+  if (allPlans.length === 0) return;
+
+  grid.innerHTML = allPlans.filter((p) => p.billing_interval === selectedPricingInterval).map((plan) => {
     const hasCourses = plan.plan_features.some((pf) => pf.features.key === 'vpd_academy');
     const bullets = buildLimitBullets(plan, hasCourses);
+    const monthlyEquivalent = plan.billing_interval === 'yearly' && plan.price_cents > 0
+      ? `<p class="text-xs text-slate-500 -mt-3 mb-4">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</p>`
+      : '';
     return `
       <div class="rounded-xl border-2 border-slate-200 p-6 flex flex-col">
         <h3 class="text-lg font-bold text-slate-800">${escapeHtml(plan.name)}</h3>
-        <p class="text-3xl font-bold text-slate-900 mt-1 mb-4">${formatPlanPrice(plan.price_cents)}</p>
+        <p class="text-3xl font-bold text-slate-900 mt-1 ${monthlyEquivalent ? 'mb-0' : 'mb-4'}">${formatPlanPrice(plan.price_cents, plan.billing_interval)}</p>
+        ${monthlyEquivalent}
         <ul class="text-sm text-slate-600 space-y-1.5 mb-6 flex-1">
           ${bullets.map((b) => `<li class="flex items-start gap-1.5"><span class="text-emerald-600">✓</span> ${b}</li>`).join('')}
         </ul>

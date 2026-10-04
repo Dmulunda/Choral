@@ -98,6 +98,13 @@ Deno.serve(async (req) => {
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: stripeCustomerId,
+        // Stripe Tax: Checkout collects/saves the customer's billing
+        // address (customer_update.address is required by Stripe's API
+        // whenever automatic_tax is enabled for an existing Customer
+        // object, since ours is created above with no address yet) and
+        // calculates the right tax for their jurisdiction live.
+        automatic_tax: { enabled: true },
+        customer_update: { address: 'auto', name: 'auto' },
         line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
         success_url: `${appUrl}/?checkout=success`,
         cancel_url: `${appUrl}/?checkout=cancel`,

@@ -7,9 +7,12 @@
 // confirms a checkout/cancellation. This modal only ever redirects out to
 // Stripe's hosted pages and back; it never writes billing state itself.
 import { t } from '../i18n.js';
-import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice } from '../utils/planPresentation.js';
+import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from '../utils/planPresentation.js';
 
 export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCustomerId }) {
+  let allPlans = [];
+  let selectedInterval = 'monthly';
+
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4 overflow-y-auto';
   root.innerHTML = `
@@ -17,6 +20,12 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">${t('plans.title')}</h2>
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex justify-center mb-4">
+        <div class="inline-flex rounded-lg border border-slate-200 p-1">
+          <button type="button" data-action="interval-monthly" class="px-3 py-1.5 rounded-md text-sm font-medium"></button>
+          <button type="button" data-action="interval-yearly" class="px-3 py-1.5 rounded-md text-sm font-medium"></button>
+        </div>
       </div>
       <div data-el="body"></div>
       <p data-el="status" class="text-sm text-slate-500 mt-3"></p>
@@ -31,9 +40,15 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
 
   const bodyEl = root.querySelector('[data-el="body"]');
   const statusEl = root.querySelector('[data-el="status"]');
+  const intervalMonthlyBtn = root.querySelector('[data-action="interval-monthly"]');
+  const intervalYearlyBtn = root.querySelector('[data-action="interval-yearly"]');
+  intervalMonthlyBtn.textContent = t('plans.billedMonthly');
+  intervalYearlyBtn.textContent = t('plans.billedYearly');
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
   root.querySelector('[data-action="manage-billing"]')?.addEventListener('click', () => redirectTo('create_portal_session', {}));
+  intervalMonthlyBtn.addEventListener('click', () => { selectedInterval = 'monthly'; render(); });
+  intervalYearlyBtn.addEventListener('click', () => { selectedInterval = 'yearly'; render(); });
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
@@ -41,7 +56,7 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
     const { data: plans, error } = await supabase
       .from('plans')
       .select(`
-        id, key, name, price_cents, billing_interval, stripe_price_id,
+        id, key, name, price_cents, billing_interval, plan_group, stripe_price_id,
         max_extensions, max_super_admins_per_tenant, max_members, storage_gb,
         plan_features ( features ( key, name ) )
       `)
@@ -52,10 +67,18 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
       return;
     }
 
-    render(plans || []);
+    allPlans = plans || [];
+    // Default to whichever interval the tenant is actually on, so a
+    // yearly subscriber doesn't land on a toggle showing their plan
+    // as "not current" on the monthly view.
+    const currentPlan = allPlans.find((p) => p.id === currentPlanId);
+    selectedInterval = currentPlan?.billing_interval || 'monthly';
+    render();
   }
 
-  function render(plans) {
+  function render() {
+    updateIntervalButtons();
+    const plans = allPlans.filter((p) => p.billing_interval === selectedInterval);
     bodyEl.innerHTML = '';
 
     const grid = document.createElement('div');
@@ -66,7 +89,10 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
       const card = document.createElement('div');
       card.className = `rounded-xl border-2 p-5 flex flex-col ${isCurrent ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200'}`;
 
-      const price = formatPlanPrice(plan.price_cents);
+      const price = formatPlanPrice(plan.price_cents, plan.billing_interval);
+      const monthlyEquivalent = plan.billing_interval === 'yearly' && plan.price_cents > 0
+        ? `<p class="text-xs text-slate-500 -mt-2 mb-3">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</p>`
+        : '';
 
       // 'vpd_academy' gets its own dedicated bullet below (bundled with
       // the storage figure it implies) instead of appearing twice --
@@ -83,7 +109,8 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
       card.innerHTML = `
         ${isCurrent ? `<p class="text-xs font-semibold text-indigo-600 mb-1">${t('plans.currentPlan')}</p>` : ''}
         <h3 class="text-lg font-bold text-slate-800">${escapeHtml(plan.name)}</h3>
-        <p class="text-2xl font-bold text-slate-900 mb-3">${price}</p>
+        <p class="text-2xl font-bold text-slate-900 ${monthlyEquivalent ? 'mb-0' : 'mb-3'}">${price}</p>
+        ${monthlyEquivalent}
         <div class="flex-1 mb-4">
           <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${t('plans.accessHeading')}</p>
           <ul class="text-sm text-slate-600 space-y-1.5 mb-3">
@@ -97,10 +124,9 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
         </div>
       `;
 
-      // Only checkout-able plans get a button -- Basic has no
-      // stripe_price_id (it's the "no active subscription" state, not a
-      // real Stripe object), so switching to it happens by canceling an
-      // existing subscription via Manage Billing, not by clicking here.
+      // Only checkout-able plans get a button -- any plan still missing
+      // a real Stripe Price (not yet wired up) has no button, same as a
+      // plan the tenant is already on.
       if (!isCurrent && plan.stripe_price_id) {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -114,6 +140,13 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
     }
 
     bodyEl.appendChild(grid);
+  }
+
+  function updateIntervalButtons() {
+    const activeClass = 'bg-indigo-600 text-white';
+    const inactiveClass = 'text-slate-600 hover:bg-slate-100';
+    intervalMonthlyBtn.className = `px-3 py-1.5 rounded-md text-sm font-medium ${selectedInterval === 'monthly' ? activeClass : inactiveClass}`;
+    intervalYearlyBtn.className = `px-3 py-1.5 rounded-md text-sm font-medium ${selectedInterval === 'yearly' ? activeClass : inactiveClass}`;
   }
 
   async function redirectTo(action, extraBody) {
