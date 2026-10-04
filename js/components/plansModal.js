@@ -153,7 +153,13 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
     statusEl.className = 'text-sm text-slate-500 mt-3';
     statusEl.textContent = t('plans.redirecting');
 
-    const { data, error } = await supabase.functions.invoke('stripe-billing', { body: { action, ...extraBody } });
+    // Explicit, not inferred from headers -- a cross-origin fetch (this
+    // GitHub Pages-hosted app calling the Supabase functions domain)
+    // has its Origin/Referer headers reduced to origin-only by the
+    // browser's default referrer policy, so the function can't recover
+    // this app's subpath (e.g. /ChurchOs/app.html) from headers alone.
+    const returnUrl = `${window.location.origin}${window.location.pathname}`;
+    const { data, error } = await supabase.functions.invoke('stripe-billing', { body: { action, returnUrl, ...extraBody } });
 
     if (error || data?.error || !data?.url) {
       statusEl.className = 'text-sm text-rose-600 mt-3';

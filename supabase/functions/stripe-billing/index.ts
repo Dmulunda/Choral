@@ -70,10 +70,28 @@ Deno.serve(async (req) => {
     if (!stripeSecretKey) return json({ error: 'Stripe is not configured on this function (STRIPE_SECRET_KEY)' }, 500);
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
 
-    // origin/referer since this function has no fixed notion of "the app's
-    // URL" -- redirects always land back wherever the request came from.
-    const appUrl = req.headers.get('origin') || new URL(req.headers.get('referer') || req.url).origin;
-    const { action, plan_key } = await req.json();
+    const { action, plan_key, returnUrl: clientReturnUrl } = await req.json();
+
+    // clientReturnUrl (plansModal.js's redirectTo()) is the app's own
+    // window.location.origin+pathname -- authoritative, since a
+    // cross-origin fetch's Origin/Referer headers are reduced to
+    // origin-only by the browser's default referrer policy, which this
+    // function has no way to recover a GitHub-Pages subpath from (e.g.
+    // https://dmulunda.github.io/ChurchOs/app.html -> headers only ever
+    // show https://dmulunda.github.io). The header-based guess below is
+    // just a defensive fallback for an older cached client bundle.
+    function buildReturnUrl(checkoutParam = null) {
+      if (clientReturnUrl) {
+        try {
+          const url = new URL(clientReturnUrl);
+          url.search = checkoutParam ? `?checkout=${checkoutParam}` : '';
+          url.hash = '';
+          return url.toString();
+        } catch { /* fall through */ }
+      }
+      const origin = req.headers.get('origin') || new URL(req.url).origin;
+      return checkoutParam ? `${origin}/?checkout=${checkoutParam}` : `${origin}/`;
+    }
 
     if (action === 'create_checkout_session') {
       if (!plan_key) return json({ error: 'plan_key is required' }, 400);
@@ -106,8 +124,8 @@ Deno.serve(async (req) => {
         automatic_tax: { enabled: true },
         customer_update: { address: 'auto', name: 'auto' },
         line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
-        success_url: `${appUrl}/?checkout=success`,
-        cancel_url: `${appUrl}/?checkout=cancel`,
+        success_url: buildReturnUrl('success'),
+        cancel_url: buildReturnUrl('cancel'),
       });
 
       return json({ url: session.url });
@@ -118,7 +136,7 @@ Deno.serve(async (req) => {
 
       const session = await stripe.billingPortal.sessions.create({
         customer: tenant.stripe_customer_id,
-        return_url: `${appUrl}/`,
+        return_url: buildReturnUrl(),
       });
 
       return json({ url: session.url });
