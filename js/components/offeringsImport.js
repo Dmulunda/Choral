@@ -26,12 +26,14 @@ import { findBestMatch } from '../utils/nameMatch.js';
 
 const OFFERING_TYPES = ['tithe', 'general', 'sacrifice', 'construction', 'other'];
 const PAYMENT_METHODS = ['cash', 'transfer', 'check', 'other'];
+const CURRENCIES = ['CAD', 'USD', 'EUR', 'other'];
 
 const NAME_HEADERS = ['name', 'fullname', 'donorname', 'donor', 'nom', 'nomcomplet', 'donateur'];
 const DATE_HEADERS = ['date', 'offeringdate', 'donationdate', 'datededon', 'dateoffrande'];
 const AMOUNT_HEADERS = ['amount', 'montant', 'don', 'donation', 'offering', 'offrande'];
 const TYPE_HEADERS = ['type', 'offeringtype', 'typedoffrande', 'category', 'categorie'];
 const PAYMENT_HEADERS = ['paymentmethod', 'payment', 'method', 'modedepaiement', 'mode'];
+const CURRENCY_HEADERS = ['currency', 'devise'];
 
 const TYPE_ALIASES = {
   tithe: ['tithe', 'dime'],
@@ -94,6 +96,20 @@ function resolvePaymentMethod(raw) {
     if (aliases.some((a) => norm.includes(a))) return { payment_method: key, payment_method_other: null };
   }
   return { payment_method: 'other', payment_method_other: String(raw).trim() };
+}
+
+// No alias list -- unlike type/payment method, a currency column
+// (when present at all) is almost always already a real ISO code
+// (CAD/USD/EUR), so this only needs an exact match; anything else
+// falls through to 'other' with the raw text kept for "please
+// specify", same shape as resolvePaymentMethod above. Defaults to CAD
+// when there's no currency column at all (the common case -- existing
+// import files need no changes).
+function resolveCurrency(raw) {
+  const norm = String(raw || '').trim().toUpperCase();
+  if (!norm) return { currency: 'CAD', currency_other: null };
+  if (CURRENCIES.includes(norm)) return { currency: norm, currency_other: null };
+  return { currency: 'other', currency_other: String(raw).trim() };
 }
 
 function monthKey(isoDate) {
@@ -174,7 +190,7 @@ function parsePdfLineToRow(line) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  return { raw_name: name, donation_date: toIsoDate(dateMatch[0]), amount, offering_type: 'general', payment_method: 'cash', payment_method_other: null };
+  return { raw_name: name, donation_date: toIsoDate(dateMatch[0]), amount, offering_type: 'general', payment_method: 'cash', payment_method_other: null, currency: 'CAD', currency_other: null };
 }
 
 export function createOfferingsImportModal({ supabase, currentUserId, onImported }) {
@@ -204,6 +220,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
                 <th class="text-left px-3 py-2">${t('offeringsImport.colAmount')}</th>
                 <th class="text-left px-3 py-2">${t('offeringsImport.colType')}</th>
                 <th class="text-left px-3 py-2">${t('offeringsImport.colPaymentMethod')}</th>
+                <th class="text-left px-3 py-2">${t('offeringsImport.colCurrency')}</th>
                 <th class="text-left px-3 py-2">${t('offeringsImport.colMember')}</th>
                 <th class="text-left px-3 py-2">${t('offeringsImport.colStatus')}</th>
               </tr>
@@ -283,6 +300,8 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
         offering_type: row.offering_type,
         payment_method: row.payment_method,
         payment_method_other: row.payment_method_other,
+        currency: row.currency,
+        currency_other: row.currency_other,
         memberId: suggested ? suggested.id : null,
         suggestedScore: suggested ? suggested.score : null,
       };
@@ -305,9 +324,11 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
     const amountKey = findHeaderKey(rawRows[0], AMOUNT_HEADERS);
     const typeKey = findHeaderKey(rawRows[0], TYPE_HEADERS);
     const paymentKey = findHeaderKey(rawRows[0], PAYMENT_HEADERS);
+    const currencyKey = findHeaderKey(rawRows[0], CURRENCY_HEADERS);
 
     return rawRows.map((raw) => {
       const payment = paymentKey ? resolvePaymentMethod(raw[paymentKey]) : { payment_method: 'cash', payment_method_other: null };
+      const currencyResolved = currencyKey ? resolveCurrency(raw[currencyKey]) : { currency: 'CAD', currency_other: null };
       return {
         raw_name: nameKey ? String(raw[nameKey] || '').trim() : '',
         donation_date: dateKey ? toIsoDate(raw[dateKey]) : '',
@@ -315,6 +336,8 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
         offering_type: typeKey ? resolveType(raw[typeKey]) : 'general',
         payment_method: payment.payment_method,
         payment_method_other: payment.payment_method_other,
+        currency: currencyResolved.currency,
+        currency_other: currencyResolved.currency_other,
       };
     });
   }
@@ -330,6 +353,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
       if (!row.raw_name) warnings.push(t('offeringsImport.warnMissingName'));
       if (!row.donation_date) warnings.push(t('offeringsImport.warnMissingDate'));
       if (row.amount === null || row.amount <= 0) warnings.push(t('offeringsImport.warnMissingAmount'));
+      if (row.currency === 'other' && !row.currency_other) warnings.push(t('offerings.specifyCurrency'));
       if (!row.memberId) warnings.push(t('offeringsImport.warnNoMember'));
 
       const statusHtml = warnings.length > 0
@@ -354,6 +378,14 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
             </select>
             ${row.payment_method === 'other'
               ? `<input type="text" data-field="payment_method_other" data-row="${row.index}" value="${escapeAttr(row.payment_method_other || '')}" placeholder="${escapeAttr(t('offeringsImport.otherSpecifyPlaceholder'))}" class="w-full border border-slate-200 rounded px-2 py-1" />`
+              : ''}
+          </td>
+          <td class="px-2 py-1.5">
+            <select data-field="currency" data-row="${row.index}" class="w-full border border-slate-200 rounded px-2 py-1 mb-1">
+              ${CURRENCIES.map((v) => `<option value="${v}" ${row.currency === v ? 'selected' : ''}>${v === 'other' ? escapeHtml(t('offerings.currencyOther')) : v}</option>`).join('')}
+            </select>
+            ${row.currency === 'other'
+              ? `<input type="text" data-field="currency_other" data-row="${row.index}" value="${escapeAttr(row.currency_other || '')}" placeholder="${escapeAttr(t('offerings.currencyOtherPlaceholder'))}" class="w-full border border-slate-200 rounded px-2 py-1" />`
               : ''}
           </td>
           <td class="px-2 py-1.5">
@@ -384,11 +416,17 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
       renderPreview();
       return;
     }
+    if (field === 'currency') {
+      row.currency = e.target.value;
+      if (row.currency !== 'other') row.currency_other = null;
+      renderPreview();
+      return;
+    }
     row[field] = e.target.value;
   }
 
   function updateSummary() {
-    const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0);
+    const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0 && (r.currency !== 'other' || r.currency_other));
     const matchedCount = validRows.filter((r) => r.memberId).length;
     const unmatchedCount = validRows.length - matchedCount;
     const skippedCount = rows.length - validRows.length;
@@ -414,7 +452,7 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
   }
 
   async function runImport() {
-    const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0);
+    const validRows = rows.filter((r) => r.raw_name && r.donation_date && r.amount > 0 && (r.currency !== 'other' || r.currency_other));
     const matchedCount = validRows.filter((r) => r.memberId).length;
     const unmatchedCount = validRows.length - matchedCount;
 
@@ -455,6 +493,8 @@ export function createOfferingsImportModal({ supabase, currentUserId, onImported
         offering_type: row.offering_type,
         payment_method: row.payment_method,
         payment_method_other: row.payment_method_other,
+        currency: row.currency,
+        currency_other: row.currency_other,
         member_id: row.memberId,
         recorded_by: currentUserId,
         report_period_id: key === thisMonth ? null : periodIdByMonth.get(key),

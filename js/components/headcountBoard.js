@@ -10,6 +10,62 @@
 import { t } from '../i18n.js';
 import { todayLocal, formatDateLocal } from '../utils/date.js';
 
+// Combined attendance across all 3 headcount-eligible departments
+// (Ushers/Welcoming & Socialisation/Ecodem -- deptDashboard.js's
+// HEADCOUNT_DEPARTMENT_KEYS) for one date -- e.g. Ecodem recording
+// 1/4/31 (Men/Women/Kids) and Ushers recording 32/65/0 shows as one
+// combined 33/69/31 card. Additive context next to each department's
+// own count, not a replacement for it.
+//
+// Only sums whatever department_headcounts rows RLS actually returns
+// for the caller -- a plain member approved in just one of the three
+// departments only ever sees that department's own row (sql/71 widens
+// read access to any approved member, but still only for departments
+// they're actually in), so this card is complete for a super
+// admin/pastoral team member and partial-but-honest for anyone else.
+// That's an access boundary, not a bug.
+export function renderCombinedHeadcountCard(container, { supabase }) {
+  container.innerHTML = `
+    <div class="bg-white rounded-xl border border-slate-100 p-4">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h2 class="text-[13px] font-bold text-slate-900">🤝 ${t('headcount.combinedTitle')}</h2>
+        <input type="date" data-el="combined-date" value="${todayLocal()}" max="${todayLocal()}" class="border border-slate-300 rounded-lg px-2 py-1 text-sm" />
+      </div>
+      <div data-el="combined-totals" class="grid grid-cols-3 gap-3 text-center"></div>
+    </div>
+  `;
+
+  const dateInput = container.querySelector('[data-el="combined-date"]');
+  const totalsEl = container.querySelector('[data-el="combined-totals"]');
+  dateInput.addEventListener('change', load);
+  load();
+
+  async function load() {
+    totalsEl.innerHTML = `<p class="col-span-3 text-sm text-slate-500">${t('common.loading')}</p>`;
+
+    const { data: depts } = await supabase
+      .from('departments')
+      .select('id')
+      .in('key', ['ushers', 'welcoming_socialisation', 'ecodem']);
+
+    const { data: rows } = await supabase
+      .from('department_headcounts')
+      .select('men_count, women_count, kids_count')
+      .in('department_id', (depts || []).map((d) => d.id))
+      .eq('date', dateInput.value);
+
+    const totals = (rows || []).reduce((acc, r) => ({
+      men: acc.men + r.men_count, women: acc.women + r.women_count, kids: acc.kids + r.kids_count,
+    }), { men: 0, women: 0, kids: 0 });
+
+    totalsEl.innerHTML = `
+      <div><div class="text-xs text-slate-500">${t('headcount.men')}</div><div class="text-lg font-bold text-slate-800">${totals.men}</div></div>
+      <div><div class="text-xs text-slate-500">${t('headcount.women')}</div><div class="text-lg font-bold text-slate-800">${totals.women}</div></div>
+      <div><div class="text-xs text-slate-500">${t('headcount.kids')}</div><div class="text-lg font-bold text-slate-800">${totals.kids}</div></div>
+    `;
+  }
+}
+
 export function renderHeadcountBoard(container, { supabase, departmentId }) {
   container.innerHTML = `
     <div class="bg-white rounded-xl border border-slate-100 p-4 mb-4">

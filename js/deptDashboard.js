@@ -18,7 +18,6 @@ import { renderNextUpcomingWidget } from './components/nextUpcomingWidget.js';
 import { renderMyPreachingWidget } from './components/myPreachingWidget.js';
 import { renderChurchProgramBoard } from './components/churchProgramBoard.js';
 import { createPrayerRequestQueueModal } from './components/prayerRequests.js';
-import { renderHeadcountBoard } from './components/headcountBoard.js';
 import { ensureAgreementsSigned } from './components/agreementSigningModal.js';
 import { renderMeetingControls } from './components/videoMeeting.js';
 import { renderDepartmentSwitchShortcut } from './components/departmentSwitchShortcut.js';
@@ -171,12 +170,6 @@ export async function renderDeptDashboardTab() {
       departmentId: active.id,
       adminUserId: user.id,
     });
-  }
-
-  if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key) && canManageDept) {
-    const headcountEl = document.createElement('div');
-    fullWidthEl.appendChild(headcountEl);
-    renderHeadcountBoard(headcountEl, { supabase, departmentId: active.id });
   }
 
   const announcementsCard = document.createElement('div');
