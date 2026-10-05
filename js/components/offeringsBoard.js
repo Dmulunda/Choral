@@ -26,9 +26,14 @@ import { createOfferingsImportModal } from './offeringsImport.js';
 
 const OFFERING_TYPES = ['tithe', 'general', 'sacrifice', 'construction', 'other'];
 const PAYMENT_METHODS = ['cash', 'transfer', 'check', 'other'];
+const CURRENCIES = ['CAD', 'USD', 'EUR', 'other'];
 
 function centsToDollarsStr(cents) {
   return (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function currencyLabel(row) {
+  return row.currency === 'other' && row.currency_other ? row.currency_other : row.currency;
 }
 
 export function renderOfferingsBoard(container, { supabase, currentUserId }) {
@@ -53,7 +58,16 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.amount')}</label>
-          <input type="number" name="amount" min="0.01" step="0.01" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <div class="flex gap-2">
+            <input type="number" name="amount" min="0.01" step="0.01" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            <select name="currency" data-el="currency-select" class="border border-slate-300 rounded-lg px-2 py-2 text-sm">
+              ${CURRENCIES.map((v) => `<option value="${v}" ${v === 'CAD' ? 'selected' : ''}>${v === 'other' ? escapeHtml(t('offerings.currencyOther')) : v}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div data-el="currency-other-wrap" class="hidden">
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.currencyOtherSpecify')}</label>
+          <input type="text" name="currency_other" placeholder="${escapeAttr(t('offerings.currencyOtherPlaceholder'))}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${t('offerings.type')}</label>
@@ -105,6 +119,8 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   const memberLinkStatusEl = container.querySelector('[data-el="member-link-status"]');
   const paymentMethodSelect = form.querySelector('[data-el="payment-method-select"]');
   const paymentMethodOtherWrap = form.querySelector('[data-el="payment-method-other-wrap"]');
+  const currencySelect = form.querySelector('[data-el="currency-select"]');
+  const currencyOtherWrap = form.querySelector('[data-el="currency-other-wrap"]');
   const importOpenBtn = container.querySelector('[data-el="import-open-btn"]');
 
   const importModal = createOfferingsImportModal({
@@ -119,6 +135,10 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
 
   paymentMethodSelect.addEventListener('change', () => {
     paymentMethodOtherWrap.classList.toggle('hidden', paymentMethodSelect.value !== 'other');
+  });
+
+  currencySelect.addEventListener('change', () => {
+    currencyOtherWrap.classList.toggle('hidden', currencySelect.value !== 'other');
   });
 
   // Optional member link: typing (or picking, via the datalist) a
@@ -153,6 +173,8 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     const offering_type = form.elements.offering_type.value;
     const payment_method = form.elements.payment_method.value;
     const payment_method_other = payment_method === 'other' ? form.elements.payment_method_other.value.trim() : null;
+    const currency = form.elements.currency.value;
+    const currency_other = currency === 'other' ? form.elements.currency_other.value.trim() : null;
     const member_id = membersByName.get(donor_name) || null;
 
     if (!donor_name || !offering_date || !(amountDollars > 0)) {
@@ -163,6 +185,11 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     if (payment_method === 'other' && !payment_method_other) {
       formStatusEl.className = 'text-sm text-rose-600';
       formStatusEl.textContent = t('offerings.specifyPaymentMethod');
+      return;
+    }
+    if (currency === 'other' && !currency_other) {
+      formStatusEl.className = 'text-sm text-rose-600';
+      formStatusEl.textContent = t('offerings.specifyCurrency');
       return;
     }
 
@@ -177,6 +204,8 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       offering_type,
       payment_method,
       payment_method_other,
+      currency,
+      currency_other,
       member_id,
       recorded_by: currentUserId,
     });
@@ -193,6 +222,8 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     form.reset();
     form.elements.offering_date.valueAsDate = new Date();
     paymentMethodOtherWrap.classList.add('hidden');
+    currencyOtherWrap.classList.add('hidden');
+    currencySelect.value = 'CAD';
     memberLinkStatusEl.textContent = '';
     loadCurrentPeriod();
   }
@@ -205,7 +236,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     listEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     const { data, error } = await supabase
       .from('offerings')
-      .select('id, donor_name, offering_date, amount_cents, offering_type, payment_method, payment_method_other, member_id, recorded_by, recorder:profiles!recorded_by ( full_name )')
+      .select('id, donor_name, offering_date, amount_cents, offering_type, payment_method, payment_method_other, currency, currency_other, member_id, recorded_by, recorder:profiles!recorded_by ( full_name )')
       .is('report_period_id', null)
       .order('offering_date', { ascending: false })
       .order('created_at', { ascending: false });
@@ -216,8 +247,17 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
       return;
     }
 
-    const total = (data || []).reduce((sum, row) => sum + row.amount_cents, 0);
-    periodTotalEl.textContent = t('offerings.periodTotal', { amount: centsToDollarsStr(total) });
+    // Grouped by currency, never blended into one converted number --
+    // a period with both CAD and USD offerings shows one subtotal per
+    // currency rather than a meaningless combined figure.
+    const totalsByCurrency = new Map();
+    for (const row of data || []) {
+      const label = currencyLabel(row);
+      totalsByCurrency.set(label, (totalsByCurrency.get(label) || 0) + row.amount_cents);
+    }
+    periodTotalEl.textContent = Array.from(totalsByCurrency.entries())
+      .map(([label, cents]) => t('offerings.periodTotal', { amount: centsToDollarsStr(cents), currency: label }))
+      .join('   ');
 
     if (!data || data.length === 0) {
       listEl.innerHTML = `<p class="text-sm text-slate-400">${t('offerings.none')}</p>`;
@@ -257,7 +297,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
           <td class="py-2 pr-3">${nameCell}</td>
           <td class="py-2 pr-3">${escapeHtml(t(`offerings.type.${row.offering_type}`))}</td>
           <td class="py-2 pr-3">${escapeHtml(paymentLabel)}</td>
-          <td class="py-2 pr-3 text-right whitespace-nowrap">$${centsToDollarsStr(row.amount_cents)}</td>
+          <td class="py-2 pr-3 text-right whitespace-nowrap">$${centsToDollarsStr(row.amount_cents)} <span class="text-slate-400">${escapeHtml(currencyLabel(row))}</span></td>
           <td class="py-2 pr-3 text-slate-500">${escapeHtml(row.recorder?.full_name || '—')}</td>
           <td class="py-2 text-right">${canEdit ? `<button type="button" data-action="delete" class="text-xs text-rose-600 hover:text-rose-700">${t('offerings.delete')}</button>` : ''}</td>
         </tr>
