@@ -1,7 +1,16 @@
-// Headcount Tally tab entry point — the active department's own
-// tap-to-count tool (js/components/headcountTally.js). Only ever
-// reachable while a headcount-eligible department (Ushers/Welcoming &
-// Socialisation/Ecodem — see js/deptDashboard.js's
+// Headcount tab entry point — the active department's own tap-to-
+// count tool (js/components/headcountTally.js), a combined-attendance
+// card summed across all 3 headcount-eligible departments
+// (renderCombinedHeadcountCard), and -- admin/secretary only -- the
+// exact-total override form + progression + history
+// (js/components/headcountBoard.js). This is the merged "Record
+// Headcount" + "Headcount Tally" page: those used to be two separate
+// surfaces (this tab, open to any approved member; headcountBoard.js
+// embedded admin-only inside the Dept Dashboard tab) -- now one page,
+// each section still gated the same way it always was.
+//
+// Only ever reachable while a headcount-eligible department (Ushers/
+// Welcoming & Socialisation/Ecodem — see js/deptDashboard.js's
 // HEADCOUNT_DEPARTMENT_KEYS) is active; app.js only shows this tab's
 // nav entry in that case, but this entry point re-checks itself
 // too, since it's also reachable via a direct deep link
@@ -10,6 +19,7 @@
 import { getEffectiveSupabase, getActiveDepartment } from './departments.js';
 import { HEADCOUNT_DEPARTMENT_KEYS } from './deptDashboard.js';
 import { renderHeadcountTally } from './components/headcountTally.js';
+import { renderHeadcountBoard, renderCombinedHeadcountCard } from './components/headcountBoard.js';
 import { t } from './i18n.js';
 
 export async function renderHeadcountTallyTab() {
@@ -23,5 +33,21 @@ export async function renderHeadcountTallyTab() {
     return;
   }
 
-  renderHeadcountTally(container, { supabase, departmentId: active.id, departmentKey: active.key });
+  // Same gate deptDashboard.js uses for the same sections -- a
+  // department secretary manages day-to-day headcounts without
+  // needing full admin rights.
+  const canAdminister = active.role === 'admin' || active.role === 'super_admin';
+  const canManageDept = canAdminister || active.role === 'secretary';
+
+  container.innerHTML = `
+    <div data-el="tally" class="mb-4"></div>
+    <div data-el="combined" class="mb-4"></div>
+    ${canManageDept ? '<div data-el="board"></div>' : ''}
+  `;
+
+  renderHeadcountTally(container.querySelector('[data-el="tally"]'), { supabase, departmentId: active.id, departmentKey: active.key });
+  renderCombinedHeadcountCard(container.querySelector('[data-el="combined"]'), { supabase });
+  if (canManageDept) {
+    renderHeadcountBoard(container.querySelector('[data-el="board"]'), { supabase, departmentId: active.id });
+  }
 }

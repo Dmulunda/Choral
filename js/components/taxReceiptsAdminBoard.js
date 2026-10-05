@@ -52,7 +52,7 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
     yearsListEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
     const [{ data: entries, error: entriesError }, { data: years, error: yearsError }] = await Promise.all([
-      supabase.from('donation_entries').select('fiscal_year, amount, member_id'),
+      supabase.from('donation_entries').select('fiscal_year, amount, currency, member_id'),
       supabase.from('tax_receipt_years').select('fiscal_year, status'),
     ]);
 
@@ -61,17 +61,23 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
       return;
     }
 
+    // Grouped by (fiscal_year, currency) -- never blended into one
+    // converted number, same reasoning as offeringsBoard.js's period
+    // total.
     const statusByYear = new Map((years || []).map((y) => [y.fiscal_year, y.status]));
-    const byYear = new Map();
+    const byYear = new Map(); // fiscal_year -> Map<currency, { total, members, unmatchedTotal }>
     (entries || []).forEach((e) => {
-      if (!byYear.has(e.fiscal_year)) byYear.set(e.fiscal_year, { total: 0, members: new Set(), unmatchedTotal: 0 });
-      const entry = byYear.get(e.fiscal_year);
+      if (!byYear.has(e.fiscal_year)) byYear.set(e.fiscal_year, new Map());
+      const byCurrency = byYear.get(e.fiscal_year);
+      const currency = e.currency || 'CAD';
+      if (!byCurrency.has(currency)) byCurrency.set(currency, { total: 0, members: new Set(), unmatchedTotal: 0 });
+      const entry = byCurrency.get(currency);
       if (e.member_id) { entry.total += Number(e.amount); entry.members.add(e.member_id); }
       else entry.unmatchedTotal += Number(e.amount);
     });
     // A year Finance already finalized but that has no donation_entries
     // rows anymore (shouldn't normally happen) still needs to show up.
-    (years || []).forEach((y) => { if (!byYear.has(y.fiscal_year)) byYear.set(y.fiscal_year, { total: 0, members: new Set(), unmatchedTotal: 0 }); });
+    (years || []).forEach((y) => { if (!byYear.has(y.fiscal_year)) byYear.set(y.fiscal_year, new Map()); });
 
     if (byYear.size === 0) {
       yearsListEl.innerHTML = `<p class="text-sm text-slate-500">${t('taxAdmin.noData')}</p>`;
@@ -80,14 +86,17 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
 
     const fiscalYears = Array.from(byYear.keys()).sort((a, b) => b - a);
     yearsListEl.innerHTML = fiscalYears.map((year) => {
-      const entry = byYear.get(year);
+      const byCurrency = byYear.get(year);
       const status = statusByYear.get(year) || 'open';
+      const currencyRows = byCurrency.size > 0 ? Array.from(byCurrency.entries()) : [['CAD', { total: 0, members: new Set(), unmatchedTotal: 0 }]];
       return `
         <div class="border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3 mb-2">
           <div>
             <div class="font-semibold text-slate-800">${year}</div>
-            <div class="text-sm text-slate-500">${t('taxAdmin.yearSummary', { total: formatAmount(entry.total), members: entry.members.size })}</div>
-            ${entry.unmatchedTotal > 0 ? `<div class="text-xs text-amber-600 mt-0.5">${t('taxAdmin.unmatchedTotal', { amount: formatAmount(entry.unmatchedTotal) })}</div>` : ''}
+            ${currencyRows.map(([currency, entry]) => `
+              <div class="text-sm text-slate-500">${t('taxAdmin.yearSummary', { total: formatAmount(entry.total, currency), members: entry.members.size })}</div>
+              ${entry.unmatchedTotal > 0 ? `<div class="text-xs text-amber-600 mt-0.5">${t('taxAdmin.unmatchedTotal', { amount: formatAmount(entry.unmatchedTotal, currency) })}</div>` : ''}
+            `).join('')}
           </div>
           <div class="flex items-center gap-2">
             <span class="px-2 py-0.5 rounded-full text-xs font-medium ${status === 'finalized' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
@@ -141,8 +150,8 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
 
     const [{ data: guests, error: guestsError }, { data: entries, error: entriesError }, { data: receipts, error: receiptsError }] = await Promise.all([
       supabase.from('guest_donors').select('id, name, email').order('name'),
-      supabase.from('donation_entries').select('guest_donor_id, amount').not('guest_donor_id', 'is', null),
-      supabase.from('tax_receipts').select('id, guest_donor_id, fiscal_year, receipt_number, total_amount, issued_at, legal_name_snapshot, tenant_info_snapshot').not('guest_donor_id', 'is', null),
+      supabase.from('donation_entries').select('guest_donor_id, amount, currency').not('guest_donor_id', 'is', null),
+      supabase.from('tax_receipts').select('id, guest_donor_id, fiscal_year, receipt_number, total_amount, currency, issued_at, legal_name_snapshot, tenant_info_snapshot').not('guest_donor_id', 'is', null),
     ]);
 
     if (guestsError || entriesError || receiptsError) {
@@ -150,9 +159,14 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
       return;
     }
 
-    const totalByGuest = new Map();
+    // One subtotal per currency per guest, same reasoning throughout
+    // this file.
+    const totalsByGuest = new Map(); // guest_donor_id -> Map<currency, cents-equivalent total>
     (entries || []).forEach((e) => {
-      totalByGuest.set(e.guest_donor_id, (totalByGuest.get(e.guest_donor_id) || 0) + Number(e.amount));
+      if (!totalsByGuest.has(e.guest_donor_id)) totalsByGuest.set(e.guest_donor_id, new Map());
+      const byCurrency = totalsByGuest.get(e.guest_donor_id);
+      const currency = e.currency || 'CAD';
+      byCurrency.set(currency, (byCurrency.get(currency) || 0) + Number(e.amount));
     });
     const receiptsByGuest = new Map();
     (receipts || []).forEach((r) => {
@@ -166,7 +180,10 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
     }
 
     guestDonorsListEl.innerHTML = guests.map((g) => {
-      const total = totalByGuest.get(g.id) || 0;
+      const byCurrency = totalsByGuest.get(g.id) || new Map();
+      const totalLines = byCurrency.size > 0
+        ? Array.from(byCurrency.entries()).map(([currency, total]) => t('taxAdmin.guestTotal', { amount: formatAmount(total, currency) })).join('<br>')
+        : t('taxAdmin.guestTotal', { amount: formatAmount(0, 'CAD') });
       const receiptsForGuest = (receiptsByGuest.get(g.id) || []).sort((a, b) => b.fiscal_year - a.fiscal_year);
       return `
         <div class="border border-slate-200 rounded-lg p-3 mb-2" data-guest-id="${g.id}">
@@ -176,7 +193,7 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
               <input type="email" data-el="email" value="${escapeAttr(g.email || '')}" placeholder="${escapeAttr(t('taxAdmin.guestEmailPlaceholder'))}" class="text-sm text-slate-500 border border-transparent hover:border-slate-300 focus:border-slate-300 rounded px-1.5 py-0.5 -ml-1.5 w-full" />
             </div>
             <div class="text-right">
-              <div class="text-sm text-slate-600">${t('taxAdmin.guestTotal', { amount: formatAmount(total) })}</div>
+              <div class="text-sm text-slate-600">${totalLines}</div>
               <button type="button" data-action="save-guest" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">${t('taxAdmin.saveGuest')}</button>
               <span data-el="save-status" class="text-xs text-slate-500 ml-1"></span>
             </div>
@@ -185,7 +202,7 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
             <div class="divide-y divide-slate-100 border-t border-slate-100 pt-1">
               ${receiptsForGuest.map((r) => `
                 <div class="flex items-center justify-between py-1.5 text-sm" data-receipt-id="${r.id}">
-                  <span class="text-slate-600">${r.fiscal_year} — ${escapeHtml(r.receipt_number)} — ${formatAmount(r.total_amount)}</span>
+                  <span class="text-slate-600">${r.fiscal_year} — ${escapeHtml(r.receipt_number)} — ${formatAmount(r.total_amount, r.currency)}</span>
                   <span>
                     <button type="button" data-action="email-receipt" class="text-xs text-emerald-600 hover:text-emerald-700 font-medium">${t('taxAdmin.emailReceipt')}</button>
                     <span data-el="email-status" class="text-xs text-slate-500 ml-1"></span>
@@ -236,8 +253,9 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
   }
 }
 
-function formatAmount(amount) {
-  return '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatAmount(amount, currency) {
+  const base = '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency ? `${base} ${currency}` : base;
 }
 
 function escapeHtml(str) {

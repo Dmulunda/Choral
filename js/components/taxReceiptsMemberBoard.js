@@ -19,9 +19,9 @@ export async function renderTaxReceiptsMemberBoard(container, { supabase, userId
 
   const [{ data: profile, error: profileError }, { data: entries, error: entriesError }, { data: years }, { data: receipts }] = await Promise.all([
     supabase.from('profiles').select('legal_name').eq('id', userId).single(),
-    supabase.from('donation_entries').select('fiscal_year, amount').eq('member_id', userId),
+    supabase.from('donation_entries').select('fiscal_year, amount, currency').eq('member_id', userId),
     supabase.from('tax_receipt_years').select('fiscal_year, status'),
-    supabase.from('tax_receipts').select('fiscal_year, receipt_number, total_amount, legal_name_snapshot, tenant_info_snapshot, issued_at').eq('member_id', userId),
+    supabase.from('tax_receipts').select('fiscal_year, receipt_number, total_amount, currency, legal_name_snapshot, tenant_info_snapshot, issued_at').eq('member_id', userId),
   ]);
 
   if (profileError || entriesError) {
@@ -29,11 +29,22 @@ export async function renderTaxReceiptsMemberBoard(container, { supabase, userId
     return;
   }
 
+  // A member could have given in more than one currency in the same
+  // year, which now means more than one receipt for that year (one
+  // per currency, sql/70) -- both totals and receipts are keyed by
+  // (fiscal_year, currency), not just fiscal_year.
   const statusByYear = new Map((years || []).map((y) => [y.fiscal_year, y.status]));
-  const receiptByYear = new Map((receipts || []).map((r) => [r.fiscal_year, r]));
-  const totalByYear = new Map();
+  const receiptByYear = new Map(); // fiscal_year -> Map<currency, receipt>
+  (receipts || []).forEach((r) => {
+    if (!receiptByYear.has(r.fiscal_year)) receiptByYear.set(r.fiscal_year, new Map());
+    receiptByYear.get(r.fiscal_year).set(r.currency || 'CAD', r);
+  });
+  const totalByYear = new Map(); // fiscal_year -> Map<currency, total>
   (entries || []).forEach((e) => {
-    totalByYear.set(e.fiscal_year, (totalByYear.get(e.fiscal_year) || 0) + Number(e.amount));
+    if (!totalByYear.has(e.fiscal_year)) totalByYear.set(e.fiscal_year, new Map());
+    const byCurrency = totalByYear.get(e.fiscal_year);
+    const currency = e.currency || 'CAD';
+    byCurrency.set(currency, (byCurrency.get(currency) || 0) + Number(e.amount));
   });
 
   const fiscalYears = Array.from(new Set([...totalByYear.keys(), ...receiptByYear.keys()])).sort((a, b) => b - a);
@@ -60,30 +71,37 @@ export async function renderTaxReceiptsMemberBoard(container, { supabase, userId
   if (!yearsEl) return;
 
   yearsEl.innerHTML = fiscalYears.map((year) => {
-    const total = totalByYear.get(year) || 0;
+    const totalsByCurrency = totalByYear.get(year) || new Map();
+    const receiptsByCurrency = receiptByYear.get(year) || new Map();
     const status = statusByYear.get(year) || 'open';
-    const receipt = receiptByYear.get(year);
+    const currencies = Array.from(new Set([...totalsByCurrency.keys(), ...receiptsByCurrency.keys()]));
+    if (currencies.length === 0) currencies.push('CAD');
+
     return `
       <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-3">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div class="text-lg font-semibold text-slate-800">${year}</div>
-            <div class="text-sm text-slate-500">${t('taxMember.totalGiven', { amount: formatAmount(total) })}</div>
-          </div>
-          ${receipt ? `
-            <div class="text-right">
-              <div class="text-xs text-slate-400">${t('taxMember.receiptNumber', { number: receipt.receipt_number })}</div>
-              <button type="button" data-action="download" data-year="${year}" class="mt-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
-                ${t('taxMember.downloadPdf')}
-              </button>
+        <div class="text-lg font-semibold text-slate-800 mb-2">${year}</div>
+        ${currencies.map((currency) => {
+          const total = totalsByCurrency.get(currency) || 0;
+          const receipt = receiptsByCurrency.get(currency);
+          return `
+            <div class="flex items-center justify-between gap-3 flex-wrap py-1">
+              <div class="text-sm text-slate-500">${t('taxMember.totalGiven', { amount: formatAmount(total, currency) })}</div>
+              ${receipt ? `
+                <div class="text-right">
+                  <div class="text-xs text-slate-400">${t('taxMember.receiptNumber', { number: receipt.receipt_number })}</div>
+                  <button type="button" data-action="download" data-year="${year}" data-currency="${currency}" class="mt-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+                    ${t('taxMember.downloadPdf')}
+                  </button>
+                </div>
+              ` : `
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+                  ${status === 'finalized' ? t('taxMember.noReceiptThisYear') : t('taxMember.notFinalizedYet')}
+                </span>
+              `}
             </div>
-          ` : `
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
-              ${status === 'finalized' ? t('taxMember.noReceiptThisYear') : t('taxMember.notFinalizedYet')}
-            </span>
-          `}
-        </div>
-        ${receipt ? `<div data-el="receipt-status-${year}" class="text-xs text-slate-400 mt-2"></div>` : ''}
+            ${receipt ? `<div data-el="receipt-status-${year}-${currency}" class="text-xs text-slate-400 mt-1"></div>` : ''}
+          `;
+        }).join('')}
       </div>
     `;
   }).join('');
@@ -91,15 +109,17 @@ export async function renderTaxReceiptsMemberBoard(container, { supabase, userId
   yearsEl.querySelectorAll('[data-action="download"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const year = Number(btn.dataset.year);
-      const receipt = receiptByYear.get(year);
-      const statusEl = yearsEl.querySelector(`[data-el="receipt-status-${year}"]`);
+      const currency = btn.dataset.currency;
+      const receipt = receiptByYear.get(year)?.get(currency);
+      const statusEl = yearsEl.querySelector(`[data-el="receipt-status-${year}-${currency}"]`);
       downloadReceiptPdf(receipt, statusEl);
     });
   });
 }
 
-function formatAmount(amount) {
-  return '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatAmount(amount, currency) {
+  const base = '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency ? `${base} ${currency}` : base;
 }
 
 async function downloadReceiptPdf(receipt, statusEl) {

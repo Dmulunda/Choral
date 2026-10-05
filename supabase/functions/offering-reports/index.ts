@@ -133,20 +133,26 @@ async function buildOfferingPdf({ tenantName, periodStart, periodEnd, offerings 
   draw('Amount', margin + 440, true);
   y -= 16;
 
-  let total = 0;
+  // Grouped by currency, never blended into one converted number --
+  // same reasoning as offeringsBoard.js's period total.
+  const totalsByCurrency = new Map();
   for (const o of offerings) {
     newPageIfNeeded();
+    const currencyLabel = o.currency === 'other' && o.currency_other ? o.currency_other : (o.currency || 'CAD');
     draw(o.offering_date, margin);
     draw((o.donor_name || '').slice(0, 36), margin + 80);
     draw(OFFERING_TYPE_LABELS[o.offering_type] || o.offering_type, margin + 290);
-    draw(`$${centsToDollars(o.amount_cents)}`, margin + 440);
-    total += o.amount_cents;
+    draw(`$${centsToDollars(o.amount_cents)} ${currencyLabel}`, margin + 440);
+    totalsByCurrency.set(currencyLabel, (totalsByCurrency.get(currencyLabel) || 0) + o.amount_cents);
     y -= 14;
   }
 
   y -= 12;
-  newPageIfNeeded();
-  draw(`Total: $${centsToDollars(total)}`, margin + 290, true, 12);
+  for (const [currencyLabel, cents] of totalsByCurrency) {
+    newPageIfNeeded();
+    draw(`Total (${currencyLabel}): $${centsToDollars(cents)}`, margin + 290, true, 12);
+    y -= 16;
+  }
 
   return await doc.save();
 }
@@ -219,7 +225,7 @@ async function generateAndStorePeriodPdf(admin, r2, endpoint, periodId) {
 
   const { data: offerings, error: offeringsError } = await admin
     .from('offerings')
-    .select('donor_name, offering_date, amount_cents, offering_type')
+    .select('donor_name, offering_date, amount_cents, offering_type, currency, currency_other')
     .eq('report_period_id', periodId)
     .order('offering_date', { ascending: true });
   if (offeringsError) return { error: offeringsError.message, status: 500 };
