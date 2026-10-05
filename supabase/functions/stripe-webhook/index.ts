@@ -26,11 +26,15 @@ import Stripe from 'https://esm.sh/stripe@17?target=deno';
 // Stripe subscription statuses -> this app's tenants.status enum
 // ('trial','active','past_due','canceled','trial_expired'). 'unpaid' and
 // 'incomplete_expired' both mean Stripe has given up collecting payment --
-// treated the same as a real cancellation. 'incomplete'/'trialing' aren't
-// expected here (this app never puts a subscription in a Stripe trial),
-// but fall back to 'past_due' rather than silently doing nothing.
+// treated the same as a real cancellation. 'trialing' is a card-on-file
+// trial (stripe-billing's create_checkout_session passes
+// subscription_data.trial_end for any tenant still within its own
+// trial window) -- maps back to this app's own 'trial' status, same
+// meaning either way. 'incomplete' isn't expected here, but falls back
+// to 'past_due' rather than silently doing nothing.
 function mapSubscriptionStatus(stripeStatus) {
   if (stripeStatus === 'active') return 'active';
+  if (stripeStatus === 'trialing') return 'trial';
   if (stripeStatus === 'past_due') return 'past_due';
   if (stripeStatus === 'canceled' || stripeStatus === 'unpaid' || stripeStatus === 'incomplete_expired') return 'canceled';
   return 'past_due';

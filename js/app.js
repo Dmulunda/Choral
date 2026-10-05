@@ -53,7 +53,8 @@ import {
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
   canRecordOfferings,
 } from './departments.js';
-import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft, isActingAsExtension } from './tenant.js';
+import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft, getPendingTrialCharge, isActingAsExtension } from './tenant.js';
+import { formatPlanPrice } from './utils/planPresentation.js';
 import {
   loadMyDenominationInfo, getMyExtensions, hasMultipleExtensions,
   isGlobalSuperAdminForAnyDenomination, switchActingExtension, getMyDenominationRole,
@@ -255,11 +256,25 @@ function renderTrialBanner() {
   trialBannerEl.className = daysLeft <= 3
     ? 'px-4 py-2 text-sm text-center font-medium bg-amber-100 text-amber-800'
     : 'px-4 py-2 text-sm text-center font-medium bg-indigo-50 text-indigo-800';
-  trialBannerTextEl.textContent = daysLeft === 0
-    ? t('trial.lastDay')
-    : daysLeft === 1
-      ? t('trial.oneDayLeft')
-      : t('trial.daysLeft', { count: daysLeft });
+
+  // A card attached during the trial (stripe-billing's trial_end,
+  // aligned to this same trial_ends_at) means there's a real charge
+  // coming -- say exactly when and how much instead of just nudging
+  // them to pick a plan.
+  const pendingCharge = getPendingTrialCharge();
+  if (pendingCharge) {
+    const price = formatPlanPrice(pendingCharge.priceCents, pendingCharge.billingInterval);
+    const date = new Date(getTenant().trial_ends_at).toLocaleDateString();
+    trialBannerTextEl.textContent = daysLeft === 0
+      ? t('trial.lastDayBilled', { price })
+      : t('trial.daysLeftBilled', { count: daysLeft, price, date });
+  } else {
+    trialBannerTextEl.textContent = daysLeft === 0
+      ? t('trial.lastDay')
+      : daysLeft === 1
+        ? t('trial.oneDayLeft')
+        : t('trial.daysLeft', { count: daysLeft });
+  }
 }
 
 trialBannerEl.querySelector('[data-action="dismiss-trial-banner"]').addEventListener('click', () => {

@@ -2,6 +2,7 @@
 // and app.js's onAuthStateChange listener swaps the auth screen for the app.
 import { t, departmentLabel } from '../i18n.js';
 import { DEPARTMENT_KEYS, requestDepartmentMemberships } from '../departments.js';
+import { createPlanPickerModal } from './planPickerModal.js';
 
 export function renderAuthScreen(container, { supabase }) {
   let mode = 'login';
@@ -301,7 +302,13 @@ export function renderAuthScreen(container, { supabase }) {
         // it'll catch up on the next profile refresh.
         const { error: claimError } = await supabase.rpc('claim_tenant_admin');
         if (claimError) console.error('claim_tenant_admin failed:', claimError.message);
-        // onAuthStateChange in app.js takes over from here.
+        // onAuthStateChange in app.js takes over the screen underneath
+        // from here, same as always -- the plan picker is just an
+        // overlay on top of it. Skipping (or Stripe Checkout itself
+        // being cancelled) leaves them in the app exactly like before
+        // this existed: a real, cardless trial they can subscribe from
+        // anytime via Plans & Pricing.
+        createPlanPickerModal({ supabase, onSkip: () => {} }).open();
       }
     } else if (mode === 'signup') {
       if (!inviteTenant) {

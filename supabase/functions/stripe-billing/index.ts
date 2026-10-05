@@ -7,10 +7,15 @@
 // stripe-webhook, not here -- this function only ever hands back a URL.
 //
 // Two actions, dispatched by `action` in the request body:
-//   'create_checkout_session' — { plan_key }. Super Admin only. Basic
-//     has no stripe_price_id (it's the "no active subscription" state,
-//     not a real Stripe object -- see the migration's header comment),
-//     so this 404s for it; only paid plans are checkout-able.
+//   'create_checkout_session' — { plan_key, returnUrl }. Super Admin
+//     only; 404s for any plan still missing a real stripe_price_id. A
+//     tenant still inside its own 30-day trial gets the card saved now
+//     via Stripe but isn't charged until that same trial_ends_at date
+//     (subscription_data.trial_end below) -- used both right after
+//     signup (js/components/planPickerModal.js) and for an existing
+//     trial tenant clicking Upgrade mid-trial (js/components/
+//     plansModal.js) -- same call, same trial-alignment logic either
+//     way, no special-casing which caller it was.
 //   'create_portal_session' — Super Admin only, and only once the
 //     tenant has ever checked out at least once (has a
 //     stripe_customer_id) -- there's nothing to manage before that.
@@ -61,7 +66,7 @@ Deno.serve(async (req) => {
 
     const { data: tenant } = await admin
       .from('tenants')
-      .select('id, name, stripe_customer_id')
+      .select('id, name, stripe_customer_id, status, trial_ends_at')
       .eq('id', callerProfile.tenant_id)
       .single();
     if (!tenant) return json({ error: 'Tenant not found' }, 404);
@@ -113,6 +118,18 @@ Deno.serve(async (req) => {
         await admin.rpc('set_tenant_stripe_customer', { p_tenant_id: tenant.id, p_stripe_customer_id: stripeCustomerId });
       }
 
+      // A tenant still within its own 30-day trial gets the card saved
+      // now but isn't actually charged until that SAME original date --
+      // trial_end (an exact timestamp) rather than trial_period_days,
+      // specifically so this doesn't restart the clock for someone who
+      // waits until day 20 of their trial to finally check out. Not
+      // applied at all once the trial's over (e.g. re-subscribing after
+      // a cancellation) -- immediate billing, same as today.
+      const trialEndsAt = tenant.status === 'trial' && tenant.trial_ends_at ? new Date(tenant.trial_ends_at) : null;
+      const subscriptionData = trialEndsAt && trialEndsAt.getTime() > Date.now()
+        ? { trial_end: Math.floor(trialEndsAt.getTime() / 1000) }
+        : undefined;
+
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: stripeCustomerId,
@@ -124,6 +141,7 @@ Deno.serve(async (req) => {
         automatic_tax: { enabled: true },
         customer_update: { address: 'auto', name: 'auto' },
         line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
+        ...(subscriptionData ? { subscription_data: subscriptionData } : {}),
         success_url: buildReturnUrl('success'),
         cancel_url: buildReturnUrl('cancel'),
       });

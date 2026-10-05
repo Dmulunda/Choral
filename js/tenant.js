@@ -8,9 +8,9 @@
 // tenant's data, because the database never returns it in the first place.
 import { supabase } from './supabaseClient.js';
 
-const TENANT_COLUMNS = 'id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url, denomination_id';
+const TENANT_COLUMNS = 'id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url, denomination_id, plan:plans ( name, price_cents, billing_interval )';
 
-let myTenant = null; // { id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url, denomination_id } | null
+let myTenant = null; // { id, name, slug, status, trial_ends_at, plan_id, stripe_customer_id, address, logo_url, denomination_id, plan } | null
 let myHomeTenantId = null; // profiles.tenant_id, always the caller's own tenant -- never the one they're acting as
 let myActingTenantId = null; // profiles.acting_as_tenant_id, or null when not acting as an extension
 
@@ -80,4 +80,15 @@ export function getTrialDaysLeft() {
   const ms = new Date(myTenant.trial_ends_at).getTime() - Date.now();
   if (ms <= 0) return 0;
   return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+// Set once a card is attached during the trial (stripe-billing's
+// create_checkout_session, trial_end aligned to this same
+// trial_ends_at) -- the trial banner uses this to tell them exactly
+// when and how much, instead of just nudging them to pick a plan.
+// null whenever there's nothing billed yet to report (no plan, or not
+// on a trial at all).
+export function getPendingTrialCharge() {
+  if (getTenantStatus() !== 'trial' || !myTenant?.plan) return null;
+  return { name: myTenant.plan.name, priceCents: myTenant.plan.price_cents, billingInterval: myTenant.plan.billing_interval };
 }

@@ -157,7 +157,7 @@ const TRANSLATIONS = {
     'welcome.featureIdCardTitle': 'Member ID cards & guest follow-up',
     'welcome.featureIdCardDesc': "Photo ID cards with department badges (and the extension's name, for a denomination with more than one). A guest follow-up hub that tracks a first-time visitor from check-in through assignment to a department.",
     'welcome.pricingTitle': 'Pricing',
-    'welcome.pricingSubtitle': 'Every plan starts with a full-featured trial — no card required to try it.',
+    'welcome.pricingSubtitle': "Every plan starts with a 30-day free trial. Add your card to get started — you won't be charged until your trial ends.",
     'welcome.loadingPlans': 'Loading plans…',
     'welcome.pricingFailed': "Couldn't load pricing right now — please try again shortly, or contact us below.",
     'welcome.contactTitle': 'Talk to us',
@@ -485,6 +485,8 @@ const TRANSLATIONS = {
     'trial.daysLeft': '{count} days left in your free trial — pick a plan to keep full access.',
     'trial.oneDayLeft': '1 day left in your free trial — pick a plan to keep full access.',
     'trial.lastDay': 'Your free trial ends today — pick a plan to keep full access.',
+    'trial.daysLeftBilled': '{count} days left in your free trial. You\'ll be charged {price} on {date}.',
+    'trial.lastDayBilled': 'Your free trial ends today. You\'ll be charged {price}.',
     'trial.expired': 'Your free trial has ended. Your data is safe, but some features are locked until you choose a plan.',
 
     'entitlements.upgrade': 'Upgrade',
@@ -499,6 +501,12 @@ const TRANSLATIONS = {
     'plans.billedMonthly': 'Monthly',
     'plans.billedYearly': 'Yearly',
     'plans.monthlyEquivalent': '≈ {amount}/mo billed annually',
+
+    'planPicker.title': 'Choose your plan',
+    'planPicker.intro': "You won't be charged until your 30-day free trial ends — add a card now to lock in your plan, or skip and decide later.",
+    'planPicker.selectPlan': 'Start 30-Day Trial',
+    'planPicker.skipForNow': "Skip for now — I'll choose a plan later",
+
     'plans.currentPlan': 'Your current plan',
     'plans.upgrade': 'Upgrade',
     'plans.manageBilling': 'Manage Billing',
@@ -2388,7 +2396,7 @@ const TRANSLATIONS = {
     'welcome.featureIdCardTitle': 'Cartes de membre et suivi des visiteurs',
     'welcome.featureIdCardDesc': "Cartes d'identité avec photo, insignes de département (et le nom de l'extension, pour une dénomination qui en compte plus d'une). Un espace de suivi des visiteurs qui accompagne un nouveau venu depuis son arrivée jusqu'à son intégration dans un département.",
     'welcome.pricingTitle': 'Tarifs',
-    'welcome.pricingSubtitle': "Chaque forfait commence par un essai complet — aucune carte requise pour l'essayer.",
+    'welcome.pricingSubtitle': "Chaque forfait commence par un essai gratuit de 30 jours. Ajoutez votre carte pour commencer — vous ne serez pas facturé avant la fin de votre essai.",
     'welcome.loadingPlans': 'Chargement des forfaits…',
     'welcome.pricingFailed': "Impossible de charger les tarifs pour le moment — veuillez réessayer sous peu, ou nous contacter ci-dessous.",
     'welcome.contactTitle': 'Parlez-nous',
@@ -2716,6 +2724,8 @@ const TRANSLATIONS = {
     'trial.daysLeft': "Il reste {count} jours dans votre essai gratuit — choisissez un forfait pour garder l'accès complet.",
     'trial.oneDayLeft': "Il reste 1 jour dans votre essai gratuit — choisissez un forfait pour garder l'accès complet.",
     'trial.lastDay': "Votre essai gratuit se termine aujourd'hui — choisissez un forfait pour garder l'accès complet.",
+    'trial.daysLeftBilled': "Il reste {count} jours dans votre essai gratuit. Vous serez facturé {price} le {date}.",
+    'trial.lastDayBilled': "Votre essai gratuit se termine aujourd'hui. Vous serez facturé {price}.",
     'trial.expired': "Votre essai gratuit est terminé. Vos données sont en sécurité, mais certaines fonctionnalités sont verrouillées jusqu'à ce que vous choisissiez un forfait.",
 
     'entitlements.upgrade': 'Améliorer',
@@ -2730,6 +2740,12 @@ const TRANSLATIONS = {
     'plans.billedMonthly': 'Mensuel',
     'plans.billedYearly': 'Annuel',
     'plans.monthlyEquivalent': '≈ {amount}/mois, facturé annuellement',
+
+    'planPicker.title': 'Choisissez votre forfait',
+    'planPicker.intro': "Vous ne serez pas facturé avant la fin de votre essai gratuit de 30 jours — ajoutez une carte maintenant pour fixer votre forfait, ou passez cette étape et décidez plus tard.",
+    'planPicker.selectPlan': "Démarrer l'essai de 30 jours",
+    'planPicker.skipForNow': 'Passer pour le moment — je choisirai un forfait plus tard',
+
     'plans.currentPlan': 'Votre forfait actuel',
     'plans.upgrade': 'Mettre à niveau',
     'plans.manageBilling': 'Gérer la facturation',
