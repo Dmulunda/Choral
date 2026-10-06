@@ -35,6 +35,8 @@ import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
+import { renderSiteAdminTab } from './siteAdminPage.js';
+import { loadSiteAdminStatus, getIsSiteAdmin } from './siteAdmin.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { createChangePasswordModal } from './components/changePasswordModal.js';
 import { createMyProfileModal } from './components/myProfileModal.js';
@@ -115,9 +117,14 @@ const lazyTabs = {
   budget: renderBudgetPageTab,
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
+  'site-admin': renderSiteAdminTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
+// Whatever tab was active right before jumping into Site Admin --
+// powers that page's own Back button (no top-level tab in this app has
+// one otherwise; everything else relies on the global sidebar Home icon).
+let siteAdminReturnTab = 'dashboard';
 
 // activateTab() only toggles a panel's visibility -- it never unmounts
 // or re-renders an already-loaded tab's DOM, so a tab whose data was
@@ -160,6 +167,9 @@ function activateTab(name) {
     lazyTabs[name]();
   }
 }
+
+document.querySelector('[data-tab-panel="site-admin"] [data-el="site-admin-back"]')
+  ?.addEventListener('click', () => activateTab(siteAdminReturnTab || 'dashboard'));
 
 // Choir and every other department name the "same kind" of page
 // differently (dashboard/dept-dashboard, scheduling/dept-scheduling) —
@@ -714,6 +724,7 @@ function updateSidebarToolsSelect() {
   // Everyone can suggest an improvement — no role gate (sql/047
   // widened this on purpose; it used to be elevated roles only).
   options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
+  if (getIsSiteAdmin()) options.push({ value: 'site-admin', label: t('sidebar.siteAdmin') });
   if (hasAccess) {
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
@@ -781,6 +792,9 @@ export function runSidebarTool(value) {
     createAttendanceManagerModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'app-suggestion') {
     createAppSuggestionModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'site-admin') {
+    siteAdminReturnTab = currentTabName;
+    activateTab('site-admin');
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'join-department') {
@@ -1177,6 +1191,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   await loadChurchBranding();
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
+  await loadSiteAdminStatus();
 
   // A fresh sign-in (not a page-refresh session restore) always resets
   // a global-role holder to Super Admin Mode and their Home console —
