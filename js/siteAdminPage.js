@@ -1,29 +1,38 @@
 // Site Admin — a full page (not a popup), reached only via the
 // tools-menu "Site Admin" entry, same pattern as js/pastorMeetingsPage.js.
-// Three tabs: App Suggestions and Support Requests submitted by any
-// signed-in member (via the list_*_for_site_admin() RPCs, which bypass
-// each row's own tenant_isolation the same way every other cross-tenant
-// lookup in this app already does), and a simple add/remove-by-email
-// console for who else holds the role.
+// Six tabs, mirroring SAAS's own siteAdminPage.js in full: Website
+// Inquiries (SAAS-only, pre-signup leads from the marketing page's
+// contact form), App Suggestions and Support Requests submitted by
+// anyone on either system (via the list_*_for_site_admin() RPCs,
+// which bypass each row's own tenant_isolation the same way every
+// other cross-tenant lookup in this app already does), Churches
+// (SAAS-only, every tenant there), Training Sandbox (SAAS-only --
+// see below), and a simple add/remove-by-email console for who else
+// holds the role.
 //
-// This started as Main's own, single-tenant copy of SAAS's
-// siteAdminPage.js -- trimmed down to what actually applies here.
-// Dropped entirely: Website Inquiries and Churches (both SAAS-
-// marketing/multi-tenant concepts with no equivalent on a one-church
-// install) and the Training Sandbox (practicing "being a different
-// church" makes no sense when there's only ever one).
+// Main has only one church, so Inquiries/Churches/Sandbox have no
+// local equivalent at all -- those three tabs always operate against
+// SAAS specifically (via a second Supabase client, the mirror image
+// of SAAS's own "connect to Main" panel) rather than trying to fake a
+// Main-side version that wouldn't mean anything. Suggestions/Requests/
+// Manage merge both systems' data once connected, same as SAAS's page
+// does for Main.
 //
-// Suggestions/Requests/Manage DO pull in SAAS too, via a second
-// Supabase client -- the mirror image of SAAS's own "connect to Main"
-// panel: some Site Admins only have a home account on Main, and this
-// lets them also help triage SAAS's suggestions/requests from here,
-// one login, two data sources, each row tagged by which system it
-// came from.
+// Training Sandbox doesn't get its own in-page UI here at all --
+// "being a different church" to practice in is itself a SAAS-only
+// concept (sql/064's shared practice tenant, entered via
+// acting_as_tenant_id), and actually USING it means being inside
+// SAAS's own department/dashboard UI, which doesn't exist in this
+// codebase and isn't worth duplicating just to host one feature. This
+// tab is just a link to open SAAS directly, where the real feature
+// already lives.
 //
 // Replies (same shape as SAAS's sql/061): a Site Admin's status/
 // admin_note edit is internal-only; `site_admin_reply` is the
 // distinct, submitter-facing field, delivered via the notifications
-// bell.
+// bell for suggestions/requests, or by email for anonymous
+// website_inquiries (site-admin-usage Edge Function's reply_to_inquiry
+// action, since there's no account to notify).
 import { t } from './i18n.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
@@ -31,14 +40,42 @@ import { getEffectiveSupabase } from './departments.js';
 
 const SUGGESTION_STATUSES = ['new', 'planned', 'done', 'declined'];
 const REQUEST_STATUSES = ['new', 'answered', 'closed'];
+const INQUIRY_STATUSES = ['new', 'contacted', 'closed'];
+const INQUIRY_TOPIC_KEYS = { demo: 'welcome.topicDemo', general: 'welcome.topicGeneral', support: 'welcome.topicSupport' };
 
 const SAAS_URL = 'https://towlqbxvhftzjfrtepsy.supabase.co';
 const SAAS_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2xxYnh2aGZ0empmcnRlcHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNzY2NjIsImV4cCI6MjEwNDY1MjY2Mn0.k3tlKMNNlpd-TGcd5hnyDfSzNcdmy8QLKiRYKkOEa-c';
+// Real SAAS app shell -- the Training Sandbox tab links straight here,
+// and this is also where a Site Admin signs in normally to use any of
+// SAAS's own UI the embedded API connection above can't substitute for.
+const SAAS_APP_URL = 'https://dmulunda.github.io/ChurchOs/app.html';
 
 let saasClient = null;
 function getSaasClient() {
   if (!saasClient) saasClient = createClient(SAAS_URL, SAAS_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   return saasClient;
+}
+
+// supabase-js's functions.invoke() only gives a generic "Edge Function
+// returned a non-2xx status code" in error.message -- the real reason
+// (the JSON body this function's own error responses carry) is on
+// error.context, a raw Response object whose body hasn't been read yet.
+async function extractFunctionErrorMessage(error) {
+  if (!error) return 'Unknown error';
+  try {
+    const body = await error.context?.clone().json();
+    if (body?.error) return body.error;
+  } catch { /* context wasn't JSON (e.g. a network failure) -- fall through */ }
+  return error.message || 'Unknown error';
+}
+
+function centsOrBytesToSize(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 export async function renderSiteAdminTab() {
@@ -56,24 +93,33 @@ export async function renderSiteAdminTab() {
     <div data-el="saas-connect" class="flex items-center gap-2 mb-4 text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"></div>
 
     <div class="flex gap-2 mb-4 border-b border-slate-200 flex-wrap">
-      <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">${t('siteAdmin.tabSuggestions')}</button>
+      <button type="button" data-tab="inquiries" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">${t('siteAdmin.tabInquiries')}</button>
+      <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSuggestions')}</button>
       <button type="button" data-tab="requests" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabRequests')}</button>
+      <button type="button" data-tab="churches" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabChurches')}</button>
+      <button type="button" data-tab="sandbox" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSandbox')}</button>
       <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
     </div>
 
-    <div data-panel="suggestions"></div>
+    <div data-panel="inquiries"></div>
+    <div data-panel="suggestions" class="hidden"></div>
     <div data-panel="requests" class="hidden"></div>
+    <div data-panel="churches" class="hidden"></div>
+    <div data-panel="sandbox" class="hidden"></div>
     <div data-panel="manage" class="hidden"></div>
   `;
 
   const saasConnectEl = container.querySelector('[data-el="saas-connect"]');
   const tabBtns = container.querySelectorAll('[data-tab]');
   const panels = {
+    inquiries: container.querySelector('[data-panel="inquiries"]'),
     suggestions: container.querySelector('[data-panel="suggestions"]'),
     requests: container.querySelector('[data-panel="requests"]'),
+    churches: container.querySelector('[data-panel="churches"]'),
+    sandbox: container.querySelector('[data-panel="sandbox"]'),
     manage: container.querySelector('[data-panel="manage"]'),
   };
-  const loaded = { suggestions: false, requests: false, manage: false };
+  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, sandbox: false, manage: false };
 
   tabBtns.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
@@ -86,8 +132,11 @@ export async function renderSiteAdminTab() {
       btn.classList.toggle('text-slate-500', !active);
     });
     Object.entries(panels).forEach(([key, el]) => el.classList.toggle('hidden', key !== tab));
+    if (tab === 'inquiries' && !loaded.inquiries) loadInquiries();
     if (tab === 'suggestions' && !loaded.suggestions) loadSuggestions();
     if (tab === 'requests' && !loaded.requests) loadRequests();
+    if (tab === 'churches' && !loaded.churches) loadChurches();
+    if (tab === 'sandbox' && !loaded.sandbox) loadSandbox();
     if (tab === 'manage' && !loaded.manage) loadManage();
   }
 
@@ -121,10 +170,196 @@ export async function renderSiteAdminTab() {
         const { error } = await client.auth.signInWithPassword({ email, password });
         if (error) { statusEl.textContent = error.message; return; }
         await renderSaasConnect();
-        loaded.suggestions = false; loaded.requests = false; loaded.manage = false;
+        loaded.inquiries = false; loaded.suggestions = false; loaded.requests = false;
+        loaded.churches = false; loaded.sandbox = false; loaded.manage = false;
         Object.keys(panels).forEach((tab) => { if (!panels[tab].classList.contains('hidden')) switchTab(tab); });
       });
     }
+  }
+
+  // Both tabs below have no Main-side equivalent at all -- they always
+  // read SAAS specifically, and need a connected SAAS session to mean
+  // anything, unlike Suggestions/Requests/Manage (which show Main's
+  // own data either way, SAAS's on top once connected).
+  async function requireSaasSession() {
+    const client = getSaasClient();
+    const { data: { session } } = await client.auth.getSession();
+    return session ? client : null;
+  }
+
+  // ---- Website Inquiries (SAAS only) ----
+  async function loadInquiries() {
+    panels.inquiries.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+    const client = await requireSaasSession();
+    if (!client) {
+      panels.inquiries.innerHTML = `<p class="text-slate-400">${t('siteAdmin.connectSaasFirst')}</p>`;
+      return;
+    }
+    const { data, error } = await client.rpc('list_website_inquiries_for_site_admin');
+    if (error) {
+      panels.inquiries.innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+    loaded.inquiries = true;
+    if (!data.length) {
+      panels.inquiries.innerHTML = `<p class="text-slate-400">${t('siteAdmin.noInquiries')}</p>`;
+      return;
+    }
+    panels.inquiries.innerHTML = `<div class="space-y-3">${data.map((row) => buildInquiryCard(row)).join('')}</div>`;
+    wireInquiryCards(client);
+  }
+
+  function buildInquiryCard(row) {
+    const topicLabel = t(INQUIRY_TOPIC_KEYS[row.topic] || '') || row.topic;
+    const topicBadge = `<span class="inline-block text-[11px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 mr-2">${escapeHtml(topicLabel)}</span>`;
+    const contactBits = [row.email, row.phone, row.church_name].filter(Boolean).map(escapeHtml).join(' · ');
+    return `
+      <div class="border border-slate-200 rounded-lg p-4" data-row-id="${row.id}">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div class="text-xs text-slate-500">
+            ${topicBadge}<span class="font-medium text-slate-700">${escapeHtml(row.name)}</span>
+            ${contactBits ? ` · ${contactBits}` : ''}
+            · ${new Date(row.created_at).toLocaleDateString()}
+          </div>
+        </div>
+        ${row.message ? `<p class="text-sm text-slate-800 mb-3 whitespace-pre-wrap">${escapeHtml(row.message)}</p>` : ''}
+        <div class="grid sm:grid-cols-[auto_1fr] gap-2 items-start mb-2">
+          <select data-el="status" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+            ${INQUIRY_STATUSES.map((s) => `<option value="${s}" ${s === row.status ? 'selected' : ''}>${escapeHtml(t(`siteAdmin.status.${s}`))}</option>`).join('')}
+          </select>
+          <textarea data-el="admin-note" rows="1" placeholder="${escapeHtml(t('siteAdmin.adminNotePlaceholder'))}"
+                    class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">${escapeHtml(row.admin_note || '')}</textarea>
+        </div>
+        <div class="flex items-center gap-2 mb-2">
+          <button type="button" data-action="save" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('siteAdmin.save')}</button>
+          <span data-el="row-status" class="text-xs text-slate-500"></span>
+        </div>
+        ${buildReplyBlock(row)}
+      </div>
+    `;
+  }
+
+  function wireInquiryCards(client) {
+    panels.inquiries.querySelectorAll('[data-row-id]').forEach((card) => {
+      const id = card.dataset.rowId;
+      card.querySelector('[data-action="save"]').addEventListener('click', async () => {
+        const statusEl = card.querySelector('[data-el="row-status"]');
+        const status = card.querySelector('[data-el="status"]').value;
+        const admin_note = card.querySelector('[data-el="admin-note"]').value.trim() || null;
+        statusEl.className = 'text-xs text-slate-500';
+        statusEl.textContent = t('common.saving');
+        const { error } = await client.from('website_inquiries').update({ status, admin_note, updated_at: new Date().toISOString() }).eq('id', id);
+        statusEl.className = error ? 'text-xs text-rose-600' : 'text-xs text-emerald-600';
+        statusEl.textContent = error ? t('siteAdmin.saveFailed', { message: error.message }) : t('siteAdmin.saved');
+      });
+      card.querySelector('[data-action="reply"]').addEventListener('click', async () => {
+        const replyStatusEl = card.querySelector('[data-el="reply-status"]');
+        const reply = card.querySelector('[data-el="reply"]').value.trim();
+        if (!reply) return;
+        replyStatusEl.className = 'text-xs text-slate-500';
+        replyStatusEl.textContent = t('common.saving');
+        const { data, error } = await client.functions.invoke('site-admin-usage', {
+          body: { action: 'reply_to_inquiry', inquiry_id: id, reply },
+        });
+        if (error || data?.error) {
+          replyStatusEl.className = 'text-xs text-rose-600';
+          replyStatusEl.textContent = t('siteAdmin.replyFailed', { message: data?.error || await extractFunctionErrorMessage(error) });
+          return;
+        }
+        replyStatusEl.className = 'text-xs text-emerald-600';
+        replyStatusEl.textContent = t('siteAdmin.replySent');
+        loaded.inquiries = false;
+        loadInquiries();
+      });
+    });
+  }
+
+  // ---- Churches (SAAS only) ----
+  async function loadChurches() {
+    panels.churches.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+    const client = await requireSaasSession();
+    if (!client) {
+      panels.churches.innerHTML = `<p class="text-slate-400">${t('siteAdmin.connectSaasFirst')}</p>`;
+      return;
+    }
+    const [{ data: tenants, error }, usageResp] = await Promise.all([
+      client.rpc('list_all_tenants_for_site_admin'),
+      client.functions.invoke('site-admin-usage').catch(() => ({ data: null, error: null })),
+    ]);
+    if (error) {
+      panels.churches.innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: error.message })}</p>`;
+      return;
+    }
+    loaded.churches = true;
+    const r2ByTenant = usageResp?.data?.byTenant || {};
+
+    panels.churches.innerHTML = `
+      <div class="overflow-x-auto border border-slate-200 rounded-lg mb-2">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th class="text-left px-3 py-2">${t('siteAdmin.colChurch')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.colStatus')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.colMembers')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.colStorage')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.colLastActive')}</th>
+              <th class="text-left px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody data-el="rows"></tbody>
+        </table>
+      </div>
+      <p class="text-xs text-slate-500">${t('siteAdmin.churchesCount', { count: (tenants || []).filter((t2) => !t2.deleted_at).length })}</p>
+    `;
+    const rowsEl = panels.churches.querySelector('[data-el="rows"]');
+    rowsEl.innerHTML = (tenants || []).map((row) => {
+      const totalBytes = Number(row.storage_bytes || 0) + Number(r2ByTenant[row.id] || 0);
+      const isDeleted = !!row.deleted_at;
+      return `
+        <tr class="border-b border-slate-100 ${isDeleted ? 'bg-rose-50 opacity-70' : ''}" data-row-id="${row.id}">
+          <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(row.name)}${isDeleted ? ` <span class="text-xs text-rose-600">(${t('siteAdmin.deleted')})</span>` : ''}</td>
+          <td class="px-3 py-2">${escapeHtml(row.status)}</td>
+          <td class="px-3 py-2 text-right">${row.member_count} / ${row.department_count}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap">${centsOrBytesToSize(totalBytes)}</td>
+          <td class="px-3 py-2 text-slate-500">${row.last_active_at ? new Date(row.last_active_at).toLocaleDateString() : '—'}</td>
+          <td class="px-3 py-2 text-right">
+            ${isDeleted
+              ? `<button type="button" data-action="restore" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">${t('siteAdmin.restore')}</button>`
+              : `<button type="button" data-action="delete" class="text-xs text-rose-600 hover:text-rose-700">${t('siteAdmin.delete')}</button>`}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    rowsEl.querySelectorAll('[data-action="delete"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('[data-row-id]');
+        const id = row.dataset.rowId;
+        const name = row.querySelector('td').textContent;
+        const ok = await confirmDialog({ message: t('siteAdmin.deleteChurchConfirm', { name }), danger: true });
+        if (!ok) return;
+        await client.rpc('soft_delete_tenant', { p_tenant_id: id });
+        loaded.churches = false;
+        loadChurches();
+      });
+    });
+    rowsEl.querySelectorAll('[data-action="restore"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.closest('[data-row-id]').dataset.rowId;
+        await client.rpc('restore_tenant', { p_tenant_id: id });
+        loaded.churches = false;
+        loadChurches();
+      });
+    });
+  }
+
+  // ---- Training Sandbox (SAAS only -- see header comment) ----
+  async function loadSandbox() {
+    loaded.sandbox = true;
+    panels.sandbox.innerHTML = `
+      <p class="text-sm text-slate-600 mb-4">${t('siteAdmin.sandboxSaasIntro')}</p>
+      <a href="${SAAS_APP_URL}" target="_blank" rel="noopener" class="inline-block px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">${t('siteAdmin.openSaas')}</a>
+    `;
   }
 
   // ---- Suggestions / Requests (merged Main + SAAS) ----
