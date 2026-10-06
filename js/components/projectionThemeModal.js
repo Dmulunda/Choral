@@ -25,6 +25,7 @@ const SAMPLE_LINES = {
 
 export function createProjectionThemeModal({ supabase, onThemeChanged }) {
   let themesByCategory = { songs: [], bible: [], media: [] };
+  let autoSaveTimer = null;
 
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
@@ -143,6 +144,7 @@ export function createProjectionThemeModal({ supabase, onThemeChanged }) {
   }
 
   function resetForm(form) {
+    clearTimeout(autoSaveTimer);
     form.dataset.editingId = '';
     form.querySelector('[data-el="form-heading"]').textContent = t('projectionTheme.newTheme');
     form.querySelector('[name="name"]').value = '';
@@ -162,6 +164,7 @@ export function createProjectionThemeModal({ supabase, onThemeChanged }) {
   }
 
   function populateFormForEdit(form, theme) {
+    clearTimeout(autoSaveTimer);
     form.dataset.editingId = theme.id;
     form.querySelector('[data-el="form-heading"]').textContent = t('projectionTheme.editingTheme', { name: theme.name });
     form.querySelector('[name="name"]').value = theme.name;
@@ -235,6 +238,51 @@ export function createProjectionThemeModal({ supabase, onThemeChanged }) {
     }
   }
 
+  // Every change while editing an EXISTING theme (size/color/
+  // background) saves itself, debounced -- previously, dragging the
+  // size slider only ever updated this form's own preview; the
+  // change only reached the database (and so only reached "Use"/the
+  // live projector) once the separate Save button was clicked, which
+  // was easy to miss and looked exactly like "the size doesn't do
+  // anything." Brand-new themes still need one explicit "+ Add Theme"
+  // click to actually exist in the first place.
+  function scheduleAutoSave(form) {
+    if (!form.dataset.editingId) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => autoSaveTheme(form), 400);
+  }
+
+  async function autoSaveTheme(form) {
+    const editingId = form.dataset.editingId;
+    if (!editingId) return;
+    const fd = new FormData(form);
+    const name = String(fd.get('name') || '').trim();
+    if (!name) return;
+    const backgroundType = String(fd.get('background_type'));
+    const fontScale = Number(fd.get('font_scale')) / 100;
+    const textColor = String(fd.get('text_color'));
+
+    let backgroundValue;
+    if (backgroundType === 'gradient') {
+      backgroundValue = `linear-gradient(135deg,${fd.get('gradient_from')},${fd.get('gradient_to')})`;
+    } else if (backgroundType === 'color') {
+      backgroundValue = String(fd.get('background_color'));
+    } else {
+      backgroundValue = form.dataset.previewImageUrl || null;
+    }
+
+    const payload = { name, text_color: textColor, font_scale: fontScale, background_type: backgroundType };
+    if (backgroundValue !== null) payload.background_value = backgroundValue;
+
+    await supabase.from('projection_themes').update(payload).eq('id', editingId);
+
+    // Update the in-memory copy directly instead of reloading/
+    // rebuilding the whole form -- a full rebuild mid-drag would yank
+    // focus out from under the slider the operator is still moving.
+    const theme = findTheme(editingId);
+    if (theme) Object.assign(theme, payload);
+  }
+
   function render() {
     categoriesEl.innerHTML = CATEGORIES.map(categorySectionHtml).join('');
 
@@ -284,23 +332,31 @@ export function createProjectionThemeModal({ supabase, onThemeChanged }) {
             form.querySelector('[data-el="font-scale-value"]').textContent = `${form.querySelector('[name="font_scale"]').value}%`;
           }
           renderFormPreview(form);
+          scheduleAutoSave(form);
         });
       });
 
       form.querySelector('[data-el="bg-type-select"]').addEventListener('change', () => {
         toggleBackgroundFields(form);
         renderFormPreview(form);
+        scheduleAutoSave(form);
       });
 
-      form.querySelector('[name="background_image"]').addEventListener('change', (e) => {
+      form.querySelector('[name="background_image"]').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         form.dataset.previewImageUrl = URL.createObjectURL(file);
         renderFormPreview(form);
+        // A new file needs the full upload flow (saveTheme), not the
+        // lightweight text-field autosave above -- discrete action, so
+        // a full refresh here doesn't cost anything (no slider drag to
+        // interrupt).
+        if (form.dataset.editingId) await saveTheme(form);
       });
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        clearTimeout(autoSaveTimer);
         await saveTheme(form);
       });
     });
