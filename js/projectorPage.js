@@ -120,16 +120,27 @@ function applyTextTheme(el, category) {
   el.style.color = theme ? theme.text_color : '';
 }
 
-// Deliberately NOT content-dependent — an earlier version auto-shrank
-// long lines/many-line stanzas, which meant the "same" size setting
-// looked different from one song's part to the next and had to be
-// re-adjusted constantly. The slider is the only thing that changes
-// this now: pick a size once and it stays that size for every verse
-// and every song part until changed again. A stanza too long for the
-// chosen size clips (see #lines' max-height/overflow in projector.html)
-// rather than silently shrinking to fit.
+// The slider/theme's chosen size is the CEILING, not a fixed value —
+// fitLinesToContainer() below shrinks it further, per slide, whenever
+// that slide's actual line count/length would otherwise overflow
+// #lines' box (most commonly a full 4-line song slide, songSlides.js's
+// cap). It never grows past what was chosen, only shrinks on demand,
+// so a short one-line verse still renders at the full chosen size.
 function fontSizeFor(scale) {
-  return `${4 * (scale || 1)}vw`;
+  return 4 * (scale || 1); // vw, before any shrink-to-fit adjustment
+}
+
+// Mirrors js/components/projectionThemeModal.js's own preview copy of
+// this same loop (scaled to that preview box's width instead of the
+// viewport) -- keep both in sync if this changes.
+function fitLinesToContainer() {
+  let vw = parseFloat(linesEl.style.fontSize);
+  let guard = 0;
+  while (linesEl.scrollHeight > linesEl.clientHeight && vw > 1 && guard < 40) {
+    vw *= 0.95;
+    linesEl.style.fontSize = `${vw}vw`;
+    guard += 1;
+  }
 }
 
 function stopVideo() {
@@ -179,12 +190,15 @@ function showText(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
   currentCategory = categoryForKind(payload.kind);
-  const fontSize = fontSizeFor(payload.fontScale);
-  linesEl.style.fontSize = fontSize;
+  linesEl.style.fontSize = `${fontSizeFor(payload.fontScale)}vw`;
   linesEl.innerHTML = payload.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
   referenceEl.textContent = payload.reference || '';
   applyTextTheme(linesEl, currentCategory);
   applyBackdrop();
+  // Always make the chosen size fit -- a full 4-line slide (or a long
+  // Bible verse) that would overflow at the requested size gets
+  // shrunk back down until it does, rather than clipping.
+  fitLinesToContainer();
 }
 
 function showImage(payload) {

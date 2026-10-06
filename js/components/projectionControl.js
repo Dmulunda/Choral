@@ -933,6 +933,21 @@ export function renderProjectionControl(container, { supabase }) {
   function broadcastTheme(category, theme) {
     activeThemes[category] = theme;
     channel.postMessage({ event: 'theme', category, theme });
+
+    // A theme now carries its own text size -- applying one (Use/Set
+    // default, or the initial default load) moves the shared
+    // font-scale slider to match, same as if the operator had dragged
+    // it there themselves. Only Bible/Song actually render through
+    // that slider (fontSizeFor()) today -- Media's countdown/
+    // presentation text isn't scale-driven yet.
+    const kindForCategory = category === 'songs' ? 'song' : category === 'bible' ? 'bible' : null;
+    if (kindForCategory && theme.font_scale) {
+      currentFontScale = theme.font_scale;
+      fontScaleEl.value = String(Math.round(theme.font_scale * 100));
+      fontScaleValueEl.textContent = `${fontScaleEl.value}%`;
+      if (currentPayload?.kind === kindForCategory) send(currentPayload);
+      else saveState();
+    }
   }
 
   const themeModal = createProjectionThemeModal({
