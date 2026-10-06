@@ -32,6 +32,7 @@ import { createHelpModal } from './components/helpModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
+import { createSupportRequestModal } from './components/supportRequestModal.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
@@ -724,6 +725,7 @@ function updateSidebarToolsSelect() {
   // Everyone can suggest an improvement — no role gate (sql/047
   // widened this on purpose; it used to be elevated roles only).
   options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
+  options.push({ value: 'support-request', label: t('sidebar.supportRequest') });
   if (getIsSiteAdmin()) options.push({ value: 'site-admin', label: t('sidebar.siteAdmin') });
   if (hasAccess) {
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
@@ -792,6 +794,8 @@ export function runSidebarTool(value) {
     createAttendanceManagerModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'app-suggestion') {
     createAppSuggestionModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'support-request') {
+    createSupportRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'site-admin') {
     siteAdminReturnTab = currentTabName;
     activateTab('site-admin');

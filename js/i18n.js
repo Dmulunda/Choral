@@ -452,6 +452,7 @@ const TRANSLATIONS = {
     'sidebar.guestCases': 'Guest Cases',
     'sidebar.appSuggestion': 'App Suggestion',
     'sidebar.siteAdmin': 'Site Admin',
+    'sidebar.supportRequest': 'Contact Support',
 
     'common.back': 'Back',
 
@@ -488,6 +489,18 @@ const TRANSLATIONS = {
     'supportRequest.topic.tech_problem': 'Tech Problem',
     'supportRequest.topic.question': 'Question',
     'supportRequest.topic.other': 'Other',
+    'supportRequest.title': 'Contact Support',
+    'supportRequest.intro': 'Report a tech problem or ask a question — our team will follow up.',
+    'supportRequest.topicLabel': 'Topic',
+    'supportRequest.placeholder': 'Describe the problem or your question…',
+    'supportRequest.submit': 'Send Request',
+    'supportRequest.emptyMessage': 'Write a message first.',
+    'supportRequest.submitFailed': 'Failed to send: {message}',
+    'supportRequest.submitted': 'Sent — thank you!',
+    'supportRequest.myRequests': 'My Requests',
+    'supportRequest.loadFailed': 'Failed to load: {message}',
+    'supportRequest.none': "You haven't submitted any requests yet.",
+    'supportRequest.replyLabel': 'Reply:',
 
     'attendance.title': 'Attendance Check-In',
     'attendance.serviceDate': 'Service date',
@@ -2465,6 +2478,7 @@ const TRANSLATIONS = {
     'sidebar.guestCases': 'Dossiers des invités',
     'sidebar.appSuggestion': "Suggestion pour l'appli",
     'sidebar.siteAdmin': 'Admin du site',
+    'sidebar.supportRequest': 'Contacter le support',
 
     'common.back': 'Retour',
 
@@ -2501,6 +2515,18 @@ const TRANSLATIONS = {
     'supportRequest.topic.tech_problem': 'Problème technique',
     'supportRequest.topic.question': 'Question',
     'supportRequest.topic.other': 'Autre',
+    'supportRequest.title': 'Contacter le support',
+    'supportRequest.intro': 'Signalez un problème technique ou posez une question — notre équipe vous répondra.',
+    'supportRequest.topicLabel': 'Sujet',
+    'supportRequest.placeholder': 'Décrivez le problème ou votre question…',
+    'supportRequest.submit': 'Envoyer la demande',
+    'supportRequest.emptyMessage': "Écrivez d'abord un message.",
+    'supportRequest.submitFailed': "Échec de l'envoi : {message}",
+    'supportRequest.submitted': 'Envoyé — merci !',
+    'supportRequest.myRequests': 'Mes demandes',
+    'supportRequest.loadFailed': 'Échec du chargement : {message}',
+    'supportRequest.none': "Vous n'avez pas encore soumis de demande.",
+    'supportRequest.replyLabel': 'Réponse :',
 
     'attendance.title': 'Enregistrement de présence',
     'attendance.serviceDate': 'Date du service',
