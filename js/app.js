@@ -143,9 +143,35 @@ export function invalidateTabCache(name) {
 // applyActiveDepartment()'s no-active-department branch).
 const TAB_STORAGE_KEY = 'choir-hub-last-tab';
 
+// Each department remembers its OWN last-viewed tab separately (e.g.
+// Media & Tech -> Projection, Ushers -> Dashboard) -- switching to a
+// different department and back restores exactly where you left off
+// in it, rather than always landing on that department's default
+// Dashboard the way the TAB_KIND_MAP "same kind of page" logic alone
+// would. Consulted with priority over that logic in
+// applyActiveDepartment() below. Persisted so this survives a reload
+// too, same as TAB_STORAGE_KEY.
+const DEPARTMENT_LAST_TAB_KEY = 'choir-hub-dept-last-tab';
+let departmentLastTab = {};
+try { departmentLastTab = JSON.parse(localStorage.getItem(DEPARTMENT_LAST_TAB_KEY)) || {}; } catch { departmentLastTab = {}; }
+
+// Tabs that belong to whichever department is currently active (as
+// opposed to global/standalone pages like Site Admin, or Home/Tools) --
+// only these get recorded per-department above.
+const DEPARTMENT_RELATIVE_TABS = new Set([
+  'dashboard', 'scheduling', 'songbook', 'voice-exercises', 'uniform', 'members',
+  'dept-dashboard', 'dept-scheduling', 'dept-projection', 'headcount-tally',
+]);
+
 function activateTab(name) {
   currentTabName = name;
   localStorage.setItem(TAB_STORAGE_KEY, name);
+
+  const active = getActiveDepartment();
+  if (active && DEPARTMENT_RELATIVE_TABS.has(name)) {
+    departmentLastTab[active.key] = name;
+    localStorage.setItem(DEPARTMENT_LAST_TAB_KEY, JSON.stringify(departmentLastTab));
+  }
 
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.tabPanel !== name);
@@ -206,6 +232,33 @@ function resolveLandingTab(previousTabName, active, isChoir) {
   if (target === 'uniform' && !(isChoir || active.key === 'ushers')) return null;
   if (target === 'dept-scheduling' && (active.key === 'finance' || active.key === 'church_program')) return null;
   return target;
+}
+
+// This department's own remembered last tab (see DEPARTMENT_RELATIVE_TABS
+// above), re-validated against the department being landed on RIGHT NOW --
+// a tab remembered from before a role/kind change (e.g. losing admin,
+// or the department no longer being Choir-kind) must never be trusted
+// blindly. Takes priority over resolveLandingTab()'s "same kind of
+// page" fallback (see call sites below) since it's more specific:
+// Media & Tech -> Projection should come straight back as Projection,
+// not get treated as "same kind as wherever you just were".
+function rememberedDeptTab(active, isChoir) {
+  const tab = departmentLastTab[active.key];
+  if (!tab) return null;
+  const noScheduling = active.key === 'finance' || active.key === 'church_program';
+  switch (tab) {
+    case 'dashboard': return isChoir ? tab : null;
+    case 'dept-dashboard': return !isChoir ? tab : null;
+    case 'scheduling': return isChoir && !noScheduling ? tab : null;
+    case 'dept-scheduling': return !isChoir && !noScheduling ? tab : null;
+    case 'songbook':
+    case 'voice-exercises':
+    case 'members': return isChoir ? tab : null;
+    case 'uniform': return (isChoir || active.key === 'ushers') ? tab : null;
+    case 'dept-projection': return active.key === 'media_tech' ? tab : null;
+    case 'headcount-tally': return HEADCOUNT_DEPARTMENT_KEYS.includes(active.key) ? tab : null;
+    default: return null;
+  }
 }
 
 // Budget isn't a choir/other pair like TAB_KIND_MAP's other entries —
@@ -399,7 +452,7 @@ function applyActiveDepartment() {
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     loadedTabs.delete('uniform');
-    activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, true) || 'dashboard')));
+    activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (rememberedDeptTab(active, true) || resolveLandingTab(previousTabName, active, true) || 'dashboard')));
   } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
@@ -412,7 +465,7 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-scheduling');
     loadedTabs.delete('dept-projection');
     loadedTabs.delete('headcount-tally');
-    activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, false) || 'dept-dashboard')));
+    activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (rememberedDeptTab(active, false) || resolveLandingTab(previousTabName, active, false) || 'dept-dashboard')));
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
     // 'custom') is handled above; kept as a fallback in case a future
