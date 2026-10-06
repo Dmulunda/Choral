@@ -2040,6 +2040,7 @@ const TRANSLATIONS = {
     'memberCreator.success': 'Account created for {name}. Share this password with them: {password}',
 
     'nav.home': 'Home',
+    'nav.quickAccess': 'Quick Access',
     'nav.tools': 'Tools',
     'directory.title': 'User Directory',
     'directory.intro': 'Every user across every department, in one place.',
@@ -4340,6 +4341,7 @@ const TRANSLATIONS = {
     'memberCreator.success': 'Compte créé pour {name}. Partagez ce mot de passe avec cette personne : {password}',
 
     'nav.home': 'Accueil',
+    'nav.quickAccess': 'Accès rapide',
     'nav.tools': 'Outils',
     'directory.title': 'Annuaire des utilisateurs',
     'directory.intro': 'Tous les utilisateurs, tous départements confondus, en un seul endroit.',
