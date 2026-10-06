@@ -30,6 +30,7 @@ import { createProjectionChannel } from '../utils/projection.js';
 import { extractYouTubeId } from '../utils/youtube.js';
 import { splitLyricsIntoSlides } from '../utils/songSlides.js';
 import { createSongCreatorModal } from './songCreatorModal.js';
+import { createProjectionThemeModal } from './projectionThemeModal.js';
 import * as localMediaStore from '../utils/localMediaStore.js';
 
 // Lazy-loaded only when the Presentation panel's PDF import is
@@ -147,6 +148,9 @@ export function renderProjectionControl(container, { supabase }) {
           </button>
           <button type="button" data-action="setup-local-folder" data-el="local-folder-btn" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
             ${t('projection.setupLocalFolder')}
+          </button>
+          <button type="button" data-action="open-themes" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
+            ${t('projection.themes')}
           </button>
         </div>
       </div>
@@ -579,10 +583,14 @@ export function renderProjectionControl(container, { supabase }) {
   const channel = createProjectionChannel();
   channel.onmessage = (e) => {
     if (e.data?.event !== 'hello') return;
-    // The projector just (re)connected — resend both what's live and
-    // the current backdrop, since it has no other way to know either.
+    // The projector just (re)connected — resend what's live, the
+    // current backdrop, and every category's active theme, since it
+    // has no other way to know any of them.
     channel.postMessage({ event: 'show', payload: currentPayload || { kind: 'blank' } });
     channel.postMessage({ event: 'backdrop', blob: currentBackdropBlob });
+    Object.entries(activeThemes).forEach(([category, theme]) => {
+      if (theme) channel.postMessage({ event: 'theme', category, theme });
+    });
   };
 
   container.querySelector('[data-action="open-screen"]').addEventListener('click', async () => {
@@ -913,6 +921,29 @@ export function renderProjectionControl(container, { supabase }) {
     },
   });
   container.querySelector('[data-action="new-song"]').addEventListener('click', () => songCreatorModal.open());
+
+  // --- Themes ---
+  // Cloud-stored (unlike local-only Image/Video/Presentation) -- tiny
+  // rows, same for every operator/computer on this tenant. "Use" sets
+  // the active theme for the rest of THIS session (broadcast right
+  // away); "Set as default" additionally persists it so future
+  // sessions start with it already active.
+  let activeThemes = { songs: null, bible: null, media: null };
+
+  function broadcastTheme(category, theme) {
+    activeThemes[category] = theme;
+    channel.postMessage({ event: 'theme', category, theme });
+  }
+
+  const themeModal = createProjectionThemeModal({
+    supabase,
+    onThemeChanged: (category, theme) => broadcastTheme(category, theme),
+  });
+  container.querySelector('[data-action="open-themes"]').addEventListener('click', () => themeModal.open());
+
+  themeModal.getDefaultThemes().then((defaults) => {
+    Object.entries(defaults).forEach(([category, theme]) => broadcastTheme(category, theme));
+  });
 
   async function selectSong(songId, title) {
     let lyrics = null;
@@ -1498,6 +1529,7 @@ export function renderProjectionControl(container, { supabase }) {
       if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
       if (currentBackdropObjectUrl) URL.revokeObjectURL(currentBackdropObjectUrl);
       songCreatorModal.root.remove(); // appended to document.body, independent of `container`
+      themeModal.root.remove();
     },
     // "Live" for the leave-guard means either actual content is on
     // screen, or the projector window itself is still open — an

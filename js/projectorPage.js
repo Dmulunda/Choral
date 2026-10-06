@@ -87,6 +87,39 @@ let currentBackdropObjectUrl = null; // same idea, for the background
 let countdownIntervalId = null;
 let currentPresentationObjectUrl = null;
 
+// Projection themes (js/components/projectionThemeModal.js) -- one
+// per category (songs/bible/media), kept here as a small cache the
+// control panel pushes over via its own 'theme' broadcast (same idea
+// as the backdrop below: persists across many shows until explicitly
+// changed, not part of each individual 'show' payload). An explicit
+// backdrop image (set via the toolbar) always wins over a theme's own
+// background -- that's a deliberate per-service choice the operator
+// made on top of whatever the default theme is.
+const themes = { songs: null, bible: null, media: null };
+let currentCategory = null;
+
+function categoryForKind(kind) {
+  if (kind === 'song') return 'songs';
+  if (kind === 'bible') return 'bible';
+  return 'media'; // image, video, presentation, countdown
+}
+
+function applyBackdrop() {
+  if (currentBackdropObjectUrl) {
+    backdropEl.style.background = '';
+    backdropEl.style.backgroundImage = `url("${currentBackdropObjectUrl}")`;
+    return;
+  }
+  backdropEl.style.backgroundImage = '';
+  const theme = themes[currentCategory];
+  backdropEl.style.background = theme ? theme.background_value : '';
+}
+
+function applyTextTheme(el, category) {
+  const theme = themes[category];
+  el.style.color = theme ? theme.text_color : '';
+}
+
 // Deliberately NOT content-dependent — an earlier version auto-shrank
 // long lines/many-line stanzas, which meant the "same" size setting
 // looked different from one song's part to the next and had to be
@@ -139,24 +172,29 @@ function hideAllContent() {
 function setBackdrop(blob) {
   if (currentBackdropObjectUrl) { URL.revokeObjectURL(currentBackdropObjectUrl); currentBackdropObjectUrl = null; }
   currentBackdropObjectUrl = blob ? URL.createObjectURL(blob) : null;
-  backdropEl.style.backgroundImage = currentBackdropObjectUrl ? `url("${currentBackdropObjectUrl}")` : '';
+  applyBackdrop();
 }
 
 function showText(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
+  currentCategory = categoryForKind(payload.kind);
   const fontSize = fontSizeFor(payload.fontScale);
   linesEl.style.fontSize = fontSize;
   linesEl.innerHTML = payload.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
   referenceEl.textContent = payload.reference || '';
+  applyTextTheme(linesEl, currentCategory);
+  applyBackdrop();
 }
 
 function showImage(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
+  currentCategory = 'media';
   currentImageObjectUrl = URL.createObjectURL(payload.blob);
   imageEl.src = currentImageObjectUrl;
   imageEl.style.display = 'block';
+  applyBackdrop();
 }
 
 async function handleVideo(payload) {
@@ -186,10 +224,12 @@ async function handleVideo(payload) {
   // action === 'play' — load fresh.
   hideAllContent();
   idleEl.style.display = 'none';
+  currentCategory = 'media';
   videoContainerEl.style.display = 'block';
   videoContainerEl.innerHTML = '';
   youtubePlayer = null;
   fileVideoEl = null;
+  applyBackdrop();
 
   if (payload.source === 'youtube') {
     currentVideoKind = 'youtube';
@@ -222,8 +262,12 @@ async function handleVideo(payload) {
 function showCountdown(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
+  currentCategory = 'media';
   countdownContainerEl.style.display = 'block';
   countdownTextEl.textContent = payload.text || '';
+  applyTextTheme(countdownTextEl, 'media');
+  applyTextTheme(countdownClockEl, 'media');
+  applyBackdrop();
 
   const endsAt = new Date(payload.endsAt).getTime();
   function tick() {
@@ -246,14 +290,20 @@ function showCountdown(payload) {
 function showPresentation(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
+  currentCategory = 'media';
   presentationSlideEl.style.display = 'flex';
+  applyBackdrop();
 
   if (payload.backgroundBlob) {
     currentPresentationObjectUrl = URL.createObjectURL(payload.backgroundBlob);
     presentationSlideEl.innerHTML = `<img src="${currentPresentationObjectUrl}" alt="" />`;
   } else {
+    // The slide's own chosen background is a deliberate per-slide
+    // authoring choice -- it wins over the category's theme, same as
+    // an explicit backdrop image wins over a theme's background.
     presentationSlideEl.style.backgroundColor = payload.backgroundColor || '#000';
     presentationSlideEl.innerHTML = payload.text ? `<p>${escapeHtml(payload.text)}</p>` : '';
+    applyTextTheme(presentationSlideEl, 'media');
   }
 }
 
@@ -279,6 +329,21 @@ channel.onmessage = (e) => {
   if (!data) return;
   if (data.event === 'show') show(data.payload);
   else if (data.event === 'backdrop') setBackdrop(data.blob);
+  else if (data.event === 'theme') {
+    themes[data.category] = data.theme;
+    // Take effect immediately if that category is what's currently on
+    // screen -- an operator changing the active theme mid-service
+    // shouldn't need to re-show the same content for it to apply.
+    if (data.category === currentCategory) {
+      applyBackdrop();
+      if (currentCategory === 'songs' || currentCategory === 'bible') applyTextTheme(linesEl, currentCategory);
+      else {
+        applyTextTheme(countdownTextEl, 'media');
+        applyTextTheme(countdownClockEl, 'media');
+        if (!presentationSlideEl.querySelector('img')) applyTextTheme(presentationSlideEl, 'media');
+      }
+    }
+  }
 };
 // Ask whoever's operating the panel to resend whatever's currently
 // live (and the current backdrop) — this page may have just opened,
