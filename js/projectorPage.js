@@ -273,6 +273,32 @@ async function handleVideo(payload) {
 // reconnect handshake resends the same payload, same endsAt, and this
 // just recomputes the remaining time from it rather than needing any
 // special-cased recovery).
+// The Media theme's font_scale sizes the countdown too, same "pick a
+// size, it stays that size" idea as Bible/Song's slider -- clamp()'s
+// three numbers (min/preferred/max) all scale together so a big
+// font_scale genuinely reads bigger instead of hitting today's fixed
+// ceiling. Still shrinks back down (same "always make it fit"
+// principle as fitLinesToContainer) if an extreme scale would
+// otherwise push the clock/text past the edges of the screen -- there's
+// no bounded parent box here (unlike #lines' max-height), so this
+// checks against the actual viewport instead.
+function applyCountdownSizeTheme() {
+  const scale = themes.media?.font_scale || 1;
+  let factor = 1;
+  function apply() {
+    const f = scale * factor;
+    countdownTextEl.style.fontSize = `clamp(${1.2 * f}rem, ${4 * f}vw, ${3 * f}rem)`;
+    countdownClockEl.style.fontSize = `clamp(${3 * f}rem, ${14 * f}vw, ${10 * f}rem)`;
+  }
+  apply();
+  let guard = 0;
+  while ((countdownContainerEl.scrollWidth > window.innerWidth * 0.92 || countdownContainerEl.scrollHeight > window.innerHeight * 0.85) && factor > 0.1 && guard < 40) {
+    factor *= 0.95;
+    apply();
+    guard += 1;
+  }
+}
+
 function showCountdown(payload) {
   hideAllContent();
   idleEl.style.display = 'none';
@@ -289,10 +315,14 @@ function showCountdown(payload) {
     const totalSeconds = Math.ceil(remainingMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
+    // Real digits in place (not "00:00") before the fit check below
+    // ever runs, so it measures the clock's actual width, not an
+    // empty/placeholder one.
     countdownClockEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     if (remainingMs <= 0) { clearInterval(countdownIntervalId); countdownIntervalId = null; }
   }
   tick();
+  applyCountdownSizeTheme();
   countdownIntervalId = setInterval(tick, 250);
 }
 
@@ -354,6 +384,7 @@ channel.onmessage = (e) => {
       else {
         applyTextTheme(countdownTextEl, 'media');
         applyTextTheme(countdownClockEl, 'media');
+        if (countdownContainerEl.style.display === 'block') applyCountdownSizeTheme();
         if (!presentationSlideEl.querySelector('img')) applyTextTheme(presentationSlideEl, 'media');
       }
     }
