@@ -29,6 +29,31 @@ import { t } from '../i18n.js';
 import { createProjectionChannel } from '../utils/projection.js';
 import { extractYouTubeId } from '../utils/youtube.js';
 
+// Persists the OPERATOR panel's own idea of "what's going on" across a
+// reload/re-mount (this component is torn down and rebuilt from
+// scratch on every department switch, let alone a real page refresh --
+// see js/deptProjection.js). The actual projector window is a separate
+// window/BroadcastChannel listener and is completely unaffected by any
+// of this -- it just keeps showing whatever it last received. This is
+// purely about the operator's own panel not silently forgetting which
+// tab/verse/song/font-scale/schedule-item was active, which otherwise
+// looks exactly like "everything reset" even though the audience saw
+// no interruption at all.
+//
+// Only DB-restorable descriptors are stored (translation/book/chapter/
+// verse ids, songId/slideIndex) -- never a Blob (can't be serialized),
+// which is why a local image/video can't be restored the same way; see
+// the `kind === 'image' | 'video'` branch below.
+const PROJECTION_STATE_KEY = 'choir-hub-projection-state';
+
+function saveProjectionState(state) {
+  try { localStorage.setItem(PROJECTION_STATE_KEY, JSON.stringify(state)); } catch { /* storage full/disabled -- just won't restore next time */ }
+}
+
+function readProjectionState() {
+  try { return JSON.parse(localStorage.getItem(PROJECTION_STATE_KEY) || 'null'); } catch { return null; }
+}
+
 export function renderProjectionControl(container, { supabase }) {
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
@@ -271,6 +296,27 @@ export function renderProjectionControl(container, { supabase }) {
   let projectorWindowRef = null;
   let liveScheduleItemId = null; // which schedule item (if any) is currently live — for the LIVE/NEXT badges
 
+  let currentMode = 'bible';
+  // What's actually live, as a restorable descriptor (ids, not the
+  // rendered text) -- kept in sync alongside currentPayload at every
+  // real send() call site, and written to localStorage so a reload
+  // can rebuild the operator's own view of reality. See
+  // saveProjectionState()/readProjectionState() above.
+  let lastLiveDescriptor = null;
+
+  function saveState() {
+    saveProjectionState({ mode: currentMode, fontScale: currentFontScale, live: lastLiveDescriptor, liveScheduleItemId });
+  }
+
+  // Updates the operator's own "Now Showing" box from a restored
+  // descriptor WITHOUT broadcasting anything -- the projector window
+  // already has whatever it had before this panel reloaded; this is
+  // only about this panel catching back up to that reality.
+  function restoreNowShowing(payload) {
+    currentPayload = payload;
+    renderNowShowing(payload);
+  }
+
   // BroadcastChannel, not Supabase Realtime — see js/utils/projection.js.
   // Works only between windows on this same computer/browser, which is
   // exactly the real setup (laptop -> HDMI -> projector), and means
@@ -314,12 +360,14 @@ export function renderProjectionControl(container, { supabase }) {
     videoLoaded = false;
     toggleVideoBtn.disabled = true;
     toggleVideoBtn.textContent = t('projection.pause');
+    lastLiveDescriptor = { kind: 'blank' };
     send({ kind: 'blank' });
   });
 
-  modeTabs.forEach((tab) => tab.addEventListener('click', () => setMode(tab.dataset.modeTab)));
+  modeTabs.forEach((tab) => tab.addEventListener('click', () => { setMode(tab.dataset.modeTab); saveState(); }));
 
   function setMode(mode) {
+    currentMode = mode;
     Object.entries(panels).forEach(([key, el]) => el.classList.toggle('hidden', key !== mode));
     modeTabs.forEach((tab) => {
       const active = tab.dataset.modeTab === mode;
@@ -343,6 +391,7 @@ export function renderProjectionControl(container, { supabase }) {
       liveScheduleItemId = null;
       renderScheduleList();
     }
+    saveState();
   }
 
   // "Now Showing" — a preview of the actual live content right in the
@@ -389,7 +438,8 @@ export function renderProjectionControl(container, { supabase }) {
   fontScaleEl.addEventListener('input', () => {
     currentFontScale = Number(fontScaleEl.value) / 100;
     fontScaleValueEl.textContent = `${fontScaleEl.value}%`;
-    if (currentPayload?.kind === 'bible' || currentPayload?.kind === 'song') send(currentPayload);
+    if (currentPayload?.kind === 'bible' || currentPayload?.kind === 'song') send(currentPayload); // also saves state
+    else saveState();
   });
 
   // A local file, picked straight from this computer — never uploaded
@@ -533,6 +583,7 @@ export function renderProjectionControl(container, { supabase }) {
     renderVerseOptions();
     verseSelectEl.value = String(v.verse);
     const bookLabel = bookSelectEl.options[bookSelectEl.selectedIndex]?.textContent || '';
+    lastLiveDescriptor = { kind: 'bible', translation: translationSelectEl.value, bookNumber: Number(bookSelectEl.value), chapter: v.chapter, verse: v.verse };
     send({ kind: 'bible', reference: `${bookLabel} ${v.chapter}:${v.verse}`, lines: [v.text] });
   }
 
@@ -649,6 +700,7 @@ export function renderProjectionControl(container, { supabase }) {
     } else if (stagedKind === 'song') {
       projectSlideAt(stagedSlideIndex);
     } else if (stagedKind === 'image') {
+      lastLiveDescriptor = { kind: 'image' };
       send({ kind: 'image', blob: stagedPayload.blob });
     } else if (stagedKind === 'video') {
       videoLoaded = true;
@@ -656,6 +708,7 @@ export function renderProjectionControl(container, { supabase }) {
       projectVideoBtn.disabled = false;
       toggleVideoBtn.disabled = false;
       toggleVideoBtn.textContent = t('projection.pause');
+      lastLiveDescriptor = { kind: 'video' };
       send(buildVideoPlayPayload());
     }
 
@@ -672,6 +725,7 @@ export function renderProjectionControl(container, { supabase }) {
     prevSlideBtn.disabled = idx === 0;
     nextSlideBtn.disabled = idx === songSlides.length - 1;
     slidePositionEl.textContent = t('projection.slideOf', { current: idx + 1, total: songSlides.length });
+    lastLiveDescriptor = { kind: 'song', songId: selectedSongId, songTitle, slideIndex: idx };
     send({ kind: 'song', reference: songTitle, lines: songSlides[idx] });
   }
 
@@ -889,6 +943,7 @@ export function renderProjectionControl(container, { supabase }) {
     // LIVE/NEXT badges.
     liveScheduleItemId = item.id;
     renderScheduleList();
+    saveState(); // send() already saved once, but with liveScheduleItemId still null at that point
   }
 
   scheduleVerseBtn.addEventListener('click', async () => {
@@ -909,8 +964,59 @@ export function renderProjectionControl(container, { supabase }) {
     await addToSchedule('song', songTitle, { songId: selectedSongId });
   });
 
-  loadBooks().then(loadBook);
-  loadSongList();
+  // Restore the panel's own view of reality after a reload/re-mount --
+  // see PROJECTION_STATE_KEY's header comment. The projector window
+  // itself needs nothing here; this never broadcasts.
+  const savedState = readProjectionState();
+  if (savedState?.mode) setMode(savedState.mode);
+  if (savedState?.fontScale) {
+    currentFontScale = savedState.fontScale;
+    fontScaleEl.value = String(Math.round(savedState.fontScale * 100));
+    fontScaleValueEl.textContent = `${fontScaleEl.value}%`;
+  }
+  const restoreLive = savedState?.live;
+  lastLiveDescriptor = restoreLive || null;
+
+  loadBooks().then(async () => {
+    if (restoreLive?.kind !== 'bible') { await loadBook(); return; }
+    translationSelectEl.value = restoreLive.translation;
+    renderBookOptions();
+    bookSelectEl.value = String(restoreLive.bookNumber);
+    await loadBook();
+    const idx = bookVerses.findIndex((v) => v.chapter === restoreLive.chapter && v.verse === restoreLive.verse);
+    if (idx === -1) return;
+    verseIndex = idx;
+    chapterSelectEl.value = String(restoreLive.chapter);
+    renderVerseOptions();
+    verseSelectEl.value = String(restoreLive.verse);
+    prevVerseBtn.disabled = idx === 0;
+    nextVerseBtn.disabled = idx === bookVerses.length - 1;
+    const bookLabel = bookSelectEl.options[bookSelectEl.selectedIndex]?.textContent || '';
+    restoreNowShowing({ kind: 'bible', reference: `${bookLabel} ${restoreLive.chapter}:${restoreLive.verse}`, lines: [bookVerses[idx].text], fontScale: currentFontScale });
+  });
+
+  loadSongList().then(async () => {
+    if (restoreLive?.kind !== 'song') return;
+    await selectSong(restoreLive.songId, restoreLive.songTitle);
+    const idx = restoreLive.slideIndex;
+    if (idx < 0 || idx >= songSlides.length) return;
+    slideIndex = idx;
+    renderSlideGrid();
+    prevSlideBtn.disabled = idx === 0;
+    nextSlideBtn.disabled = idx === songSlides.length - 1;
+    slidePositionEl.textContent = t('projection.slideOf', { current: idx + 1, total: songSlides.length });
+    restoreNowShowing({ kind: 'song', reference: songTitle, lines: songSlides[idx], fontScale: currentFontScale });
+  });
+
+  // A local image/video Blob only ever lived in the previous mount's
+  // JS heap -- there's nothing to read back after a reload. Say so,
+  // rather than silently showing "nothing live" while something
+  // might still actually be on the real screen.
+  if (restoreLive?.kind === 'image' || restoreLive?.kind === 'video') {
+    nowShowingEl.innerHTML = `<p class="text-amber-300 text-sm">${t('projection.localMediaLostOnReload')}</p>`;
+  }
+
+  liveScheduleItemId = savedState?.liveScheduleItemId ?? null;
   loadSchedule(scheduleDateEl.value);
 
   return {
