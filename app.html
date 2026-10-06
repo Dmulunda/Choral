@@ -359,12 +359,16 @@
          sidebar's own nav buttons) and Dashboard depends on whichever
          department is currently active. -->
     <div id="quick-access-dialog" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 max-h-[85vh] flex flex-col">
         <div class="flex items-center justify-between mb-1">
           <h2 class="text-xl font-bold text-slate-800" data-i18n="nav.quickAccess">Quick Access</h2>
           <button type="button" data-action="close-quick-access" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
         </div>
-        <div class="space-y-1 mt-4" data-el="quick-access-list"></div>
+        <!-- overflow-y-auto: as many as ~12 items can appear here
+             (every department-leadership/finance/department-active
+             item at once) -- on a short phone screen that can exceed
+             85vh, so this scrolls instead of clipping the rest. -->
+        <div class="space-y-1 mt-4 overflow-y-auto" data-el="quick-access-list"></div>
       </div>
     </div>
 
@@ -415,7 +419,15 @@
         </div>
       </div>
 
-      <nav class="flex-1 px-3 py-4 space-y-1">
+      <!-- overflow-y-auto: a Super Admin/Pastor Admin approved into
+           every department (or just a tenant with many departments)
+           can have more nav rows here than fit one screen -- without
+           this, the extra rows had no scrollbar and were simply
+           unreachable below the fold. Scoped to this <nav> alone (not
+           the whole <aside>) so the header/switchers above and the
+           tools select/sign-out footer below always stay pinned and
+           visible, exactly as a native app's sidebar would. -->
+      <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
         <!-- Always-available for Super Admin/Super Viewer/Pastor Admin/
              Church Secretary, independent of whichever department is
              active — a cross-department view, not a per-department one. -->
