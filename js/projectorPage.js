@@ -16,6 +16,10 @@ const imageEl = document.getElementById('image-slide');
 const videoContainerEl = document.getElementById('video-container');
 const idleEl = document.getElementById('idle');
 const exitFullscreenBtn = document.getElementById('exit-fullscreen-btn');
+const countdownContainerEl = document.getElementById('countdown-container');
+const countdownTextEl = document.getElementById('countdown-text');
+const countdownClockEl = document.getElementById('countdown-clock');
+const presentationSlideEl = document.getElementById('presentation-slide');
 
 // Enters fullscreen immediately on load — no "click to enter" prompt,
 // since that's one more distraction/manual step during a live
@@ -80,6 +84,8 @@ let currentVideoKind = null; // 'youtube' | 'file' | null — which of the two i
 let currentVideoObjectUrl = null; // revoked whenever replaced, so a long service doesn't leak memory
 let currentImageObjectUrl = null; // same idea, for image slides
 let currentBackdropObjectUrl = null; // same idea, for the background
+let countdownIntervalId = null;
+let currentPresentationObjectUrl = null;
 
 // Deliberately NOT content-dependent — an earlier version auto-shrank
 // long lines/many-line stanzas, which meant the "same" size setting
@@ -107,6 +113,11 @@ function stopVideo() {
   videoContainerEl.innerHTML = '';
 }
 
+function stopCountdown() {
+  if (countdownIntervalId) { clearInterval(countdownIntervalId); countdownIntervalId = null; }
+  countdownContainerEl.style.display = 'none';
+}
+
 function hideAllContent() {
   linesEl.innerHTML = '';
   referenceEl.textContent = '';
@@ -115,6 +126,11 @@ function hideAllContent() {
   imageEl.src = '';
   videoContainerEl.style.display = 'none';
   stopVideo();
+  stopCountdown();
+  presentationSlideEl.style.display = 'none';
+  presentationSlideEl.style.backgroundColor = '';
+  presentationSlideEl.innerHTML = '';
+  if (currentPresentationObjectUrl) { URL.revokeObjectURL(currentPresentationObjectUrl); currentPresentationObjectUrl = null; }
 }
 
 // The background persists across many different verses/songs until
@@ -197,6 +213,50 @@ async function handleVideo(payload) {
   }
 }
 
+// endsAt is an absolute ISO timestamp, not a relative "seconds left"
+// counter -- specifically so this is naturally correct even if THIS
+// window reloads mid-countdown (the control panel's own `hello`
+// reconnect handshake resends the same payload, same endsAt, and this
+// just recomputes the remaining time from it rather than needing any
+// special-cased recovery).
+function showCountdown(payload) {
+  hideAllContent();
+  idleEl.style.display = 'none';
+  countdownContainerEl.style.display = 'block';
+  countdownTextEl.textContent = payload.text || '';
+
+  const endsAt = new Date(payload.endsAt).getTime();
+  function tick() {
+    const remainingMs = Math.max(0, endsAt - Date.now());
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    countdownClockEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    if (remainingMs <= 0) { clearInterval(countdownIntervalId); countdownIntervalId = null; }
+  }
+  tick();
+  countdownIntervalId = setInterval(tick, 250);
+}
+
+// A hand-authored or PDF-imported slide (js/components/projectionControl.js's
+// Presentation kind) -- either a background image (PDF-page import,
+// or a picture chosen for the slide) or plain text on a background
+// color, same local-Blob-over-BroadcastChannel pattern as the Image
+// kind already uses.
+function showPresentation(payload) {
+  hideAllContent();
+  idleEl.style.display = 'none';
+  presentationSlideEl.style.display = 'flex';
+
+  if (payload.backgroundBlob) {
+    currentPresentationObjectUrl = URL.createObjectURL(payload.backgroundBlob);
+    presentationSlideEl.innerHTML = `<img src="${currentPresentationObjectUrl}" alt="" />`;
+  } else {
+    presentationSlideEl.style.backgroundColor = payload.backgroundColor || '#000';
+    presentationSlideEl.innerHTML = payload.text ? `<p>${escapeHtml(payload.text)}</p>` : '';
+  }
+}
+
 function show(payload) {
   if (!payload || payload.kind === 'blank') {
     hideAllContent();
@@ -207,6 +267,8 @@ function show(payload) {
   if (payload.kind === 'bible' || payload.kind === 'song') showText(payload);
   else if (payload.kind === 'image') showImage(payload);
   else if (payload.kind === 'video') handleVideo(payload);
+  else if (payload.kind === 'countdown') showCountdown(payload);
+  else if (payload.kind === 'presentation') showPresentation(payload);
 }
 
 show(null);
