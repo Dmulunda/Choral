@@ -4,9 +4,15 @@
 // running whatever JS it already loaded until something tells it to
 // reload. version.txt is a plain-text marker (a timestamp) that gets
 // updated on every push to main; this polls it periodically and
-// whenever the tab regains focus, and reloads — after a brief
-// heads-up, not silently — the moment it changes from what this tab
-// started with.
+// reloads — after a brief heads-up, not silently — the moment it
+// changes from what this tab started with.
+//
+// Deliberately NOT also checked on visibilitychange (an earlier
+// version re-checked the instant the tab regained focus) — switching
+// away to another tab/app and back must never itself trigger a
+// reload, even if a deploy happened while you were gone; the regular
+// interval still catches it, just not timed to the exact moment you
+// return mid-task.
 import { t } from './i18n.js';
 import { isProjectionPanelMounted } from './utils/projectionGuard.js';
 
@@ -21,9 +27,6 @@ export async function initVersionCheck() {
   if (loadedVersion === null) return; // couldn't determine a baseline — don't false-positive later
 
   setInterval(checkForUpdate, POLL_INTERVAL_MS);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkForUpdate();
-  });
 }
 
 async function fetchVersion() {
@@ -41,8 +44,8 @@ async function checkForUpdate() {
   // Never yank the Projection page out from under whoever's running
   // it — setup and staged content live only in that tab's memory, and
   // a forced reload loses all of it. Just keep checking; the moment
-  // they leave, the next poll (at most POLL_INTERVAL_MS later, or
-  // immediately on next tab focus) picks the update back up.
+  // they leave, the next poll (at most POLL_INTERVAL_MS later) picks
+  // the update back up.
   if (isProjectionPanelMounted()) return;
   const current = await fetchVersion();
   if (current === null || current === loadedVersion) return;
