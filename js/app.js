@@ -186,6 +186,16 @@ const TAB_KIND_MAP = {
   uniform: { choir: 'uniform', other: 'uniform' },
 };
 
+// Pages that render the same thing no matter which department is
+// active (their lazyTabs entry takes no department argument) -- a
+// reload (e.g. versionCheck.js's auto-update reload) that lands here
+// via applyActiveDepartment() must restore the exact same tab, not
+// fall through to resolveLandingTab()/the Home default the way a
+// department-relative tab correctly does. Before this existed, being
+// on Site Admin (or any of these) when a reload fired silently
+// bounced you back to Home/Dashboard.
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin']);
+
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
   if (!mapping) return null;
@@ -346,7 +356,7 @@ function applyActiveDepartment() {
       // department (GLOBAL_ONLY_TARGETS) -- any other stored value here
       // is stale (e.g. a department-scoped tab from before switching to
       // Home) and correctly falls back to the default.
-      activateTab(previousTabName === 'tools' ? 'tools' : 'super-home');
+      activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'tools' ? 'tools' : 'super-home'));
       return;
     }
 
@@ -389,7 +399,7 @@ function applyActiveDepartment() {
   if (isChoir) {
     comingSoonPanelEl.classList.add('hidden');
     loadedTabs.delete('uniform');
-    activateTab(previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, true) || 'dashboard'));
+    activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, true) || 'dashboard')));
   } else if (isDeptDashboardKind) {
     comingSoonPanelEl.classList.add('hidden');
     deptDashboardNameEl.textContent = departmentLabel(active.key);
@@ -402,7 +412,7 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-scheduling');
     loadedTabs.delete('dept-projection');
     loadedTabs.delete('headcount-tally');
-    activateTab(previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, false) || 'dept-dashboard'));
+    activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (resolveLandingTab(previousTabName, active, false) || 'dept-dashboard')));
   } else {
     // Unreachable today — every department kind ('choir', 'lightweight',
     // 'custom') is handled above; kept as a fallback in case a future
