@@ -1283,6 +1283,7 @@ const TRANSLATIONS = {
     'peopleImport.allDone': 'Import finished. Temporary password used: {password}',
 
     'projection.title': 'Projection',
+    'projection.localMediaLostOnReload': 'A local image/video was showing before this page reloaded — reselect it here to take back control (the actual screen is unaffected).',
     'projection.openScreen': 'Open Projector Screen',
     'projection.blankScreen': 'Blank Screen',
     'projection.bibleTab': 'Bible',
@@ -3337,6 +3338,7 @@ const TRANSLATIONS = {
     'peopleImport.allDone': 'Import terminé. Mot de passe temporaire utilisé : {password}',
 
     'projection.title': 'Projection',
+    'projection.localMediaLostOnReload': 'Une image ou vidéo locale était affichée avant le rechargement de cette page — ressélectionnez-la ici pour reprendre le contrôle (l\'écran lui-même n\'est pas affecté).',
     'projection.openScreen': 'Ouvrir l’écran de projection',
     'projection.blankScreen': 'Écran noir',
     'projection.bibleTab': 'Bible',
