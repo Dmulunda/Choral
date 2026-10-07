@@ -5,6 +5,19 @@
 // fetch+upsert the whole ~31,000-verse Bible at once (edge function
 // wall-clock limits, and it gives the admin a progress bar).
 //
+// Fetches ONE BOOK AT A TIME (api.getbible.net/v2/{translation}/{bookNr}.json)
+// -- NOT the old approach of fetching the whole-Bible JSON
+// (api.getbible.net/v2/{translation}.json, every book, ~31,000 verses)
+// on every single chunk call and discarding everything outside the
+// requested range. That was the real reason large books kept coming
+// back incomplete (confirmed live: Psalms stopped partway through on
+// both SAAS and Main) -- shrinking the book-range chunk size never
+// touched the actual dominant cost, which was re-downloading the
+// entire Bible's JSON on every one of the ~22 chunk calls regardless
+// of how small each chunk's own book range was. Fetching per-book
+// means each call only ever downloads the handful of books it
+// actually needs.
+//
 // Deploy: Supabase Dashboard -> Edge Functions -> deploy this file as
 // "import-bible" (or `supabase functions deploy import-bible`).
 // SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are provided automatically.
@@ -15,10 +28,11 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// translation (our column value) -> getbible.net abbreviation.
-const SOURCE_URLS = {
-  web: 'https://api.getbible.net/v2/web.json',
-  lsg: 'https://api.getbible.net/v2/ls1910.json',
+// translation (our column value) -> getbible.net abbreviation. Used to
+// build a per-book URL: https://api.getbible.net/v2/{abbr}/{bookNr}.json
+const SOURCE_ABBR = {
+  web: 'web',
+  lsg: 'ls1910',
 };
 
 const UPSERT_BATCH_SIZE = 500;
@@ -56,24 +70,22 @@ Deno.serve(async (req) => {
     }
 
     const { translation, from_book, to_book } = await req.json();
-    const sourceUrl = SOURCE_URLS[translation];
-    if (!sourceUrl) return json({ error: `Unknown translation "${translation}"` }, 400);
+    const abbr = SOURCE_ABBR[translation];
+    if (!abbr) return json({ error: `Unknown translation "${translation}"` }, 400);
     if (!Number.isInteger(from_book) || !Number.isInteger(to_book) || from_book < 1 || to_book > 66 || from_book > to_book) {
       return json({ error: 'from_book/to_book must be a valid 1-66 range' }, 400);
     }
 
-    const sourceRes = await fetch(sourceUrl);
-    if (!sourceRes.ok) return json({ error: `Failed to fetch source text: HTTP ${sourceRes.status}` }, 502);
-    const sourceData = await sourceRes.json();
-
     const rows = [];
-    for (const book of sourceData.books ?? []) {
-      if (book.nr < from_book || book.nr > to_book) continue;
+    for (let bookNr = from_book; bookNr <= to_book; bookNr += 1) {
+      const bookRes = await fetch(`https://api.getbible.net/v2/${abbr}/${bookNr}.json`);
+      if (!bookRes.ok) return json({ error: `Failed to fetch book ${bookNr}: HTTP ${bookRes.status}` }, 502);
+      const book = await bookRes.json();
       for (const chapter of book.chapters ?? []) {
         for (const verse of chapter.verses ?? []) {
           rows.push({
             translation,
-            book_number: book.nr,
+            book_number: bookNr,
             chapter: verse.chapter,
             verse: verse.verse,
             text: (verse.text ?? '').trim(),
