@@ -4,6 +4,7 @@
 // bucket) for the lead track, per-part rehearsal tracks, and a video
 // file, instead of needing an already-hosted URL for each.
 import { searchLrclib, extractPlainLyrics } from '../utils/lrclib.js';
+import { splitLyricsIntoSlides } from '../utils/songSlides.js';
 import { t, tn, getLang } from '../i18n.js';
 
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -108,6 +109,8 @@ export function createSongCreatorModal({ supabase, onCreated }) {
           </div>
           <textarea name="lyrics" rows="8" class="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-sm"
                     placeholder="${t('songCreator.lyricsPlaceholder')}"></textarea>
+          <p class="text-xs text-slate-500 mt-1">${t('songCreator.slidePreviewHint')}</p>
+          <div data-el="slide-preview" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
 
         <p data-el="form-status" class="text-sm"></p>
@@ -127,6 +130,24 @@ export function createSongCreatorModal({ supabase, onCreated }) {
   const headingEl = root.querySelector('[data-el="heading"]');
   const titleInput = form.elements.title;
   const lyricsInput = form.elements.lyrics;
+  const slidePreviewEl = root.querySelector('[data-el="slide-preview"]');
+
+  // Shows exactly how projectionControl.js will slice this song, live,
+  // as it's written -- same splitter, so this can never drift from
+  // what actually gets projected. A stanza with more than 4 lines
+  // splits automatically; a manual "---" line (shown as its own
+  // numbered break here too) overrides that wherever it's placed.
+  function renderSlidePreview() {
+    const slides = splitLyricsIntoSlides(lyricsInput.value);
+    slidePreviewEl.innerHTML = slides.length === 0 ? '' : slides.map((lines, idx) => `
+      <div class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-slate-50">
+        <span class="font-semibold text-slate-400">${idx + 1}.</span>
+        <span class="text-slate-700">${escapeHtml(lines.join(' / '))}</span>
+      </div>
+    `).join('');
+  }
+
+  lyricsInput.addEventListener('input', renderSlidePreview);
   const lrclibQueryInput = root.querySelector('[data-el="lrclib-query"]');
   const lrclibResultsEl = root.querySelector('[data-el="lrclib-results"]');
   const lrclibStatusEl = root.querySelector('[data-el="lrclib-status"]');
@@ -201,6 +222,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
       }
       if (finalTranscript) {
         lyricsInput.value = lyricsInput.value ? `${lyricsInput.value}\n${finalTranscript}` : finalTranscript;
+        renderSlidePreview();
       }
     };
 
@@ -262,6 +284,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
           const plain = extractPlainLyrics(result);
           if (!titleInput.value) titleInput.value = result.trackName || '';
           lyricsInput.value = plain || t('songCreator.noLyricsAvailable');
+          renderSlidePreview();
           lrclibStatusEl.textContent = t('songCreator.loadedLyricsFor', { title: result.trackName });
         });
       });
@@ -336,6 +359,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
       form.elements.audio_tenor_track.value = song.audio_tenor_track || '';
       form.elements.lyrics.value = song.lyrics || '';
     }
+    renderSlidePreview();
 
     root.classList.remove('hidden');
     root.classList.add('flex');
@@ -347,7 +371,7 @@ export function createSongCreatorModal({ supabase, onCreated }) {
     root.classList.remove('flex');
   }
 
-  return { open };
+  return { open, root };
 }
 
 function escapeHtml(str) {
