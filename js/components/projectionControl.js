@@ -245,7 +245,7 @@ export function renderProjectionControl(container, { supabase }) {
         <div data-el="image-kind-panel" class="hidden">
           <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-3">
             ${t('projection.uploadImage')}
-            <input type="file" accept="image/*" data-el="image-input" class="hidden" />
+            <input type="file" accept="image/*" multiple data-el="image-input" class="hidden" />
           </label>
           <p class="text-xs text-slate-400 mb-3" data-el="image-local-hint">${t('projection.localFileHint')}</p>
           <div data-el="image-library" class="hidden mb-3"></div>
@@ -266,7 +266,7 @@ export function renderProjectionControl(container, { supabase }) {
           </div>
           <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-1">
             ${t('projection.uploadVideo')}
-            <input type="file" accept="video/*" data-el="video-input" class="hidden" />
+            <input type="file" accept="video/*" multiple data-el="video-input" class="hidden" />
           </label>
           <p class="text-xs text-slate-400 mb-3" data-el="video-local-hint">${t('projection.localFileHint')}</p>
           <div data-el="video-library" class="hidden mb-3"></div>
@@ -533,47 +533,100 @@ export function renderProjectionControl(container, { supabase }) {
     renderVideoLibrary();
   }
 
-  async function renderMediaLibrary(listEl, onPick) {
-    if (!localFolderHandle) { listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
-    const files = await localMediaStore.listFiles(localFolderHandle);
-    const mediaFiles = files.filter((f) => f.name !== 'projection-songs-cache.json');
-    listEl.classList.remove('hidden');
-    if (mediaFiles.length === 0) {
-      listEl.innerHTML = `<p class="text-xs text-slate-400">${t('projection.libraryEmpty')}</p>`;
+  // Always a multi-item library, with or without a local folder set
+  // up -- folder-backed items persist across a reload (read from disk
+  // via listFiles()); without a folder, items just live in these two
+  // plain arrays for the rest of this session (same "local file,
+  // nothing persists without a folder" tradeoff the local-file-hint
+  // text already explains). Either way, every item picked stays
+  // available for reselection and can be individually deleted --
+  // adding a new one never silently discards the previous ones.
+  let memoryImageItems = []; // [{name, blob}]
+  let memoryVideoItems = []; // [{name, blob}]
+
+  // Generic renderer for either library -- `items` is whatever the
+  // caller already resolved (folder listing or the in-memory array),
+  // `onPick`/`onDelete` do the source-specific work (read from disk vs.
+  // just using the stored blob; deleteFile() vs. an array splice).
+  function renderMediaLibrary(listEl, items, onPick, onDelete) {
+    if (items.length === 0) {
+      listEl.classList.add('hidden');
+      listEl.innerHTML = '';
       return;
     }
+    listEl.classList.remove('hidden');
     listEl.innerHTML = `
       <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">${t('projection.library')}</p>
       <div class="flex flex-wrap gap-1.5">
-        ${mediaFiles.map((f) => `<button type="button" data-library-name="${escapeAttr(f.name)}" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs hover:bg-slate-200">${escapeHtml(f.name)}</button>`).join('')}
+        ${items.map((item, idx) => `
+          <span class="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-slate-100 text-xs">
+            <button type="button" data-library-idx="${idx}" class="text-slate-700 hover:underline">${escapeHtml(item.name)}</button>
+            <button type="button" data-library-delete="${idx}" title="${t('projection.deleteMedia')}" class="text-slate-400 hover:text-rose-600 px-1 leading-none">&times;</button>
+          </span>
+        `).join('')}
       </div>
     `;
-    listEl.querySelectorAll('[data-library-name]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const file = await localMediaStore.readFile(localFolderHandle, btn.dataset.libraryName);
-        onPick(file);
+    listEl.querySelectorAll('[data-library-idx]').forEach((btn) => {
+      btn.addEventListener('click', () => onPick(items[Number(btn.dataset.libraryIdx)]));
+    });
+    listEl.querySelectorAll('[data-library-delete]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await onDelete(items[Number(btn.dataset.libraryDelete)]);
       });
     });
   }
 
-  function renderImageLibrary() {
-    renderMediaLibrary(imageLibraryEl, (file) => {
-      if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
-      pendingImageBlob = file;
-      pendingImageObjectUrl = URL.createObjectURL(file);
-      imagePreviewEl.src = pendingImageObjectUrl;
-      imagePreviewEl.classList.remove('hidden');
-      projectImageBtn.disabled = false;
-    });
+  function selectImageFile(file) {
+    if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
+    pendingImageBlob = file;
+    pendingImageObjectUrl = URL.createObjectURL(file);
+    imagePreviewEl.src = pendingImageObjectUrl;
+    imagePreviewEl.classList.remove('hidden');
+    projectImageBtn.disabled = false;
   }
 
-  function renderVideoLibrary() {
-    renderMediaLibrary(videoLibraryEl, (file) => {
-      pendingVideo = { source: 'file' };
-      pendingVideoBlob = file;
-      videoSelectedEl.textContent = `${t('projection.videoReady')} (${file.name})`;
-      projectVideoBtn.disabled = false;
-    });
+  async function renderImageLibrary() {
+    if (localFolderHandle) {
+      const files = await localMediaStore.listFiles(localFolderHandle);
+      const items = files.filter((f) => f.name !== 'projection-songs-cache.json');
+      renderMediaLibrary(imageLibraryEl, items, async (item) => {
+        selectImageFile(await localMediaStore.readFile(localFolderHandle, item.name));
+      }, async (item) => {
+        await localMediaStore.deleteFile(localFolderHandle, item.name);
+        renderImageLibrary();
+      });
+    } else {
+      renderMediaLibrary(imageLibraryEl, memoryImageItems, (item) => selectImageFile(item.blob), (item) => {
+        memoryImageItems = memoryImageItems.filter((i) => i !== item);
+        renderImageLibrary();
+      });
+    }
+  }
+
+  function selectVideoFile(file) {
+    pendingVideo = { source: 'file' };
+    pendingVideoBlob = file;
+    videoSelectedEl.textContent = `${t('projection.videoReady')} (${file.name})`;
+    projectVideoBtn.disabled = false;
+  }
+
+  async function renderVideoLibrary() {
+    if (localFolderHandle) {
+      const files = await localMediaStore.listFiles(localFolderHandle);
+      const items = files.filter((f) => f.name !== 'projection-songs-cache.json');
+      renderMediaLibrary(videoLibraryEl, items, async (item) => {
+        selectVideoFile(await localMediaStore.readFile(localFolderHandle, item.name));
+      }, async (item) => {
+        await localMediaStore.deleteFile(localFolderHandle, item.name);
+        renderVideoLibrary();
+      });
+    } else {
+      renderMediaLibrary(videoLibraryEl, memoryVideoItems, (item) => selectVideoFile(item.blob), (item) => {
+        memoryVideoItems = memoryVideoItems.filter((i) => i !== item);
+        renderVideoLibrary();
+      });
+    }
   }
 
   // BroadcastChannel, not Supabase Realtime — see js/utils/projection.js.
@@ -1099,22 +1152,24 @@ export function renderProjectionControl(container, { supabase }) {
   // cloned over the BroadcastChannel), which mints its own local
   // preview from it; nothing here ever becomes a URL on any server.
 
+  // Every file picked gets ADDED to the library (folder-backed or
+  // in-memory, see renderImageLibrary above) -- picking a new one
+  // never discards the previous ones, only the live preview/staged
+  // pick moves to whichever was picked last.
   imageInputEl.addEventListener('change', async () => {
-    const file = imageInputEl.files[0];
-    if (!file) return;
-    if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
-    pendingImageBlob = file;
-    pendingImageObjectUrl = URL.createObjectURL(file);
-    imagePreviewEl.src = pendingImageObjectUrl;
-    imagePreviewEl.classList.remove('hidden');
-    projectImageBtn.disabled = false;
-
-    // Also keep a real copy on disk (if the operator's set up a local
-    // folder) -- still there next session, unlike this in-memory blob.
-    if (localFolderHandle) {
-      await localMediaStore.saveFile(localFolderHandle, file);
-      renderImageLibrary();
+    const files = Array.from(imageInputEl.files || []);
+    if (files.length === 0) return;
+    for (const file of files) {
+      if (localFolderHandle) {
+        await localMediaStore.saveFile(localFolderHandle, file);
+      } else {
+        memoryImageItems = memoryImageItems.filter((i) => i.name !== file.name);
+        memoryImageItems.push({ name: file.name, blob: file });
+      }
     }
+    selectImageFile(files[files.length - 1]);
+    imageInputEl.value = ''; // so picking the same filename again later still fires 'change'
+    renderImageLibrary();
   });
 
   projectImageBtn.addEventListener('click', () => {
@@ -1135,18 +1190,21 @@ export function renderProjectionControl(container, { supabase }) {
     projectVideoBtn.disabled = false;
   });
 
+  // Same "add, never replace" behavior as the image input above.
   videoInputEl.addEventListener('change', async () => {
-    const file = videoInputEl.files[0];
-    if (!file) return;
-    pendingVideo = { source: 'file' };
-    pendingVideoBlob = file;
-    videoSelectedEl.textContent = `${t('projection.videoReady')} (${file.name})`;
-    projectVideoBtn.disabled = false;
-
-    if (localFolderHandle) {
-      await localMediaStore.saveFile(localFolderHandle, file);
-      renderVideoLibrary();
+    const files = Array.from(videoInputEl.files || []);
+    if (files.length === 0) return;
+    for (const file of files) {
+      if (localFolderHandle) {
+        await localMediaStore.saveFile(localFolderHandle, file);
+      } else {
+        memoryVideoItems = memoryVideoItems.filter((i) => i.name !== file.name);
+        memoryVideoItems.push({ name: file.name, blob: file });
+      }
     }
+    selectVideoFile(files[files.length - 1]);
+    videoInputEl.value = '';
+    renderVideoLibrary();
   });
 
   function buildVideoPlayPayload() {
