@@ -64,7 +64,7 @@ async function extractPdfPagesAsSlides(file) {
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    slides.push({ text: '', backgroundColor: '#000000', backgroundBlob: blob });
+    slides.push({ id: crypto.randomUUID(), text: '', backgroundColor: '#000000', backgroundBlob: blob });
   }
   return slides;
 }
@@ -509,28 +509,50 @@ export function renderProjectionControl(container, { supabase }) {
   // site below checks `localFolderHandle` before using it, falling
   // back to exactly today's in-memory-only behavior when it's null.
   let localFolderHandle = null;
+  // True when a folder WAS set up before but the browser needs a
+  // fresh click to re-confirm access (typically after the browser
+  // itself restarted, not just a page reload) -- shown as "Reconnect"
+  // rather than "Set Up" so it's obvious this isn't starting over.
+  // Without this, a silently-refused permission check looked exactly
+  // like "never configured", and Image/Video/Presentation fell back
+  // to session-only (gone on the next reload) even though a real
+  // folder was already on file.
+  let needsFolderReconnect = false;
 
   if (!localMediaStore.isSupported()) {
     localFolderBtnEl.classList.add('hidden');
   } else {
-    localMediaStore.getFolderHandle().then((handle) => {
-      localFolderHandle = handle;
+    localMediaStore.getFolderHandle().then(async (handle) => {
+      if (handle) {
+        localFolderHandle = handle;
+      } else {
+        needsFolderReconnect = await localMediaStore.hasStoredFolderHandle();
+      }
       onLocalFolderChanged();
     });
     localFolderBtnEl.addEventListener('click', async () => {
-      const handle = await localMediaStore.requestFolderAccess();
-      if (handle) localFolderHandle = handle;
+      const handle = needsFolderReconnect
+        ? await localMediaStore.reconnectFolderAccess()
+        : await localMediaStore.requestFolderAccess();
+      if (handle) { localFolderHandle = handle; needsFolderReconnect = false; }
       onLocalFolderChanged();
     });
   }
 
   function onLocalFolderChanged() {
-    localFolderBtnEl.textContent = localFolderHandle ? t('projection.localFolderConnected') : t('projection.setupLocalFolder');
-    localFolderBtnEl.className = `px-3 py-1.5 rounded-lg text-sm font-medium ${localFolderHandle ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`;
+    localFolderBtnEl.textContent = localFolderHandle
+      ? t('projection.localFolderConnected')
+      : needsFolderReconnect ? t('projection.reconnectLocalFolder') : t('projection.setupLocalFolder');
+    localFolderBtnEl.className = `px-3 py-1.5 rounded-lg text-sm font-medium ${
+      localFolderHandle ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+      : needsFolderReconnect ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+    }`;
     imageLocalHintEl.textContent = localFolderHandle ? t('projection.localFolderHint') : t('projection.localFileHint');
     videoLocalHintEl.textContent = localFolderHandle ? t('projection.localFolderHint') : t('projection.localFileHint');
     renderImageLibrary();
     renderVideoLibrary();
+    restorePresentationState();
   }
 
   // Always a multi-item library, with or without a local folder set
@@ -555,6 +577,15 @@ export function renderProjectionControl(container, { supabase }) {
   // (deleteFile() vs. an array splice). `thumbnailUrls` is the
   // caller's own array of object URLs from the PREVIOUS render, so
   // they can be revoked before new ones are minted.
+  // projection-presentation.json and its per-slide background images
+  // (presentation-*) live in the same folder as the Image/Video
+  // library, but aren't meant to be pickable AS an image/video
+  // themselves -- see savePresentationDeck()/restorePresentationDeck()
+  // below.
+  function isPresentationFile(name) {
+    return name === 'projection-presentation.json' || name.startsWith('presentation-');
+  }
+
   async function renderMediaLibrary(listEl, items, resolveBlob, onPick, onDelete, thumbnailUrls) {
     thumbnailUrls.splice(0).forEach((url) => URL.revokeObjectURL(url));
     if (items.length === 0) {
@@ -609,7 +640,7 @@ export function renderProjectionControl(container, { supabase }) {
   async function renderImageLibrary() {
     if (localFolderHandle) {
       const files = await localMediaStore.listFiles(localFolderHandle);
-      const items = files.filter((f) => f.name !== 'projection-songs-cache.json');
+      const items = files.filter((f) => f.name !== 'projection-songs-cache.json' && !isPresentationFile(f.name));
       await renderMediaLibrary(imageLibraryEl, items, (item) => localMediaStore.readFile(localFolderHandle, item.name), (blob) => selectImageFile(blob), async (item) => {
         await localMediaStore.deleteFile(localFolderHandle, item.name);
         renderImageLibrary();
@@ -633,7 +664,7 @@ export function renderProjectionControl(container, { supabase }) {
   async function renderVideoLibrary() {
     if (localFolderHandle) {
       const files = await localMediaStore.listFiles(localFolderHandle);
-      const items = files.filter((f) => f.name !== 'projection-songs-cache.json');
+      const items = files.filter((f) => f.name !== 'projection-songs-cache.json' && !isPresentationFile(f.name));
       await renderMediaLibrary(videoLibraryEl, items, (item) => localMediaStore.readFile(localFolderHandle, item.name), (blob) => selectVideoFile(blob), async (item) => {
         await localMediaStore.deleteFile(localFolderHandle, item.name);
         renderVideoLibrary();
@@ -1249,8 +1280,50 @@ export function renderProjectionControl(container, { supabase }) {
   // --- Presentation panel ---
   // Same click-to-stage/double-click-to-go-live grid pattern as Songs
   // (renderSlideGrid), generalized to a hand-built/imported slide deck
-  // instead of a lyrics split. Local-only like Image/Video -- nothing
-  // persists across a reload.
+  // instead of a lyrics split. Persisted to the local folder (if one's
+  // connected) the same way Image/Video are -- see
+  // savePresentationState()/restorePresentationState() below.
+
+  function newSlideId() {
+    return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  }
+
+  // Writes the whole deck to disk: each slide's own background image
+  // (if any) as its own file named by the slide's stable id (so
+  // re-saving after an edit overwrites it in place rather than piling
+  // up a new file every time), plus a JSON manifest referencing those
+  // filenames (a Blob itself can't go in JSON). No-op without a
+  // connected folder -- same "local file, nothing persists without a
+  // folder" tradeoff as Image/Video.
+  async function savePresentationState() {
+    if (!localFolderHandle) return;
+    const manifest = [];
+    for (const slide of presentationSlides) {
+      let backgroundImageName = null;
+      if (slide.backgroundBlob) {
+        const ext = slide.backgroundBlob.type === 'image/jpeg' ? 'jpg' : 'png';
+        backgroundImageName = `presentation-${slide.id}.${ext}`;
+        await localMediaStore.saveFile(localFolderHandle, new File([slide.backgroundBlob], backgroundImageName, { type: slide.backgroundBlob.type || 'image/png' }));
+      }
+      manifest.push({ id: slide.id, text: slide.text, backgroundColor: slide.backgroundColor, backgroundImageName });
+    }
+    await localMediaStore.savePresentationDeck(localFolderHandle, manifest);
+  }
+
+  async function restorePresentationState() {
+    if (!localFolderHandle) return;
+    const manifest = await localMediaStore.readPresentationDeck(localFolderHandle);
+    if (!manifest) return;
+    presentationSlides = [];
+    for (const entry of manifest) {
+      let backgroundBlob = null;
+      if (entry.backgroundImageName) {
+        try { backgroundBlob = await localMediaStore.readFile(localFolderHandle, entry.backgroundImageName); } catch { backgroundBlob = null; }
+      }
+      presentationSlides.push({ id: entry.id || newSlideId(), text: entry.text, backgroundColor: entry.backgroundColor, backgroundBlob });
+    }
+    renderPresentationSlideGrid();
+  }
 
   function renderPresentationSlideGrid() {
     presentationSlideGridEl.innerHTML = presentationSlides.map((slide, idx) => `
@@ -1310,12 +1383,14 @@ export function renderProjectionControl(container, { supabase }) {
     if (presentationEditIndex === -1) return;
     presentationSlides[presentationEditIndex].text = slideTextInputEl.value;
     refreshStagedPresentationPreview();
+    savePresentationState();
   });
 
   slideColorInputEl.addEventListener('input', () => {
     if (presentationEditIndex === -1) return;
     presentationSlides[presentationEditIndex].backgroundColor = slideColorInputEl.value;
     refreshStagedPresentationPreview();
+    savePresentationState();
   });
 
   slideImageInputEl.addEventListener('change', () => {
@@ -1325,22 +1400,32 @@ export function renderProjectionControl(container, { supabase }) {
     presentationSlides[presentationEditIndex].backgroundBlob = file;
     slideImageInputEl.value = '';
     refreshStagedPresentationPreview();
+    savePresentationState();
   });
 
-  container.querySelector('[data-action="delete-slide"]').addEventListener('click', () => {
+  container.querySelector('[data-action="delete-slide"]').addEventListener('click', async () => {
     if (presentationEditIndex === -1) return;
-    presentationSlides.splice(presentationEditIndex, 1);
+    const [removed] = presentationSlides.splice(presentationEditIndex, 1);
     presentationEditIndex = -1;
     presentationEditorEl.classList.add('hidden');
     if (stagedPresentationSlideIndex >= presentationSlides.length) stagedPresentationSlideIndex = -1;
     if (presentationSlideIndex >= presentationSlides.length) presentationSlideIndex = presentationSlides.length - 1;
     renderPresentationSlideGrid();
+    await savePresentationState();
+    // Clean up the orphaned background file (if any) now that the
+    // manifest no longer references it -- otherwise the folder just
+    // accumulates dead files every time a slide with an image is removed.
+    if (removed?.backgroundBlob && localFolderHandle) {
+      const ext = removed.backgroundBlob.type === 'image/jpeg' ? 'jpg' : 'png';
+      await localMediaStore.deleteFile(localFolderHandle, `presentation-${removed.id}.${ext}`).catch(() => {});
+    }
   });
 
   container.querySelector('[data-action="add-slide"]').addEventListener('click', () => {
-    presentationSlides.push({ text: '', backgroundColor: '#000000', backgroundBlob: null });
+    presentationSlides.push({ id: newSlideId(), text: '', backgroundColor: '#000000', backgroundBlob: null });
     renderPresentationSlideGrid();
     openPresentationEditor(presentationSlides.length - 1);
+    savePresentationState();
   });
 
   pdfInputEl.addEventListener('change', async () => {
@@ -1350,6 +1435,7 @@ export function renderProjectionControl(container, { supabase }) {
     const slides = await extractPdfPagesAsSlides(file);
     presentationSlides.push(...slides);
     renderPresentationSlideGrid();
+    await savePresentationState();
   });
 
   pptxInputEl.addEventListener('change', async () => {
@@ -1357,8 +1443,9 @@ export function renderProjectionControl(container, { supabase }) {
     if (!file) return;
     pptxInputEl.value = '';
     const texts = await extractPptxSlideTexts(file);
-    texts.forEach((text) => presentationSlides.push({ text, backgroundColor: '#000000', backgroundBlob: null }));
+    texts.forEach((text) => presentationSlides.push({ id: newSlideId(), text, backgroundColor: '#000000', backgroundBlob: null }));
     renderPresentationSlideGrid();
+    await savePresentationState();
   });
 
   prevPresentationSlideBtn.addEventListener('click', () => projectPresentationSlideAt(presentationSlideIndex - 1));
