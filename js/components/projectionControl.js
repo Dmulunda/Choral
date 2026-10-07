@@ -546,30 +546,49 @@ export function renderProjectionControl(container, { supabase }) {
 
   // Generic renderer for either library -- `items` is whatever the
   // caller already resolved (folder listing or the in-memory array),
-  // `onPick`/`onDelete` do the source-specific work (read from disk vs.
-  // just using the stored blob; deleteFile() vs. an array splice).
-  function renderMediaLibrary(listEl, items, onPick, onDelete) {
+  // `resolveBlob` loads each one's actual content (read from disk, or
+  // just the already-in-memory blob) so a real thumbnail can be shown
+  // instead of a plain filename -- picking the right one out of a
+  // library of several images/videos by name alone meant opening each
+  // in turn to check. `onPick` receives the already-loaded blob
+  // (no second read); `onDelete` does the source-specific removal
+  // (deleteFile() vs. an array splice). `thumbnailUrls` is the
+  // caller's own array of object URLs from the PREVIOUS render, so
+  // they can be revoked before new ones are minted.
+  async function renderMediaLibrary(listEl, items, resolveBlob, onPick, onDelete, thumbnailUrls) {
+    thumbnailUrls.splice(0).forEach((url) => URL.revokeObjectURL(url));
     if (items.length === 0) {
       listEl.classList.add('hidden');
       listEl.innerHTML = '';
       return;
     }
     listEl.classList.remove('hidden');
-    listEl.innerHTML = `
-      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">${t('projection.library')}</p>
-      <div class="flex flex-wrap gap-1.5">
-        ${items.map((item, idx) => `
-          <span class="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-slate-100 text-xs">
-            <button type="button" data-library-idx="${idx}" class="text-slate-700 hover:underline">${escapeHtml(item.name)}</button>
-            <button type="button" data-library-delete="${idx}" title="${t('projection.deleteMedia')}" class="text-slate-400 hover:text-rose-600 px-1 leading-none">&times;</button>
-          </span>
-        `).join('')}
-      </div>
-    `;
-    listEl.querySelectorAll('[data-library-idx]').forEach((btn) => {
-      btn.addEventListener('click', () => onPick(items[Number(btn.dataset.libraryIdx)]));
+    listEl.innerHTML = `<p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">${t('projection.library')}</p>
+      <div class="flex flex-wrap gap-2" data-el="library-grid"></div>`;
+    const gridEl = listEl.querySelector('[data-el="library-grid"]');
+
+    const blobs = await Promise.all(items.map((item) => resolveBlob(item)));
+    gridEl.innerHTML = items.map((item, idx) => {
+      const url = URL.createObjectURL(blobs[idx]);
+      thumbnailUrls.push(url);
+      const isVideo = (blobs[idx].type || '').startsWith('video/');
+      const thumb = isVideo
+        ? `<video src="${escapeAttr(url)}" class="w-16 h-16 object-cover rounded-lg bg-black" muted playsinline preload="auto"></video>`
+        : `<img src="${escapeAttr(url)}" class="w-16 h-16 object-cover rounded-lg border border-slate-200" alt="" />`;
+      return `
+        <div class="relative">
+          <button type="button" data-library-pick="${idx}" title="${escapeAttr(item.name)}" class="block">${thumb}</button>
+          <button type="button" data-library-delete="${idx}" title="${t('projection.deleteMedia')}"
+                  class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-700 text-white text-xs leading-none hover:bg-rose-600">&times;</button>
+        </div>
+      `;
+    }).join('');
+
+    gridEl.querySelectorAll('[data-library-pick]').forEach((btn) => {
+      const idx = Number(btn.dataset.libraryPick);
+      btn.addEventListener('click', () => onPick(blobs[idx], items[idx]));
     });
-    listEl.querySelectorAll('[data-library-delete]').forEach((btn) => {
+    gridEl.querySelectorAll('[data-library-delete]').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await onDelete(items[Number(btn.dataset.libraryDelete)]);
@@ -586,21 +605,20 @@ export function renderProjectionControl(container, { supabase }) {
     projectImageBtn.disabled = false;
   }
 
+  let imageThumbnailUrls = [];
   async function renderImageLibrary() {
     if (localFolderHandle) {
       const files = await localMediaStore.listFiles(localFolderHandle);
       const items = files.filter((f) => f.name !== 'projection-songs-cache.json');
-      renderMediaLibrary(imageLibraryEl, items, async (item) => {
-        selectImageFile(await localMediaStore.readFile(localFolderHandle, item.name));
-      }, async (item) => {
+      await renderMediaLibrary(imageLibraryEl, items, (item) => localMediaStore.readFile(localFolderHandle, item.name), (blob) => selectImageFile(blob), async (item) => {
         await localMediaStore.deleteFile(localFolderHandle, item.name);
         renderImageLibrary();
-      });
+      }, imageThumbnailUrls);
     } else {
-      renderMediaLibrary(imageLibraryEl, memoryImageItems, (item) => selectImageFile(item.blob), (item) => {
+      await renderMediaLibrary(imageLibraryEl, memoryImageItems, (item) => item.blob, (blob) => selectImageFile(blob), (item) => {
         memoryImageItems = memoryImageItems.filter((i) => i !== item);
         renderImageLibrary();
-      });
+      }, imageThumbnailUrls);
     }
   }
 
@@ -611,21 +629,20 @@ export function renderProjectionControl(container, { supabase }) {
     projectVideoBtn.disabled = false;
   }
 
+  let videoThumbnailUrls = [];
   async function renderVideoLibrary() {
     if (localFolderHandle) {
       const files = await localMediaStore.listFiles(localFolderHandle);
       const items = files.filter((f) => f.name !== 'projection-songs-cache.json');
-      renderMediaLibrary(videoLibraryEl, items, async (item) => {
-        selectVideoFile(await localMediaStore.readFile(localFolderHandle, item.name));
-      }, async (item) => {
+      await renderMediaLibrary(videoLibraryEl, items, (item) => localMediaStore.readFile(localFolderHandle, item.name), (blob) => selectVideoFile(blob), async (item) => {
         await localMediaStore.deleteFile(localFolderHandle, item.name);
         renderVideoLibrary();
-      });
+      }, videoThumbnailUrls);
     } else {
-      renderMediaLibrary(videoLibraryEl, memoryVideoItems, (item) => selectVideoFile(item.blob), (item) => {
+      await renderMediaLibrary(videoLibraryEl, memoryVideoItems, (item) => item.blob, (blob) => selectVideoFile(blob), (item) => {
         memoryVideoItems = memoryVideoItems.filter((i) => i !== item);
         renderVideoLibrary();
-      });
+      }, videoThumbnailUrls);
     }
   }
 
@@ -1601,6 +1618,8 @@ export function renderProjectionControl(container, { supabase }) {
       document.removeEventListener('click', closeSuggestionsOnOutsideClick);
       if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
       if (currentBackdropObjectUrl) URL.revokeObjectURL(currentBackdropObjectUrl);
+      imageThumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
+      videoThumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
       songCreatorModal.root.remove(); // appended to document.body, independent of `container`
       themeModal.root.remove();
     },
