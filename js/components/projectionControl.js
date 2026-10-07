@@ -28,25 +28,110 @@
 import { t } from '../i18n.js';
 import { createProjectionChannel } from '../utils/projection.js';
 import { extractYouTubeId } from '../utils/youtube.js';
+import { splitLyricsIntoSlides } from '../utils/songSlides.js';
+import { createSongCreatorModal } from './songCreatorModal.js';
+import { createProjectionThemeModal } from './projectionThemeModal.js';
+import * as localMediaStore from '../utils/localMediaStore.js';
+
+// Lazy-loaded only when the Presentation panel's PDF import is
+// actually used -- same version/CDN already proven elsewhere in this
+// app (offeringsImport.js, preachingScheduleImport.js).
+const PDFJS_VERSION = '4.0.379';
+let pdfjsLibPromise = null;
+function loadPdfJs() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = import(`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`).then((lib) => {
+      lib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
+      return lib;
+    });
+  }
+  return pdfjsLibPromise;
+}
+
+// Each PDF page becomes one image-only slide -- a page is already a
+// fixed, image-like layout, so this is solid with no fidelity caveats
+// (unlike the PPTX import below).
+async function extractPdfPagesAsSlides(file) {
+  const pdfjsLib = await loadPdfJs();
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const slides = [];
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    slides.push({ text: '', backgroundColor: '#000000', backgroundBlob: blob });
+  }
+  return slides;
+}
+
+// Best-effort only -- there's no reliable client-side PPTX renderer
+// that preserves real PowerPoint layouts/fonts/animations. A .pptx is
+// a zip of XML; this reads each slide's plain text runs (<a:t>) and
+// drops them onto a plain text-only slide, in slide order. Works for
+// simple/text-heavy decks; does NOT reproduce images, positioning, or
+// complex layouts -- the in-app help text next to the import button
+// says this and recommends exporting to PDF from PowerPoint instead.
+const JSZIP_VERSION = '3.10.1';
+let jszipLibPromise = null;
+function loadJSZip() {
+  if (!jszipLibPromise) {
+    jszipLibPromise = import(`https://cdn.jsdelivr.net/npm/jszip@${JSZIP_VERSION}/+esm`).then((m) => m.default);
+  }
+  return jszipLibPromise;
+}
+
+function decodeXmlEntities(str) {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+async function extractPptxSlideTexts(file) {
+  const JSZip = await loadJSZip();
+  const zip = await JSZip.loadAsync(file);
+  const slideFiles = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => Number(a.match(/slide(\d+)\.xml/)[1]) - Number(b.match(/slide(\d+)\.xml/)[1]));
+  const texts = [];
+  for (const name of slideFiles) {
+    const xml = await zip.files[name].async('text');
+    const runs = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
+    texts.push(runs.join('\n'));
+  }
+  return texts;
+}
 
 // Persists the OPERATOR panel's own idea of "what's going on" across a
 // reload/re-mount (this component is torn down and rebuilt from
 // scratch on every department switch, let alone a real page refresh --
-// see js/deptDashboard.js). The actual projector window is a separate
+// see js/deptProjection.js). The actual projector window is a separate
 // window/BroadcastChannel listener and is completely unaffected by any
 // of this -- it just keeps showing whatever it last received. This is
 // purely about the operator's own panel not silently forgetting which
 // tab/verse/song/font-scale/schedule-item was active, which otherwise
 // looks exactly like "everything reset" even though the audience saw
 // no interruption at all.
+//
+// Only DB-restorable descriptors are stored (translation/book/chapter/
+// verse ids, songId/slideIndex) -- never a Blob (can't be serialized),
+// which is why a local image/video can't be restored the same way; see
+// the `kind === 'image' | 'video'` branch below.
 const PROJECTION_STATE_KEY = 'choir-hub-projection-state';
 
 function saveProjectionState(state) {
-  try { localStorage.setItem(PROJECTION_STATE_KEY, JSON.stringify(state)); } catch { /* storage full/unavailable -- not fatal */ }
+  try { localStorage.setItem(PROJECTION_STATE_KEY, JSON.stringify(state)); } catch { /* storage full/disabled -- just won't restore next time */ }
 }
 
 function readProjectionState() {
-  try { return JSON.parse(localStorage.getItem(PROJECTION_STATE_KEY)); } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(PROJECTION_STATE_KEY) || 'null'); } catch { return null; }
 }
 
 export function renderProjectionControl(container, { supabase }) {
@@ -54,12 +139,18 @@ export function renderProjectionControl(container, { supabase }) {
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-semibold">${t('projection.title')}</h2>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <button type="button" data-action="open-screen" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
             ${t('projection.openScreen')}
           </button>
           <button type="button" data-action="blank" class="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-300">
             ${t('projection.blankScreen')}
+          </button>
+          <button type="button" data-action="setup-local-folder" data-el="local-folder-btn" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
+            ${t('projection.setupLocalFolder')}
+          </button>
+          <button type="button" data-action="open-themes" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
+            ${t('projection.themes')}
           </button>
         </div>
       </div>
@@ -88,8 +179,7 @@ export function renderProjectionControl(container, { supabase }) {
       <div class="flex gap-2 mb-4 border-b border-slate-200 flex-wrap">
         <button type="button" data-mode-tab="bible" class="px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">${t('projection.bibleTab')}</button>
         <button type="button" data-mode-tab="song" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('projection.songTab')}</button>
-        <button type="button" data-mode-tab="image" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('projection.imageTab')}</button>
-        <button type="button" data-mode-tab="video" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('projection.videoTab')}</button>
+        <button type="button" data-mode-tab="media" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('projection.mediaTab')}</button>
         <button type="button" data-mode-tab="schedule" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('projection.scheduleTab')}</button>
       </div>
 
@@ -123,7 +213,12 @@ export function renderProjectionControl(container, { supabase }) {
       </div>
 
       <div data-el="song-panel" class="hidden">
-        <input type="text" data-el="song-search" placeholder="${t('projection.searchSongPlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" />
+        <div class="flex items-center gap-2 mb-2">
+          <input type="text" data-el="song-search" placeholder="${t('projection.searchSongPlaceholder')}" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <button type="button" data-action="new-song" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 whitespace-nowrap">
+            ${t('projection.newSong')}
+          </button>
+        </div>
         <div data-el="song-list" class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-44 overflow-y-auto mb-3"></div>
         <div class="flex items-center gap-2 mb-2">
           <p data-el="song-selected" class="text-sm text-slate-600 flex-1"></p>
@@ -139,39 +234,99 @@ export function renderProjectionControl(container, { supabase }) {
         </div>
       </div>
 
-      <div data-el="image-panel" class="hidden">
-        <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-3">
-          ${t('projection.uploadImage')}
-          <input type="file" accept="image/*" data-el="image-input" class="hidden" />
-        </label>
-        <p class="text-xs text-slate-400 mb-3">${t('projection.localFileHint')}</p>
-        <div class="mb-3">
-          <img data-el="image-preview" class="hidden max-h-40 rounded-lg border border-slate-200" alt="" />
+      <div data-el="media-panel" class="hidden">
+        <div class="flex gap-1.5 mb-3 flex-wrap">
+          <button type="button" data-media-kind="image" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('projection.kindImage')}</button>
+          <button type="button" data-media-kind="video" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('projection.kindVideo')}</button>
+          <button type="button" data-media-kind="presentation" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('projection.kindPresentation')}</button>
+          <button type="button" data-media-kind="countdown" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('projection.kindCountdown')}</button>
         </div>
-        <button type="button" data-action="project-image" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
-          ${t('projection.preview')}
-        </button>
-      </div>
 
-      <div data-el="video-panel" class="hidden">
-        <div class="flex items-center gap-2 mb-2">
-          <input type="text" data-el="youtube-input" placeholder="${t('projection.youtubeUrlPlaceholder')}" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <button type="button" data-action="load-youtube" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
-            ${t('projection.load')}
-          </button>
-        </div>
-        <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-1">
-          ${t('projection.uploadVideo')}
-          <input type="file" accept="video/*" data-el="video-input" class="hidden" />
-        </label>
-        <p class="text-xs text-slate-400 mb-3">${t('projection.localFileHint')}</p>
-        <p data-el="video-selected" class="text-sm text-slate-600 mb-3"></p>
-        <div class="flex items-center gap-2">
-          <button type="button" data-action="project-video" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
+        <div data-el="image-kind-panel" class="hidden">
+          <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-3">
+            ${t('projection.uploadImage')}
+            <input type="file" accept="image/*" data-el="image-input" class="hidden" />
+          </label>
+          <p class="text-xs text-slate-400 mb-3" data-el="image-local-hint">${t('projection.localFileHint')}</p>
+          <div data-el="image-library" class="hidden mb-3"></div>
+          <div class="mb-3">
+            <img data-el="image-preview" class="hidden max-h-40 rounded-lg border border-slate-200" alt="" />
+          </div>
+          <button type="button" data-action="project-image" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
             ${t('projection.preview')}
           </button>
-          <button type="button" data-action="toggle-video" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>
-            ${t('projection.pause')}
+        </div>
+
+        <div data-el="video-kind-panel" class="hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="text" data-el="youtube-input" placeholder="${t('projection.youtubeUrlPlaceholder')}" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            <button type="button" data-action="load-youtube" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
+              ${t('projection.load')}
+            </button>
+          </div>
+          <label class="inline-block px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer mb-1">
+            ${t('projection.uploadVideo')}
+            <input type="file" accept="video/*" data-el="video-input" class="hidden" />
+          </label>
+          <p class="text-xs text-slate-400 mb-3" data-el="video-local-hint">${t('projection.localFileHint')}</p>
+          <div data-el="video-library" class="hidden mb-3"></div>
+          <p data-el="video-selected" class="text-sm text-slate-600 mb-3"></p>
+          <div class="flex items-center gap-2">
+            <button type="button" data-action="project-video" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" disabled>
+              ${t('projection.preview')}
+            </button>
+            <button type="button" data-action="toggle-video" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>
+              ${t('projection.pause')}
+            </button>
+          </div>
+        </div>
+
+        <div data-el="presentation-kind-panel" class="hidden">
+          <div class="flex gap-1.5 mb-2 flex-wrap">
+            <button type="button" data-action="add-slide" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('projection.addSlide')}</button>
+            <label class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer">
+              ${t('projection.importPdf')}
+              <input type="file" accept=".pdf" data-el="pdf-input" class="hidden" />
+            </label>
+            <label class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 cursor-pointer">
+              ${t('projection.importPptx')}
+              <input type="file" accept=".pptx" data-el="pptx-input" class="hidden" />
+            </label>
+          </div>
+          <p class="text-xs text-amber-600 mb-3">${t('projection.pptxCaveat')}</p>
+          <div data-el="presentation-slide-grid" class="flex flex-wrap gap-1.5 mb-3"></div>
+          <div data-el="presentation-editor" class="hidden border border-slate-200 rounded-lg p-3 mb-3">
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('projection.slideText')}</label>
+            <textarea data-el="slide-text-input" rows="2" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mb-2"></textarea>
+            <div class="flex items-center gap-2 flex-wrap">
+              <label class="text-xs text-slate-600">${t('projection.slideBackground')}</label>
+              <input type="color" data-el="slide-color-input" value="#000000" class="w-10 h-8 border border-slate-300 rounded cursor-pointer" />
+              <label class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 cursor-pointer">
+                ${t('projection.slideImage')}
+                <input type="file" accept="image/*" data-el="slide-image-input" class="hidden" />
+              </label>
+              <button type="button" data-action="delete-slide" class="px-2.5 py-1 rounded-lg text-rose-600 hover:bg-rose-50 text-xs font-medium">${t('projection.deleteSlide')}</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" data-action="prev-presentation-slide" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>&larr; ${t('projection.previous')}</button>
+            <button type="button" data-action="next-presentation-slide" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50" disabled>${t('projection.next')} &rarr;</button>
+          </div>
+        </div>
+
+        <div data-el="countdown-kind-panel" class="hidden">
+          <div class="grid sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">${t('projection.countdownText')}</label>
+              <input type="text" data-el="countdown-text-input" placeholder="${t('projection.countdownTextPlaceholder')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">${t('projection.countdownMinutes')}</label>
+              <input type="number" min="1" step="1" value="5" data-el="countdown-minutes-input" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <button type="button" data-action="start-countdown" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+            ${t('projection.startCountdown')}
           </button>
         </div>
       </div>
@@ -230,15 +385,40 @@ export function renderProjectionControl(container, { supabase }) {
   const imageInputEl = container.querySelector('[data-el="image-input"]');
   const imagePreviewEl = container.querySelector('[data-el="image-preview"]');
   const projectImageBtn = container.querySelector('[data-action="project-image"]');
+  const imageLibraryEl = container.querySelector('[data-el="image-library"]');
+  const imageLocalHintEl = container.querySelector('[data-el="image-local-hint"]');
 
   const youtubeInputEl = container.querySelector('[data-el="youtube-input"]');
   const videoInputEl = container.querySelector('[data-el="video-input"]');
   const videoSelectedEl = container.querySelector('[data-el="video-selected"]');
   const projectVideoBtn = container.querySelector('[data-action="project-video"]');
   const toggleVideoBtn = container.querySelector('[data-action="toggle-video"]');
+  const videoLibraryEl = container.querySelector('[data-el="video-library"]');
+  const videoLocalHintEl = container.querySelector('[data-el="video-local-hint"]');
+
+  const mediaKindBtns = container.querySelectorAll('[data-media-kind]');
+  const mediaKindPanels = {
+    image: container.querySelector('[data-el="image-kind-panel"]'),
+    video: container.querySelector('[data-el="video-kind-panel"]'),
+    presentation: container.querySelector('[data-el="presentation-kind-panel"]'),
+    countdown: container.querySelector('[data-el="countdown-kind-panel"]'),
+  };
+  const presentationSlideGridEl = container.querySelector('[data-el="presentation-slide-grid"]');
+  const presentationEditorEl = container.querySelector('[data-el="presentation-editor"]');
+  const slideTextInputEl = container.querySelector('[data-el="slide-text-input"]');
+  const slideColorInputEl = container.querySelector('[data-el="slide-color-input"]');
+  const slideImageInputEl = container.querySelector('[data-el="slide-image-input"]');
+  const pdfInputEl = container.querySelector('[data-el="pdf-input"]');
+  const pptxInputEl = container.querySelector('[data-el="pptx-input"]');
+  const prevPresentationSlideBtn = container.querySelector('[data-action="prev-presentation-slide"]');
+  const nextPresentationSlideBtn = container.querySelector('[data-action="next-presentation-slide"]');
+  const countdownTextInputEl = container.querySelector('[data-el="countdown-text-input"]');
+  const countdownMinutesInputEl = container.querySelector('[data-el="countdown-minutes-input"]');
 
   const scheduleDateEl = container.querySelector('[data-el="schedule-date"]');
   const scheduleListEl = container.querySelector('[data-el="schedule-list"]');
+
+  const localFolderBtnEl = container.querySelector('[data-el="local-folder-btn"]');
 
   const fontScaleEl = container.querySelector('[data-el="font-scale"]');
   const fontScaleValueEl = container.querySelector('[data-el="font-scale-value"]');
@@ -253,8 +433,7 @@ export function renderProjectionControl(container, { supabase }) {
   const panels = {
     bible: container.querySelector('[data-el="bible-panel"]'),
     song: container.querySelector('[data-el="song-panel"]'),
-    image: container.querySelector('[data-el="image-panel"]'),
-    video: container.querySelector('[data-el="video-panel"]'),
+    media: container.querySelector('[data-el="media-panel"]'),
     schedule: container.querySelector('[data-el="schedule-panel"]'),
   };
 
@@ -266,14 +445,16 @@ export function renderProjectionControl(container, { supabase }) {
   let songSlides = []; // [[line, line, ...], ...]
   let songTitle = '';
   let selectedSongId = null;
+  let currentSongLyrics = ''; // raw text, only so it can be cached locally once shown — see cacheCurrentSongIfPossible()
   let slideIndex = -1; // which slide is actually LIVE
 
   // Shared across all four tabs — only one thing can be "next in line"
   // at a time, matching the single shared Preview box/arrow.
-  let stagedKind = null; // 'bible' | 'song' | 'image' | 'video' | null
+  let stagedKind = null; // 'bible' | 'song' | 'image' | 'video' | 'presentation' | null
   let stagedPayload = null; // exactly what gets sent, plus whatever contentPreviewHtml needs to render it
   let stagedBibleIndex = -1; // into bookVerses, when stagedKind === 'bible'
   let stagedSlideIndex = -1; // into songSlides, when stagedKind === 'song'
+  let stagedPresentationSlideIndex = -1; // into presentationSlides, when stagedKind === 'presentation'
 
   let pendingImageBlob = null;
   let pendingImageObjectUrl = null; // this tab's own preview only — never sent over the channel
@@ -282,6 +463,16 @@ export function renderProjectionControl(container, { supabase }) {
   let pendingVideoBlob = null;
   let videoLoaded = false;
   let videoPlaying = false;
+
+  let mediaKind = 'image'; // which of Image/Video/Presentation/Countdown is showing within the Media tab
+
+  // Presentation: a hand-built or PDF/PPTX-imported slide deck, same
+  // click-to-stage/double-click-to-go-live pattern as Songs. Each
+  // slide: { text, backgroundColor, backgroundBlob }. Local-only, like
+  // Image/Video — never persisted, nothing to restore after a reload.
+  let presentationSlides = [];
+  let presentationSlideIndex = -1; // which slide is actually LIVE
+  let presentationEditIndex = -1; // which slide the editor box below the grid is currently editing
 
   let currentFontScale = 1;
   let currentBackdropBlob = null;
@@ -312,6 +503,79 @@ export function renderProjectionControl(container, { supabase }) {
     renderNowShowing(payload);
   }
 
+  // --- Local folder storage (File System Access API) ---
+  // Chromium-only -- the button itself is hidden entirely on
+  // Firefox/Safari rather than shown-but-broken, and every other call
+  // site below checks `localFolderHandle` before using it, falling
+  // back to exactly today's in-memory-only behavior when it's null.
+  let localFolderHandle = null;
+
+  if (!localMediaStore.isSupported()) {
+    localFolderBtnEl.classList.add('hidden');
+  } else {
+    localMediaStore.getFolderHandle().then((handle) => {
+      localFolderHandle = handle;
+      onLocalFolderChanged();
+    });
+    localFolderBtnEl.addEventListener('click', async () => {
+      const handle = await localMediaStore.requestFolderAccess();
+      if (handle) localFolderHandle = handle;
+      onLocalFolderChanged();
+    });
+  }
+
+  function onLocalFolderChanged() {
+    localFolderBtnEl.textContent = localFolderHandle ? t('projection.localFolderConnected') : t('projection.setupLocalFolder');
+    localFolderBtnEl.className = `px-3 py-1.5 rounded-lg text-sm font-medium ${localFolderHandle ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`;
+    imageLocalHintEl.textContent = localFolderHandle ? t('projection.localFolderHint') : t('projection.localFileHint');
+    videoLocalHintEl.textContent = localFolderHandle ? t('projection.localFolderHint') : t('projection.localFileHint');
+    renderImageLibrary();
+    renderVideoLibrary();
+  }
+
+  async function renderMediaLibrary(listEl, onPick) {
+    if (!localFolderHandle) { listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+    const files = await localMediaStore.listFiles(localFolderHandle);
+    const mediaFiles = files.filter((f) => f.name !== 'projection-songs-cache.json');
+    listEl.classList.remove('hidden');
+    if (mediaFiles.length === 0) {
+      listEl.innerHTML = `<p class="text-xs text-slate-400">${t('projection.libraryEmpty')}</p>`;
+      return;
+    }
+    listEl.innerHTML = `
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">${t('projection.library')}</p>
+      <div class="flex flex-wrap gap-1.5">
+        ${mediaFiles.map((f) => `<button type="button" data-library-name="${escapeAttr(f.name)}" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs hover:bg-slate-200">${escapeHtml(f.name)}</button>`).join('')}
+      </div>
+    `;
+    listEl.querySelectorAll('[data-library-name]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const file = await localMediaStore.readFile(localFolderHandle, btn.dataset.libraryName);
+        onPick(file);
+      });
+    });
+  }
+
+  function renderImageLibrary() {
+    renderMediaLibrary(imageLibraryEl, (file) => {
+      if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
+      pendingImageBlob = file;
+      pendingImageObjectUrl = URL.createObjectURL(file);
+      imagePreviewEl.src = pendingImageObjectUrl;
+      imagePreviewEl.classList.remove('hidden');
+      projectImageBtn.disabled = false;
+    });
+  }
+
+  function renderVideoLibrary() {
+    renderMediaLibrary(videoLibraryEl, (file) => {
+      pendingVideo = { source: 'file' };
+      pendingVideoBlob = file;
+      videoSelectedEl.textContent = `${t('projection.videoReady')} (${file.name})`;
+      projectVideoBtn.disabled = false;
+    });
+  }
+
   // BroadcastChannel, not Supabase Realtime — see js/utils/projection.js.
   // Works only between windows on this same computer/browser, which is
   // exactly the real setup (laptop -> HDMI -> projector), and means
@@ -319,10 +583,14 @@ export function renderProjectionControl(container, { supabase }) {
   const channel = createProjectionChannel();
   channel.onmessage = (e) => {
     if (e.data?.event !== 'hello') return;
-    // The projector just (re)connected — resend both what's live and
-    // the current backdrop, since it has no other way to know either.
+    // The projector just (re)connected — resend what's live, the
+    // current backdrop, and every category's active theme, since it
+    // has no other way to know any of them.
     channel.postMessage({ event: 'show', payload: currentPayload || { kind: 'blank' } });
     channel.postMessage({ event: 'backdrop', blob: currentBackdropBlob });
+    Object.entries(activeThemes).forEach(([category, theme]) => {
+      if (theme) channel.postMessage({ event: 'theme', category, theme });
+    });
   };
 
   container.querySelector('[data-action="open-screen"]').addEventListener('click', async () => {
@@ -370,6 +638,17 @@ export function renderProjectionControl(container, { supabase }) {
     });
   }
 
+  function setMediaKind(kind) {
+    mediaKind = kind;
+    Object.entries(mediaKindPanels).forEach(([key, el]) => el.classList.toggle('hidden', key !== kind));
+    mediaKindBtns.forEach((btn) => {
+      const active = btn.dataset.mediaKind === kind;
+      btn.className = `px-3 py-1.5 rounded-lg text-sm font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`;
+    });
+  }
+  mediaKindBtns.forEach((btn) => btn.addEventListener('click', () => setMediaKind(btn.dataset.mediaKind)));
+  setMediaKind('image');
+
   function send(payload) {
     if (payload.kind === 'bible' || payload.kind === 'song') {
       payload = { ...payload, fontScale: currentFontScale };
@@ -411,6 +690,15 @@ export function renderProjectionControl(container, { supabase }) {
       // live "Now Showing" copy of this reflects real playback state.
       const state = staged ? t('projection.videoStagedLabel') : (payload.action === 'pause' ? t('projection.videoPaused') : t('projection.videoPlaying'));
       return `<p class="text-sm">🎬 ${escapeHtml(state)}</p>`;
+    }
+    if (payload.kind === 'presentation') {
+      if (payload.backgroundBlob) {
+        return `<img src="${escapeAttr(URL.createObjectURL(payload.backgroundBlob))}" class="max-h-24 rounded" alt="" />`;
+      }
+      return `<div class="rounded p-3 text-sm" style="background:${escapeAttr(payload.backgroundColor || '#000')};color:#fff;">${escapeHtml(payload.text || '')}</div>`;
+    }
+    if (payload.kind === 'countdown') {
+      return `<p class="text-sm">⏱ ${escapeHtml(payload.text || '')} — ${t('projection.countdownRunning')}</p>`;
     }
     return '';
   }
@@ -619,14 +907,78 @@ export function renderProjectionControl(container, { supabase }) {
     renderSongList(query ? allSongs.filter((s) => s.title.toLowerCase().includes(query)) : allSongs);
   });
 
+  // Opens the exact same admin editor Choir's own song library uses
+  // (js/components/songCreatorModal.js) -- not a separate, lighter
+  // "quick add" -- a song created here is a real `songs` row,
+  // immediately usable from Choir's side too. Saving re-loads the
+  // list and jumps straight to the new song so the operator can start
+  // projecting it without a second trip through search.
+  const songCreatorModal = createSongCreatorModal({
+    supabase,
+    onCreated: async (song) => {
+      await loadSongList();
+      selectSong(song.id, song.title);
+    },
+  });
+  container.querySelector('[data-action="new-song"]').addEventListener('click', () => songCreatorModal.open());
+
+  // --- Themes ---
+  // Cloud-stored (unlike local-only Image/Video/Presentation) -- tiny
+  // rows, same for every operator/computer on this tenant. "Use" sets
+  // the active theme for the rest of THIS session (broadcast right
+  // away); "Set as default" additionally persists it so future
+  // sessions start with it already active.
+  let activeThemes = { songs: null, bible: null, media: null };
+
+  function broadcastTheme(category, theme) {
+    activeThemes[category] = theme;
+    channel.postMessage({ event: 'theme', category, theme });
+
+    // A theme now carries its own text size -- applying one (Use/Set
+    // default, or the initial default load) moves the shared
+    // font-scale slider to match, same as if the operator had dragged
+    // it there themselves. Only Bible/Song actually render through
+    // that slider (fontSizeFor()) today -- Media's countdown/
+    // presentation text isn't scale-driven yet.
+    const kindForCategory = category === 'songs' ? 'song' : category === 'bible' ? 'bible' : null;
+    if (kindForCategory && theme.font_scale) {
+      currentFontScale = theme.font_scale;
+      fontScaleEl.value = String(Math.round(theme.font_scale * 100));
+      fontScaleValueEl.textContent = `${fontScaleEl.value}%`;
+      if (currentPayload?.kind === kindForCategory) send(currentPayload);
+      else saveState();
+    }
+  }
+
+  const themeModal = createProjectionThemeModal({
+    supabase,
+    onThemeChanged: (category, theme) => broadcastTheme(category, theme),
+  });
+  container.querySelector('[data-action="open-themes"]').addEventListener('click', () => themeModal.open());
+
+  themeModal.getDefaultThemes().then((defaults) => {
+    Object.entries(defaults).forEach(([category, theme]) => broadcastTheme(category, theme));
+  });
+
   async function selectSong(songId, title) {
-    const { data } = await supabase.from('songs').select('lyrics').eq('id', songId).single();
+    let lyrics = null;
+    try {
+      const { data, error } = await supabase.from('songs').select('lyrics').eq('id', songId).single();
+      if (error) throw error;
+      lyrics = data?.lyrics;
+    } catch {
+      // No connectivity (or some other fetch failure) -- fall back to
+      // whatever was cached locally the last time this song was shown.
+      // See cacheCurrentSongIfPossible() below for how it got there.
+      if (localFolderHandle) {
+        const cache = await localMediaStore.readSongsCache(localFolderHandle);
+        lyrics = cache[songId]?.lyrics ?? null;
+      }
+    }
     songTitle = title;
     selectedSongId = songId;
-    songSlides = (data?.lyrics || '')
-      .split(/\n\s*\n/)
-      .map((stanza) => stanza.split('\n').map((l) => l.trim()).filter(Boolean))
-      .filter((lines) => lines.length > 0);
+    currentSongLyrics = lyrics || '';
+    songSlides = splitLyricsIntoSlides(lyrics);
 
     songSelectedEl.textContent = t('projection.selectedSong', { title });
     scheduleSongBtn.classList.remove('hidden');
@@ -671,6 +1023,7 @@ export function renderProjectionControl(container, { supabase }) {
     stagedPayload = null;
     stagedBibleIndex = -1;
     stagedSlideIndex = -1;
+    stagedPresentationSlideIndex = -1;
     renderStagePreview(null);
   }
 
@@ -705,6 +1058,8 @@ export function renderProjectionControl(container, { supabase }) {
       toggleVideoBtn.textContent = t('projection.pause');
       lastLiveDescriptor = { kind: 'video' };
       send(buildVideoPlayPayload());
+    } else if (stagedKind === 'presentation') {
+      projectPresentationSlideAt(stagedPresentationSlideIndex);
     }
 
     clearStaged();
@@ -722,6 +1077,17 @@ export function renderProjectionControl(container, { supabase }) {
     slidePositionEl.textContent = t('projection.slideOf', { current: idx + 1, total: songSlides.length });
     lastLiveDescriptor = { kind: 'song', songId: selectedSongId, songTitle, slideIndex: idx };
     send({ kind: 'song', reference: songTitle, lines: songSlides[idx] });
+    cacheCurrentSongIfPossible();
+  }
+
+  // Any song (Choir-added or added here via "+ New Song") gets cached
+  // to the local folder the first time it's actually sent live, not
+  // just selected -- a read-through cache so a later service with no
+  // connectivity can still pull up a previously-shown song from disk
+  // instead of Supabase. No-op when no local folder is set up.
+  function cacheCurrentSongIfPossible() {
+    if (!localFolderHandle || !selectedSongId || !currentSongLyrics) return;
+    localMediaStore.cacheSong(localFolderHandle, { id: selectedSongId, title: songTitle, lyrics: currentSongLyrics });
   }
 
   prevSlideBtn.addEventListener('click', () => projectSlideAt(slideIndex - 1));
@@ -733,7 +1099,7 @@ export function renderProjectionControl(container, { supabase }) {
   // cloned over the BroadcastChannel), which mints its own local
   // preview from it; nothing here ever becomes a URL on any server.
 
-  imageInputEl.addEventListener('change', () => {
+  imageInputEl.addEventListener('change', async () => {
     const file = imageInputEl.files[0];
     if (!file) return;
     if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
@@ -742,6 +1108,13 @@ export function renderProjectionControl(container, { supabase }) {
     imagePreviewEl.src = pendingImageObjectUrl;
     imagePreviewEl.classList.remove('hidden');
     projectImageBtn.disabled = false;
+
+    // Also keep a real copy on disk (if the operator's set up a local
+    // folder) -- still there next session, unlike this in-memory blob.
+    if (localFolderHandle) {
+      await localMediaStore.saveFile(localFolderHandle, file);
+      renderImageLibrary();
+    }
   });
 
   projectImageBtn.addEventListener('click', () => {
@@ -762,13 +1135,18 @@ export function renderProjectionControl(container, { supabase }) {
     projectVideoBtn.disabled = false;
   });
 
-  videoInputEl.addEventListener('change', () => {
+  videoInputEl.addEventListener('change', async () => {
     const file = videoInputEl.files[0];
     if (!file) return;
     pendingVideo = { source: 'file' };
     pendingVideoBlob = file;
     videoSelectedEl.textContent = `${t('projection.videoReady')} (${file.name})`;
     projectVideoBtn.disabled = false;
+
+    if (localFolderHandle) {
+      await localMediaStore.saveFile(localFolderHandle, file);
+      renderVideoLibrary();
+    }
   });
 
   function buildVideoPlayPayload() {
@@ -791,6 +1169,142 @@ export function renderProjectionControl(container, { supabase }) {
     // loaded locally, a pause/resume is just an instruction, not new
     // content to hand over.
     send({ kind: 'video', action: videoPlaying ? 'resume' : 'pause', source: pendingVideo.source, videoId: pendingVideo.videoId });
+  });
+
+  // --- Presentation panel ---
+  // Same click-to-stage/double-click-to-go-live grid pattern as Songs
+  // (renderSlideGrid), generalized to a hand-built/imported slide deck
+  // instead of a lyrics split. Local-only like Image/Video -- nothing
+  // persists across a reload.
+
+  function renderPresentationSlideGrid() {
+    presentationSlideGridEl.innerHTML = presentationSlides.map((slide, idx) => `
+      <button type="button" data-pres-slide-idx="${idx}" title="${escapeAttr((slide.text || '').slice(0, 60))}"
+              class="w-9 h-9 rounded-lg text-sm font-medium border ${
+                idx === presentationSlideIndex ? 'bg-emerald-600 text-white border-emerald-600'
+                : idx === stagedPresentationSlideIndex ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              }">
+        ${idx + 1}
+      </button>
+    `).join('');
+    presentationSlideGridEl.querySelectorAll('[data-pres-slide-idx]').forEach((btn) => {
+      const idx = Number(btn.dataset.presSlideIdx);
+      btn.addEventListener('click', () => { stagePresentationSlideAt(idx); openPresentationEditor(idx); });
+      btn.addEventListener('dblclick', () => { stagePresentationSlideAt(idx); sendStaged(); });
+    });
+    prevPresentationSlideBtn.disabled = presentationSlideIndex <= 0;
+    nextPresentationSlideBtn.disabled = presentationSlideIndex === -1 || presentationSlideIndex >= presentationSlides.length - 1;
+  }
+
+  function stagePresentationSlideAt(idx) {
+    if (idx < 0 || idx >= presentationSlides.length) return;
+    stagedKind = 'presentation';
+    stagedPresentationSlideIndex = idx;
+    const slide = presentationSlides[idx];
+    stagedPayload = { kind: 'presentation', text: slide.text, backgroundColor: slide.backgroundColor, backgroundBlob: slide.backgroundBlob };
+    renderPresentationSlideGrid();
+    renderStagePreview(stagedPayload);
+  }
+
+  function projectPresentationSlideAt(idx) {
+    if (idx < 0 || idx >= presentationSlides.length) return;
+    presentationSlideIndex = idx;
+    const slide = presentationSlides[idx];
+    // Not DB-restorable (may carry a local Blob) -- same "local media
+    // lost on reload" notice as Image/Video, see the restore block below.
+    lastLiveDescriptor = { kind: 'presentation' };
+    renderPresentationSlideGrid();
+    send({ kind: 'presentation', text: slide.text, backgroundColor: slide.backgroundColor, backgroundBlob: slide.backgroundBlob });
+  }
+
+  function openPresentationEditor(idx) {
+    presentationEditIndex = idx;
+    const slide = presentationSlides[idx];
+    presentationEditorEl.classList.remove('hidden');
+    slideTextInputEl.value = slide.text || '';
+    slideColorInputEl.value = slide.backgroundColor || '#000000';
+  }
+
+  function refreshStagedPresentationPreview() {
+    if (stagedPresentationSlideIndex !== presentationEditIndex) return;
+    stagePresentationSlideAt(presentationEditIndex);
+  }
+
+  slideTextInputEl.addEventListener('input', () => {
+    if (presentationEditIndex === -1) return;
+    presentationSlides[presentationEditIndex].text = slideTextInputEl.value;
+    refreshStagedPresentationPreview();
+  });
+
+  slideColorInputEl.addEventListener('input', () => {
+    if (presentationEditIndex === -1) return;
+    presentationSlides[presentationEditIndex].backgroundColor = slideColorInputEl.value;
+    refreshStagedPresentationPreview();
+  });
+
+  slideImageInputEl.addEventListener('change', () => {
+    if (presentationEditIndex === -1) return;
+    const file = slideImageInputEl.files[0];
+    if (!file) return;
+    presentationSlides[presentationEditIndex].backgroundBlob = file;
+    slideImageInputEl.value = '';
+    refreshStagedPresentationPreview();
+  });
+
+  container.querySelector('[data-action="delete-slide"]').addEventListener('click', () => {
+    if (presentationEditIndex === -1) return;
+    presentationSlides.splice(presentationEditIndex, 1);
+    presentationEditIndex = -1;
+    presentationEditorEl.classList.add('hidden');
+    if (stagedPresentationSlideIndex >= presentationSlides.length) stagedPresentationSlideIndex = -1;
+    if (presentationSlideIndex >= presentationSlides.length) presentationSlideIndex = presentationSlides.length - 1;
+    renderPresentationSlideGrid();
+  });
+
+  container.querySelector('[data-action="add-slide"]').addEventListener('click', () => {
+    presentationSlides.push({ text: '', backgroundColor: '#000000', backgroundBlob: null });
+    renderPresentationSlideGrid();
+    openPresentationEditor(presentationSlides.length - 1);
+  });
+
+  pdfInputEl.addEventListener('change', async () => {
+    const file = pdfInputEl.files[0];
+    if (!file) return;
+    pdfInputEl.value = '';
+    const slides = await extractPdfPagesAsSlides(file);
+    presentationSlides.push(...slides);
+    renderPresentationSlideGrid();
+  });
+
+  pptxInputEl.addEventListener('change', async () => {
+    const file = pptxInputEl.files[0];
+    if (!file) return;
+    pptxInputEl.value = '';
+    const texts = await extractPptxSlideTexts(file);
+    texts.forEach((text) => presentationSlides.push({ text, backgroundColor: '#000000', backgroundBlob: null }));
+    renderPresentationSlideGrid();
+  });
+
+  prevPresentationSlideBtn.addEventListener('click', () => projectPresentationSlideAt(presentationSlideIndex - 1));
+  nextPresentationSlideBtn.addEventListener('click', () => projectPresentationSlideAt(presentationSlideIndex + 1));
+
+  renderPresentationSlideGrid();
+
+  // --- Countdown panel ---
+  // Broadcasts an absolute end timestamp, not a relative "seconds
+  // left" counter, so projectorPage.js can recompute the remaining
+  // time from endsAt - Date.now() on every tick -- naturally immune
+  // to a projector-side reload (its own `hello` reconnect resends
+  // this same payload verbatim) with no special-cased recovery.
+
+  container.querySelector('[data-action="start-countdown"]').addEventListener('click', () => {
+    const text = countdownTextInputEl.value.trim();
+    const minutes = Number(countdownMinutesInputEl.value);
+    if (!minutes || minutes <= 0) return;
+    const endsAt = new Date(Date.now() + minutes * 60000).toISOString();
+    lastLiveDescriptor = { kind: 'countdown', text, endsAt };
+    send({ kind: 'countdown', text, endsAt });
   });
 
   // --- Schedule ---
@@ -1003,11 +1517,20 @@ export function renderProjectionControl(container, { supabase }) {
     restoreNowShowing({ kind: 'song', reference: songTitle, lines: songSlides[idx], fontScale: currentFontScale });
   });
 
-  // A local image/video Blob only ever lived in the previous mount's
-  // JS heap -- there's nothing to read back after a reload. Say so,
-  // rather than silently showing "nothing live" while something
-  // might still actually be on the real screen.
-  if (restoreLive?.kind === 'image' || restoreLive?.kind === 'video') {
+  // A countdown is just text + an absolute timestamp -- fully
+  // restorable, no Blob involved -- so unlike Image/Video/Presentation
+  // below, re-show it in "Now Showing" (not re-broadcast: the
+  // projector window already independently ticks its own copy from
+  // the same endsAt, see projectorPage.js's showCountdown()).
+  if (restoreLive?.kind === 'countdown' && new Date(restoreLive.endsAt).getTime() > Date.now()) {
+    restoreNowShowing({ kind: 'countdown', text: restoreLive.text, endsAt: restoreLive.endsAt });
+  }
+
+  // A local image/video/presentation Blob only ever lived in the
+  // previous mount's JS heap -- there's nothing to read back after a
+  // reload. Say so, rather than silently showing "nothing live" while
+  // something might still actually be on the real screen.
+  if (restoreLive?.kind === 'image' || restoreLive?.kind === 'video' || restoreLive?.kind === 'presentation') {
     nowShowingEl.innerHTML = `<p class="text-amber-300 text-sm">${t('projection.localMediaLostOnReload')}</p>`;
   }
 
@@ -1020,6 +1543,8 @@ export function renderProjectionControl(container, { supabase }) {
       document.removeEventListener('click', closeSuggestionsOnOutsideClick);
       if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
       if (currentBackdropObjectUrl) URL.revokeObjectURL(currentBackdropObjectUrl);
+      songCreatorModal.root.remove(); // appended to document.body, independent of `container`
+      themeModal.root.remove();
     },
     // "Live" for the leave-guard means either actual content is on
     // screen, or the projector window itself is still open — an
