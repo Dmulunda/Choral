@@ -52,7 +52,7 @@ import {
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
-  canRecordOfferings,
+  canRecordOfferings, hasFinanceOversight,
 } from './departments.js';
 import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft, getPendingTrialCharge, isActingAsExtension } from './tenant.js';
 import { formatPlanPrice } from './utils/planPresentation.js';
