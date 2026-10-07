@@ -53,11 +53,19 @@ async function idbSet(key, value) {
 }
 
 // Asks the operator to pick a folder, remembers it for next time.
-// Returns the handle, or null if the picker was dismissed.
+// Returns the handle, or null if the picker was dismissed. The
+// browser can't grant access with zero clicks -- that would defeat
+// the whole point of asking -- but `startIn: 'documents'` opens the
+// picker already inside Documents (a folder every computer has and
+// every operator already knows), instead of wherever the browser
+// would otherwise default to (often Downloads), so a Media & Tech
+// volunteer with no particular technical background can set this up
+// in one click ("Documents" is right there) rather than needing to
+// navigate anywhere first.
 export async function requestFolderAccess() {
   if (!isSupported()) return null;
   try {
-    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite', startIn: 'documents' });
     await idbSet(FOLDER_HANDLE_KEY, handle);
     return handle;
   } catch {
