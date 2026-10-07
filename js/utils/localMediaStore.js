@@ -65,20 +65,51 @@ export async function requestFolderAccess() {
   }
 }
 
-// Reads back whatever folder was previously granted, re-confirming
-// permission if the browser needs that (usually silent). Returns
-// null if nothing was ever granted, or permission is now refused.
+// Reads back whatever folder was previously granted, ONLY if the
+// browser still silently considers it granted -- does NOT call
+// requestPermission() here, since that needs a direct user gesture
+// (a click) to reliably prompt/succeed; calling it from page-load code
+// (no gesture behind it) gets silently refused by the browser with no
+// dialog ever shown, which previously made a perfectly real, already-
+// set-up folder look exactly like "never configured" on every reload.
+// Chrome keeps 'granted' across a plain page reload, but typically
+// resets to 'prompt' after the browser itself restarts -- see
+// hasStoredFolderHandle()/reconnectFolderAccess() for that case.
 export async function getFolderHandle() {
   if (!isSupported()) return null;
   const handle = await idbGet(FOLDER_HANDLE_KEY);
   if (!handle) return null;
   try {
     const permission = await handle.queryPermission({ mode: 'readwrite' });
-    if (permission === 'granted') return handle;
+    return permission === 'granted' ? handle : null;
+  } catch {
+    return null; // handle no longer valid (folder moved/deleted, etc.)
+  }
+}
+
+// Whether a folder was set up at some point, regardless of whether its
+// permission is still silently granted -- lets the UI show "Reconnect"
+// (one click, no picker needed) instead of "Set Up" when a handle
+// exists but just needs re-confirming.
+export async function hasStoredFolderHandle() {
+  if (!isSupported()) return false;
+  const handle = await idbGet(FOLDER_HANDLE_KEY);
+  return !!handle;
+}
+
+// Re-requests permission on the ALREADY-STORED handle. Must be called
+// from directly inside a click handler (the user gesture Chrome
+// requires to actually show the prompt) -- unlike getFolderHandle()
+// above, which only ever reads the already-granted state.
+export async function reconnectFolderAccess() {
+  if (!isSupported()) return null;
+  const handle = await idbGet(FOLDER_HANDLE_KEY);
+  if (!handle) return null;
+  try {
     const requested = await handle.requestPermission({ mode: 'readwrite' });
     return requested === 'granted' ? handle : null;
   } catch {
-    return null; // handle no longer valid (folder moved/deleted, etc.)
+    return null;
   }
 }
 
@@ -138,5 +169,34 @@ export async function cacheSong(folderHandle, song) {
   const fileHandle = await folderHandle.getFileHandle(SONGS_CACHE_FILE, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(JSON.stringify(cache));
+  await writable.close();
+}
+
+// ---- Presentation deck, same folder -- survives a reload the same
+// way the Image/Video library already does. Each slide's own
+// background image (if any) is saved as its own file, named by the
+// slide's stable id so re-saving after an edit overwrites it in place
+// instead of accumulating a new file every time; the manifest JSON
+// just references that filename, since a Blob itself can't go in
+// JSON. ----
+const PRESENTATION_MANIFEST_FILE = 'projection-presentation.json';
+
+export async function readPresentationDeck(folderHandle) {
+  try {
+    const file = await readFile(folderHandle, PRESENTATION_MANIFEST_FILE);
+    return JSON.parse(await file.text());
+  } catch {
+    return null; // file doesn't exist yet, or is corrupt -- nothing to restore
+  }
+}
+
+// `slides`: [{ id, text, backgroundColor, backgroundImageName }] -- the
+// manifest shape, already resolved by the caller (which owns turning
+// an in-memory backgroundBlob into a saved file + filename before
+// calling this).
+export async function savePresentationDeck(folderHandle, slides) {
+  const fileHandle = await folderHandle.getFileHandle(PRESENTATION_MANIFEST_FILE, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(JSON.stringify(slides));
   await writable.close();
 }
