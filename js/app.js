@@ -122,6 +122,58 @@ const lazyTabs = {
 };
 let loadedTabs = new Set();
 let currentTabName = null;
+
+// Per-tab scroll memory -- the app has no inner scrolling container
+// (#app-shell is just min-h-screen; <main> grows with its content), so
+// the page itself scrolls and every tab switch used to silently leave
+// window.scrollY wherever it was, showing the newly-revealed panel cut
+// off partway down instead of from its own top. In-memory map covers
+// same-session tab switching instantly; sessionStorage mirror also
+// restores it after a reload (pairs with TAB_STORAGE_KEY, which already
+// restores which tab a reload lands on -- this restores where on that
+// tab too), cleared when the browser tab actually closes since a stale
+// scroll offset from days ago isn't worth carrying forever.
+const SCROLL_MEMORY_PREFIX = 'choir-hub-scroll-';
+const scrollMemory = new Map();
+
+function saveScrollPosition(tabName) {
+  if (!tabName) return;
+  const y = window.scrollY;
+  scrollMemory.set(tabName, y);
+  try { sessionStorage.setItem(SCROLL_MEMORY_PREFIX + tabName, String(y)); } catch { /* storage disabled -- in-memory map still covers this session */ }
+}
+
+function readScrollPosition(tabName) {
+  if (scrollMemory.has(tabName)) return scrollMemory.get(tabName);
+  try {
+    const raw = sessionStorage.getItem(SCROLL_MEMORY_PREFIX + tabName);
+    return raw ? Number(raw) : 0;
+  } catch { return 0; }
+}
+
+// A freshly-activated tab's content (especially a lazy tab's first
+// load) often keeps growing for a few frames as it fetches/renders --
+// restoring once immediately would then get silently clamped back to
+// whatever the page's shorter height allowed at that instant. Keeps
+// re-applying the target scroll position across animation frames until
+// the page's height stops changing (or a generous frame cap is hit, so
+// a tab that never settles can't loop forever).
+function restoreScrollPosition(tabName) {
+  const target = readScrollPosition(tabName);
+  if (!target) { window.scrollTo(0, 0); return; }
+  let attempts = 0;
+  let lastHeight = -1;
+  const tick = () => {
+    window.scrollTo(0, target);
+    const height = document.documentElement.scrollHeight;
+    attempts += 1;
+    if (height !== lastHeight && attempts < 30) {
+      lastHeight = height;
+      requestAnimationFrame(tick);
+    }
+  };
+  requestAnimationFrame(tick);
+}
 // Whatever tab was active right before jumping into Site Admin --
 // powers that page's own Back button (no top-level tab in this app has
 // one otherwise; everything else relies on the global sidebar Home icon).
@@ -164,6 +216,14 @@ const DEPARTMENT_RELATIVE_TABS = new Set([
 ]);
 
 function activateTab(name) {
+  // Only an actual switch should touch scroll memory -- some call sites
+  // re-invoke activateTab() with the tab that's already active (e.g.
+  // just to refresh nav highlighting), and yanking the user's current
+  // scroll position back to an old remembered spot while they're
+  // mid-scroll on that same tab would be jarring, not helpful.
+  const isSwitchingTab = name !== currentTabName;
+  if (isSwitchingTab && currentTabName) saveScrollPosition(currentTabName);
+
   currentTabName = name;
   localStorage.setItem(TAB_STORAGE_KEY, name);
 
@@ -193,6 +253,8 @@ function activateTab(name) {
     loadedTabs.add(name);
     lazyTabs[name]();
   }
+
+  if (isSwitchingTab) restoreScrollPosition(name);
 }
 
 document.querySelector('[data-tab-panel="site-admin"] [data-el="site-admin-back"]')
