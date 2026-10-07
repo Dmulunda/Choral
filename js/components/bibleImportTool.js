@@ -52,6 +52,14 @@ export function createBibleImportModal({ supabase }) {
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
       <p class="text-xs text-slate-500 mb-4">${t('bibleImport.intro')}</p>
+      <div class="flex items-center gap-4 mb-3" data-el="translation-choices">
+        ${TRANSLATIONS.map((tr) => `
+          <label class="flex items-center gap-1.5 text-sm text-slate-700">
+            <input type="checkbox" data-translation-checkbox="${tr.value}" checked class="rounded border-slate-300" />
+            ${escapeHtml(tr.label)}
+          </label>
+        `).join('')}
+      </div>
       <div class="flex items-center gap-2">
         <button type="button" data-action="start" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">
           ${t('bibleImport.start')}
@@ -98,11 +106,18 @@ export function createBibleImportModal({ supabase }) {
     progressEl.scrollTop = progressEl.scrollHeight;
   }
 
+  function selectedTranslations() {
+    return TRANSLATIONS.filter((tr) => root.querySelector(`[data-translation-checkbox="${tr.value}"]`).checked);
+  }
+
   async function runImport() {
+    const translations = selectedTranslations();
+    if (translations.length === 0) { window.alert(t('bibleImport.pickTranslation')); return; }
+
     startBtn.disabled = true;
     progressEl.innerHTML = '';
 
-    for (const translation of TRANSLATIONS) {
+    for (const translation of translations) {
       logLine(t('bibleImport.startingTranslation', { name: translation.label }));
       let totalImported = 0;
 
