@@ -232,9 +232,12 @@
           </svg>
         </button>
 
-        <!-- Messages (internal inbox — direct messages/announcements),
-             a proper envelope icon so it's visually distinct from the
-             bell (Notifications, push permission) beside it. -->
+        <!-- Messages — things a person actually wrote (direct messages,
+             department announcements), js/components/inboxModal.js.
+             Its own unread badge, counting only unread direct
+             messages (announcements have no read/unread concept).
+             Distinct from the bell (Notifications, automatic system
+             alerts) beside it. -->
         <button type="button" id="inbox-btn" data-i18n-aria-label="inbox.title" aria-label="Messages" class="hidden relative p-2 rounded-lg hover:bg-slate-800">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -242,13 +245,16 @@
           <span id="inbox-badge" class="hidden absolute top-0.5 right-0.5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold leading-none"></span>
         </button>
 
-        <!-- Notifications (push permission on/off) — was a text option
-             buried in the Tools dropdown; now its own icon beside
-             Messages, on every screen size. -->
-        <button type="button" id="notifications-btn" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="p-2 rounded-lg hover:bg-slate-800">
+        <!-- Notifications — automatic system alerts (js/components/
+             notificationsModal.js), separate from Messages beside it.
+             Its own unread badge, like Messages' own. A "⚙" inside
+             that modal reaches push on/off + per-type preferences
+             (js/components/notificationSettingsModal.js). -->
+        <button type="button" id="notifications-btn" data-i18n-aria-label="sidebar.notifications" aria-label="Notifications" class="relative p-2 rounded-lg hover:bg-slate-800">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
+          <span id="notifications-badge" class="hidden absolute top-0.5 right-0.5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold leading-none"></span>
         </button>
 
         <!-- Help / training — opens the church's training PDF (uploaded by

@@ -1,12 +1,17 @@
-// Unified inbox: direct messages (with a compose flow restricted to
-// department-mates, unless the sender holds a church-wide role) and
-// notifications (absence reports, replacement-request activity), each
-// marked read as soon as its tab is viewed. Replaces Phase 4's
-// notifications-only modal — same createXModal({ ... }) => { open }
-// shape as every other modal in this app.
+// Messages only -- things a person actually wrote: direct messages
+// (with a compose flow restricted to department-mates, unless the
+// sender holds a church-wide role) and department announcements
+// (read-only broadcasts, same RLS-scoped read pattern
+// js/components/homeWidgets.js's own Announcements widget already
+// uses). Automatic system alerts live in the separate bell icon's own
+// feed now (js/components/notificationsModal.js) -- this modal no
+// longer shows or mixes them in, per the Notifications-vs-Messages
+// split (a human wrote everything here; nothing here is auto-
+// generated, and nothing here is un-repliable the way a notification
+// is -- announcements just don't have a 1:1 "reply" concept since
+// they're a broadcast, not a conversation).
 import { getGlobalRole } from '../departments.js';
 import { confirmDialog } from './confirmDialog.js';
-import { openMeetingWindow, navigateMeetingWindow } from './videoMeeting.js';
 import { t, departmentLabel } from '../i18n.js';
 
 const GLOBAL_MESSAGE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
@@ -48,7 +53,7 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
       </div>
       <div class="flex gap-2 px-6 mb-3">
         <button type="button" data-el="tab-messages" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('inbox.messagesTab')}</button>
-        <button type="button" data-el="tab-notifications" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('inbox.notificationsTab')}</button>
+        <button type="button" data-el="tab-announcements" class="px-3 py-1.5 rounded-lg text-sm font-medium">${t('inbox.announcementsTab')}</button>
       </div>
 
       <div data-el="messages-panel" class="flex-1 overflow-y-auto px-6 pb-6">
@@ -59,15 +64,15 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
         <div data-el="messages-list" class="space-y-2"></div>
       </div>
 
-      <div data-el="notifications-panel" class="hidden flex-1 overflow-y-auto px-6 pb-6 space-y-2"></div>
+      <div data-el="announcements-panel" class="hidden flex-1 overflow-y-auto px-6 pb-6 space-y-2"></div>
     </div>
   `;
   document.body.appendChild(root);
 
   const tabMessagesBtn = root.querySelector('[data-el="tab-messages"]');
-  const tabNotificationsBtn = root.querySelector('[data-el="tab-notifications"]');
+  const tabAnnouncementsBtn = root.querySelector('[data-el="tab-announcements"]');
   const messagesPanelEl = root.querySelector('[data-el="messages-panel"]');
-  const notificationsPanelEl = root.querySelector('[data-el="notifications-panel"]');
+  const announcementsPanelEl = root.querySelector('[data-el="announcements-panel"]');
   const messagesListEl = root.querySelector('[data-el="messages-list"]');
   const composeEl = root.querySelector('[data-el="compose"]');
   const composeBtn = root.querySelector('[data-action="compose"]');
@@ -85,13 +90,13 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
   function activateTab(tab) {
     const isMessages = tab === 'messages';
     messagesPanelEl.classList.toggle('hidden', !isMessages);
-    notificationsPanelEl.classList.toggle('hidden', isMessages);
+    announcementsPanelEl.classList.toggle('hidden', isMessages);
     setTabStyle(tabMessagesBtn, isMessages);
-    setTabStyle(tabNotificationsBtn, !isMessages);
+    setTabStyle(tabAnnouncementsBtn, !isMessages);
   }
 
   tabMessagesBtn.addEventListener('click', () => { activateTab('messages'); loadMessages(); });
-  tabNotificationsBtn.addEventListener('click', () => { activateTab('notifications'); loadNotifications(); });
+  tabAnnouncementsBtn.addEventListener('click', () => { activateTab('announcements'); loadAnnouncements(); });
 
   composeBtn.addEventListener('click', () => {
     const willShow = composeEl.classList.contains('hidden');
@@ -337,62 +342,39 @@ export function createInboxModal({ supabase, currentUserId, onRead }) {
     }
   }
 
-  async function loadNotifications() {
-    notificationsPanelEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
+  // Read-only broadcasts -- RLS (can_read_department()) already scopes
+  // this to departments the signed-in person can actually see, same as
+  // js/components/homeWidgets.js's own Announcements widget, so no
+  // extra department filtering is needed client-side. No read/unread
+  // tracking exists for these (department_announcements has no
+  // read_at column) -- they just always list, same as that widget.
+  async function loadAnnouncements() {
+    announcementsPanelEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
 
     const { data, error } = await supabase
-      .from('notifications')
-      .select('id, type, title, body, created_at, read_at')
-      .eq('recipient_id', currentUserId)
-      .order('created_at', { ascending: false });
+      .from('department_announcements')
+      .select('id, title, body, created_at, department:departments!department_id ( name ), author:profiles!created_by ( full_name )')
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (error) {
-      notificationsPanelEl.innerHTML = `<p class="text-sm text-rose-600">${t('notifications.loadFailed', { message: error.message })}</p>`;
+      announcementsPanelEl.innerHTML = `<p class="text-sm text-rose-600">${t('inbox.loadFailed', { message: error.message })}</p>`;
       return;
     }
 
     if (data.length === 0) {
-      notificationsPanelEl.innerHTML = `<p class="text-sm text-slate-500">${t('notifications.none')}</p>`;
+      announcementsPanelEl.innerHTML = `<p class="text-sm text-slate-500">${t('inbox.noAnnouncements')}</p>`;
       return;
     }
 
-    notificationsPanelEl.innerHTML = '';
-    data.forEach((n) => notificationsPanelEl.appendChild(buildNotificationRow(n)));
-
-    const unreadIds = data.filter((n) => !n.read_at).map((n) => n.id);
-    if (unreadIds.length > 0) {
-      await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
-      onRead?.();
-    }
-  }
-
-  // A call_invite's body is the Jitsi room name (sql/069) rather than
-  // free text — this is the one notification type with a real action
-  // instead of just being informational.
-  function buildNotificationRow(n) {
-    const el = document.createElement('div');
-    el.className = `border rounded-lg p-3 ${n.read_at ? 'border-slate-200' : 'border-indigo-300 bg-indigo-50'}`;
-    if (n.type === 'call_invite') {
-      el.innerHTML = `
-        <div class="font-medium text-slate-800">${escapeHtml(n.title)}</div>
-        <div class="text-xs text-slate-400 mt-1">${escapeHtml(n.created_at.slice(0, 10))}</div>
-        <button type="button" data-action="join-call" class="mt-2 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
-          ${t('meeting.join')}
-        </button>
-      `;
-      el.querySelector('[data-action="join-call"]').addEventListener('click', async () => {
-        const win = openMeetingWindow();
-        const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', currentUserId).single();
-        navigateMeetingWindow(win, { roomName: n.body, displayName: profile?.full_name || '' });
-      });
-    } else {
-      el.innerHTML = `
-        <div class="font-medium text-slate-800">${escapeHtml(n.title)}</div>
-        ${n.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(n.body)}</p>` : ''}
-        <div class="text-xs text-slate-400 mt-2">${escapeHtml(n.created_at.slice(0, 10))}</div>
-      `;
-    }
-    return el;
+    announcementsPanelEl.innerHTML = data.map((a) => `
+      <div class="border border-slate-200 rounded-lg p-3">
+        <div class="text-xs font-semibold text-slate-500">${escapeHtml(a.department?.name || '')} · ${escapeHtml(a.author?.full_name || '')}</div>
+        <div class="font-medium text-slate-800 mt-1">${escapeHtml(a.title)}</div>
+        ${a.body ? `<p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${escapeHtml(a.body)}</p>` : ''}
+        <div class="text-xs text-slate-400 mt-2">${escapeHtml(a.created_at.slice(0, 10))}</div>
+      </div>
+    `).join('');
   }
 
   function open() {

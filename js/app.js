@@ -27,6 +27,7 @@ import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
 import { createJoinDepartmentModal } from './components/joinDepartmentModal.js';
 import { createInboxModal } from './components/inboxModal.js';
+import { createNotificationsModal } from './components/notificationsModal.js';
 import { createRulesModal } from './components/rulesModal.js';
 import { createHelpModal } from './components/helpModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
@@ -86,6 +87,7 @@ const accountMenuDialog = document.querySelector('#account-menu-dialog');
 const quickAccessDialog = document.querySelector('#quick-access-dialog');
 const quickAccessListEl = document.querySelector('[data-el="quick-access-list"]');
 const notificationsBtn = document.querySelector('#notifications-btn');
+const notificationsBadgeEl = document.querySelector('#notifications-badge');
 const headerNewMemberBtn = document.querySelector('#header-new-member-btn');
 const loginSplashEl = document.querySelector('#login-splash');
 
@@ -593,6 +595,7 @@ function refreshAfterRoleModeChange() {
   updatePreviewAsMemberUI();
   updateMemberActionsUI();
   refreshInboxBadge();
+  refreshNotificationsBadge();
   closeSidebar();
 }
 
@@ -650,6 +653,7 @@ function refreshAfterViewAsChange() {
   updatePreviewAsMemberUI();
   updateMemberActionsUI();
   refreshInboxBadge();
+  refreshNotificationsBadge();
   closeSidebar();
 }
 
@@ -721,7 +725,12 @@ accountMenuDialog.addEventListener('click', (e) => {
   if (actionBtn) closeAccountMenu();
 });
 
-notificationsBtn.addEventListener('click', () => runSidebarTool('notifications'));
+notificationsBtn.addEventListener('click', () => {
+  const notificationsUserId = getViewAsTarget()?.id || currentUserId;
+  const modal = createNotificationsModal({ supabase: getEffectiveSupabase(), currentUserId: notificationsUserId, onRead: refreshNotificationsBadge });
+  modal.open();
+  closeSidebar();
+});
 
 // ---- Quick Access dialog (mobile bottom bar's 3-line icon) ----
 // Everything that isn't Home/Tools/a department's own nav lives here --
@@ -967,23 +976,59 @@ export function runSidebarTool(value) {
   closeSidebar();
 }
 
+// Messages' own badge -- unread direct_messages only now (department
+// announcements have no read/unread concept, so they're never part of
+// this count). Notifications' own badge is the separate
+// refreshNotificationsBadge() below -- each icon counts only what it
+// actually shows, instead of one shared combined number.
 async function refreshInboxBadge() {
   const inboxUserId = getViewAsTarget()?.id || currentUserId;
   if (!inboxUserId) {
     inboxBadgeEl.classList.add('hidden');
+    refreshAppBadgeTotal();
+    return;
+  }
+
+  const { count } = await getEffectiveSupabase()
+    .from('direct_messages').select('id', { count: 'exact', head: true }).eq('recipient_id', inboxUserId).is('read_at', null);
+
+  inboxBadgeEl.textContent = count > 9 ? '9+' : String(count || 0);
+  inboxBadgeEl.classList.toggle('hidden', !count);
+  refreshAppBadgeTotal();
+}
+
+// Excludes any type the person has muted from in-app display
+// (notification_preferences.in_app = false) -- a type they've turned
+// off shouldn't still nag them via the unread count either.
+async function refreshNotificationsBadge() {
+  const userId = getViewAsTarget()?.id || currentUserId;
+  if (!userId) {
+    notificationsBadgeEl.classList.add('hidden');
+    refreshAppBadgeTotal();
     return;
   }
 
   const effectiveSupabase = getEffectiveSupabase();
-  const [{ count: unreadMessages }, { count: unreadNotifications }] = await Promise.all([
-    effectiveSupabase.from('direct_messages').select('id', { count: 'exact', head: true }).eq('recipient_id', inboxUserId).is('read_at', null),
-    effectiveSupabase.from('notifications').select('id', { count: 'exact', head: true }).eq('recipient_id', inboxUserId).is('read_at', null),
-  ]);
+  const { data: muted } = await effectiveSupabase
+    .from('notification_preferences').select('notification_type').eq('user_id', userId).eq('in_app', false);
+  const mutedTypes = (muted || []).map((m) => m.notification_type);
 
-  const total = (unreadMessages || 0) + (unreadNotifications || 0);
-  inboxBadgeEl.textContent = total > 9 ? '9+' : String(total);
-  inboxBadgeEl.classList.toggle('hidden', total === 0);
-  setAppBadgeCount(total);
+  let query = effectiveSupabase.from('notifications').select('id', { count: 'exact', head: true }).eq('recipient_id', userId).is('read_at', null);
+  if (mutedTypes.length > 0) query = query.not('type', 'in', `(${mutedTypes.join(',')})`);
+  const { count } = await query;
+
+  notificationsBadgeEl.textContent = count > 9 ? '9+' : String(count || 0);
+  notificationsBadgeEl.classList.toggle('hidden', !count);
+  refreshAppBadgeTotal();
+}
+
+// The OS-level PWA badge (navigator.setAppBadge) stays a single
+// combined total across both icons -- there's no second app-icon
+// badge to split it onto the way the in-app header has two.
+async function refreshAppBadgeTotal() {
+  const inboxCount = inboxBadgeEl.classList.contains('hidden') ? 0 : Number(inboxBadgeEl.textContent.replace('+', '')) || 0;
+  const notificationsCount = notificationsBadgeEl.classList.contains('hidden') ? 0 : Number(notificationsBadgeEl.textContent.replace('+', '')) || 0;
+  setAppBadgeCount(inboxCount + notificationsCount);
 }
 
 inboxBtn.addEventListener('click', () => {
@@ -1348,6 +1393,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   updatePreviewAsMemberUI();
   updateMemberActionsUI();
   refreshInboxBadge();
+  refreshNotificationsBadge();
   checkSpecialProgramPopup(supabase);
 }
 
@@ -1399,6 +1445,7 @@ function showAuth() {
   forEachNavGroup('role-switcher-wrap', (el) => el.classList.add('hidden'));
   inboxBtn.classList.add('hidden');
   inboxBadgeEl.classList.add('hidden');
+  notificationsBadgeEl.classList.add('hidden');
   sidebarToolsSelect.innerHTML = '<option value=""></option>';
   headerNewMemberBtn.classList.add('hidden');
   headerNewMemberBtn.classList.remove('flex');
