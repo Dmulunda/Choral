@@ -85,6 +85,26 @@ Deno.serve(async (req) => {
           p_status: mapSubscriptionStatus(subscription.status),
           p_plan_id: planId,
         });
+
+        // A promo code was attached at checkout (stripe-billing's
+        // create_checkout_session put everything needed to record it
+        // straight into this session's own metadata) -- only recorded
+        // now that payment has actually completed, never for an
+        // abandoned checkout, and upserted on stripe_subscription_id
+        // so a Stripe webhook retry can never double-count it.
+        const meta = session.metadata;
+        if (meta?.promo_code_id) {
+          await admin.from('promo_code_redemptions').upsert({
+            promo_code_id: meta.promo_code_id,
+            tenant_id: meta.tenant_id,
+            stripe_subscription_id: subscription.id,
+            discount_percent: Number(meta.discount_percent),
+            original_price_cents: Number(meta.original_price_cents),
+            discounted_price_cents: Number(meta.discounted_price_cents),
+            duration: meta.duration,
+            duration_in_months: meta.duration_in_months ? Number(meta.duration_in_months) : null,
+          }, { onConflict: 'stripe_subscription_id', ignoreDuplicates: true });
+        }
       }
     } else if (event.type === 'customer.subscription.updated') {
       const subscription = event.data.object;

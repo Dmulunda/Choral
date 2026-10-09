@@ -8,10 +8,12 @@
 // Stripe's hosted pages and back; it never writes billing state itself.
 import { t } from '../i18n.js';
 import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from '../utils/planPresentation.js';
+import { validatePromoCode, discountedPriceCents, promoErrorMessage } from '../utils/promoCode.js';
 
 export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCustomerId }) {
   let allPlans = [];
   let selectedInterval = 'monthly';
+  let appliedPromo = null; // { code, discountPercent, appliesToPlanGroups } once a valid code is applied
 
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4 overflow-y-auto';
@@ -27,6 +29,11 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
           <button type="button" data-action="interval-yearly" class="px-3 py-1.5 rounded-md text-sm font-medium"></button>
         </div>
       </div>
+      <div class="flex items-center justify-center gap-2 mb-4">
+        <input type="text" data-el="promo-input" placeholder="${t('plans.promoPlaceholder')}" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-40" />
+        <button type="button" data-action="apply-promo" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('plans.applyPromo')}</button>
+      </div>
+      <p data-el="promo-status" class="hidden text-sm text-center mb-3"></p>
       <div data-el="body"></div>
       <p data-el="status" class="text-sm text-slate-500 mt-3"></p>
       ${stripeCustomerId ? `
@@ -40,6 +47,8 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
 
   const bodyEl = root.querySelector('[data-el="body"]');
   const statusEl = root.querySelector('[data-el="status"]');
+  const promoInputEl = root.querySelector('[data-el="promo-input"]');
+  const promoStatusEl = root.querySelector('[data-el="promo-status"]');
   const intervalMonthlyBtn = root.querySelector('[data-action="interval-monthly"]');
   const intervalYearlyBtn = root.querySelector('[data-action="interval-yearly"]');
   intervalMonthlyBtn.textContent = t('plans.billedMonthly');
@@ -49,6 +58,26 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
   root.querySelector('[data-action="manage-billing"]')?.addEventListener('click', () => redirectTo('create_portal_session', {}));
   intervalMonthlyBtn.addEventListener('click', () => { selectedInterval = 'monthly'; render(); });
   intervalYearlyBtn.addEventListener('click', () => { selectedInterval = 'yearly'; render(); });
+  root.querySelector('[data-action="apply-promo"]').addEventListener('click', applyPromo);
+
+  async function applyPromo() {
+    const code = promoInputEl.value.trim();
+    if (!code) return;
+    promoStatusEl.className = 'text-sm text-center mb-3 text-slate-500';
+    promoStatusEl.textContent = t('common.loading');
+    const result = await validatePromoCode(supabase, code);
+    if (!result.valid) {
+      appliedPromo = null;
+      promoStatusEl.className = 'text-sm text-center mb-3 text-rose-600';
+      promoStatusEl.textContent = promoErrorMessage(result.reason);
+      render();
+      return;
+    }
+    appliedPromo = { code: code.toUpperCase(), discountPercent: result.discountPercent, appliesToPlanGroups: result.appliesToPlanGroups };
+    promoStatusEl.className = 'text-sm text-center mb-3 text-emerald-600';
+    promoStatusEl.textContent = t('plans.promoApplied', { percent: result.discountPercent });
+    render();
+  }
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
@@ -89,7 +118,10 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
       const card = document.createElement('div');
       card.className = `rounded-xl border-2 p-5 flex flex-col ${isCurrent ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200'}`;
 
-      const price = formatPlanPrice(plan.price_cents, plan.billing_interval);
+      const promoEligible = appliedPromo && (!appliedPromo.appliesToPlanGroups || appliedPromo.appliesToPlanGroups.includes(plan.plan_group));
+      const price = promoEligible
+        ? `<span class="line-through text-slate-400 text-lg mr-1.5">${formatPlanPrice(plan.price_cents, plan.billing_interval)}</span>${formatPlanPrice(discountedPriceCents(plan.price_cents, appliedPromo.discountPercent), plan.billing_interval)}`
+        : formatPlanPrice(plan.price_cents, plan.billing_interval);
       const monthlyEquivalent = plan.billing_interval === 'yearly' && plan.price_cents > 0
         ? `<p class="text-xs text-slate-500 -mt-2 mb-3">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</p>`
         : '';
@@ -132,7 +164,7 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
         btn.type = 'button';
         btn.className = 'px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
         btn.textContent = t('plans.upgrade');
-        btn.addEventListener('click', () => redirectTo('create_checkout_session', { plan_key: plan.key }));
+        btn.addEventListener('click', () => redirectTo('create_checkout_session', { plan_key: plan.key, promo_code: appliedPromo?.code }));
         card.appendChild(btn);
       }
 
@@ -163,7 +195,11 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
 
     if (error || data?.error || !data?.url) {
       statusEl.className = 'text-sm text-rose-600 mt-3';
-      statusEl.textContent = t('plans.billingActionFailed', { message: data?.error || error?.message || '' });
+      // A promo-code rejection gets its own translated copy (the exact
+      // wording the feature spec calls for) instead of the generic
+      // "billing action failed" wrapper -- data.reason is only ever set
+      // when extraBody.promo_code was sent and rejected server-side.
+      statusEl.textContent = data?.reason ? promoErrorMessage(data.reason) : t('plans.billingActionFailed', { message: data?.error || error?.message || '' });
       return;
     }
 
@@ -171,6 +207,10 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
   }
 
   function open() {
+    appliedPromo = null;
+    promoInputEl.value = '';
+    promoStatusEl.className = 'hidden text-sm text-center mb-3';
+    promoStatusEl.textContent = '';
     root.classList.remove('hidden');
     root.classList.add('flex');
     load();

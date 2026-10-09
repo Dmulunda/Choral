@@ -109,6 +109,7 @@ export async function renderSiteAdminTab() {
       <button type="button" data-tab="suggestions" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSuggestions')}</button>
       <button type="button" data-tab="requests" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabRequests')}</button>
       <button type="button" data-tab="churches" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabChurches')}</button>
+      <button type="button" data-tab="promo-codes" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabPromoCodes')}</button>
       <button type="button" data-tab="sandbox" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSandbox')}</button>
       <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
     </div>
@@ -117,6 +118,7 @@ export async function renderSiteAdminTab() {
     <div data-panel="suggestions" class="hidden"></div>
     <div data-panel="requests" class="hidden"></div>
     <div data-panel="churches" class="hidden"></div>
+    <div data-panel="promo-codes" class="hidden"></div>
     <div data-panel="sandbox" class="hidden"></div>
     <div data-panel="manage" class="hidden"></div>
   `;
@@ -128,10 +130,11 @@ export async function renderSiteAdminTab() {
     suggestions: container.querySelector('[data-panel="suggestions"]'),
     requests: container.querySelector('[data-panel="requests"]'),
     churches: container.querySelector('[data-panel="churches"]'),
+    'promo-codes': container.querySelector('[data-panel="promo-codes"]'),
     sandbox: container.querySelector('[data-panel="sandbox"]'),
     manage: container.querySelector('[data-panel="manage"]'),
   };
-  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, sandbox: false, manage: false };
+  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, 'promo-codes': false, sandbox: false, manage: false };
 
   tabBtns.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
@@ -148,6 +151,7 @@ export async function renderSiteAdminTab() {
     if (tab === 'suggestions' && !loaded.suggestions) loadSuggestions();
     if (tab === 'requests' && !loaded.requests) loadRequests();
     if (tab === 'churches' && !loaded.churches) loadChurches();
+    if (tab === 'promo-codes' && !loaded['promo-codes']) loadPromoCodes();
     if (tab === 'sandbox' && !loaded.sandbox) loadSandbox();
     if (tab === 'manage' && !loaded.manage) loadManage();
   }
@@ -473,6 +477,261 @@ export async function renderSiteAdminTab() {
         loaded.churches = false;
         loadChurches();
       });
+    });
+  }
+
+  // ---- Promo Codes (SAAS only -- billing is SAAS-only, see
+  // supabase/functions/stripe-billing/index.ts's create_promo_code/
+  // list_promo_codes/update_promo_code_status actions, Site-Admin-gated
+  // there too). Real discount/duration/limits/expiry are native Stripe
+  // Coupon + Promotion Code fields -- this page is a thin admin UI over
+  // those, plus the tracking view sourced from the local redemptions
+  // mirror table. ----
+  let planGroupOptions = null; // [{ group, name }], loaded once per page visit
+
+  async function loadPlanGroupOptions() {
+    if (planGroupOptions) return planGroupOptions;
+    const { data } = await supabase.from('plans').select('plan_group, name').eq('billing_interval', 'monthly').order('price_cents');
+    planGroupOptions = (data || []).map((p) => ({ group: p.plan_group, name: p.name }));
+    return planGroupOptions;
+  }
+
+  function formatCents(cents) {
+    return `$${(Number(cents || 0) / 100).toFixed(2)}`;
+  }
+
+  async function loadPromoCodes() {
+    panels['promo-codes'].innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+    const { data, error } = await supabase.functions.invoke('stripe-billing', { body: { action: 'list_promo_codes' } });
+    if (error || data?.error) {
+      panels['promo-codes'].innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: data?.error || await extractFunctionErrorMessage(error) })}</p>`;
+      return;
+    }
+    loaded['promo-codes'] = true;
+    const codes = data.promoCodes || [];
+    const planGroups = await loadPlanGroupOptions();
+    const groupName = (g) => planGroups.find((p) => p.group === g)?.name || g;
+
+    panels['promo-codes'].innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <button type="button" data-action="new-promo-code" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('siteAdmin.createPromoCode')}</button>
+      </div>
+      <div data-el="promo-form"></div>
+      <div class="overflow-x-auto border border-slate-200 rounded-lg">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th class="text-left px-3 py-2">${t('siteAdmin.promoColCode')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.promoColDiscount')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.promoColPlans')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.promoColDuration')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.promoColStatus')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.promoColUses')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.promoColTotalDiscount')}</th>
+              <th class="text-left px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody data-el="rows"></tbody>
+        </table>
+      </div>
+      ${codes.length === 0 ? `<p class="text-slate-400 mt-3">${t('siteAdmin.noPromoCodes')}</p>` : ''}
+      <div data-el="redemptions-detail" class="mt-4"></div>
+    `;
+
+    const rowsEl = panels['promo-codes'].querySelector('[data-el="rows"]');
+    rowsEl.innerHTML = codes.map((c) => {
+      const durationLabel = c.duration === 'once' ? t('siteAdmin.promoDurationOnce')
+        : c.duration === 'forever' ? t('siteAdmin.promoDurationForever')
+        : t('siteAdmin.promoDurationMonths', { count: c.duration_in_months });
+      const plansLabel = c.applies_to_plan_groups ? c.applies_to_plan_groups.map(groupName).join(', ') : t('siteAdmin.promoAllPlans');
+      const usesLabel = c.usage_limit != null ? `${c.redemptionCount} / ${c.usage_limit}` : `${c.redemptionCount}`;
+      return `
+        <tr class="border-b border-slate-100" data-promo-id="${c.id}">
+          <td class="px-3 py-2 font-mono font-medium text-slate-800">${escapeHtml(c.code)}</td>
+          <td class="px-3 py-2">${c.discount_percent}%</td>
+          <td class="px-3 py-2 text-slate-600">${escapeHtml(plansLabel)}</td>
+          <td class="px-3 py-2 text-slate-600">${durationLabel}</td>
+          <td class="px-3 py-2">
+            <span class="text-xs font-semibold px-1.5 py-0.5 rounded ${c.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${t(`siteAdmin.promoStatus.${c.status}`)}</span>
+          </td>
+          <td class="px-3 py-2 text-right">${usesLabel}</td>
+          <td class="px-3 py-2 text-right">${formatCents(c.totalDiscountCents)}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button type="button" data-action="view-redemptions" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium mr-2">${t('siteAdmin.promoViewUses')}</button>
+            <button type="button" data-action="toggle-status" class="text-xs ${c.status === 'active' ? 'text-amber-600 hover:text-amber-700' : 'text-emerald-600 hover:text-emerald-700'} font-medium">${c.status === 'active' ? t('siteAdmin.promoPause') : t('siteAdmin.promoResume')}</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    rowsEl.querySelectorAll('[data-action="toggle-status"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('[data-promo-id]');
+        const id = row.dataset.promoId;
+        const codeRow = codes.find((c) => c.id === id);
+        const newStatus = codeRow.status === 'active' ? 'paused' : 'active';
+        btn.disabled = true;
+        const { data: res, error: err } = await supabase.functions.invoke('stripe-billing', { body: { action: 'update_promo_code_status', promo_code_id: id, status: newStatus } });
+        if (err || res?.error) { window.alert(res?.error || await extractFunctionErrorMessage(err)); btn.disabled = false; return; }
+        loaded['promo-codes'] = false;
+        loadPromoCodes();
+      });
+    });
+
+    const detailEl = panels['promo-codes'].querySelector('[data-el="redemptions-detail"]');
+    rowsEl.querySelectorAll('[data-action="view-redemptions"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.closest('[data-promo-id]').dataset.promoId;
+        detailEl.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+        const { data: res, error: err } = await supabase.functions.invoke('stripe-billing', { body: { action: 'list_promo_code_redemptions', promo_code_id: id } });
+        if (err || res?.error) { detailEl.innerHTML = `<p class="text-rose-600">${res?.error || await extractFunctionErrorMessage(err)}</p>`; return; }
+        const rows = res.redemptions || [];
+        detailEl.innerHTML = rows.length === 0
+          ? `<p class="text-slate-400">${t('siteAdmin.promoNoRedemptions')}</p>`
+          : `
+            <div class="border border-slate-200 rounded-lg overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                  <tr>
+                    <th class="text-left px-3 py-2">${t('siteAdmin.promoColChurch')}</th>
+                    <th class="text-left px-3 py-2">${t('siteAdmin.promoColDate')}</th>
+                    <th class="text-right px-3 py-2">${t('siteAdmin.promoColDiscount')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((r) => `
+                    <tr class="border-b border-slate-100">
+                      <td class="px-3 py-2">${escapeHtml(r.tenants?.name || '—')}</td>
+                      <td class="px-3 py-2 text-slate-500">${new Date(r.redeemed_at).toLocaleDateString()}</td>
+                      <td class="px-3 py-2 text-right">${formatCents(r.original_price_cents - r.discounted_price_cents)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+      });
+    });
+
+    panels['promo-codes'].querySelector('[data-action="new-promo-code"]').addEventListener('click', () => renderPromoCodeForm(planGroups));
+  }
+
+  function renderPromoCodeForm(planGroups) {
+    const formEl = panels['promo-codes'].querySelector('[data-el="promo-form"]');
+    formEl.innerHTML = `
+      <div class="border border-slate-200 rounded-lg p-4 mb-4 bg-slate-50">
+        <div class="grid sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormCode')}</label>
+            <input type="text" data-el="code" placeholder="WELCOME10" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm uppercase" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormDiscount')}</label>
+            <input type="number" data-el="discount" min="1" max="100" value="10" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormPlans')}</label>
+          <div class="flex flex-wrap gap-3">
+            ${planGroups.map((p) => `
+              <label class="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" data-plan-group="${escapeAttr(p.group)}" /> ${escapeHtml(p.name)}
+              </label>
+            `).join('')}
+          </div>
+          <p class="text-xs text-slate-400 mt-1">${t('siteAdmin.promoFormPlansHint')}</p>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-3 mb-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormDuration')}</label>
+            <select data-el="duration" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+              <option value="once">${t('siteAdmin.promoDurationOnce')}</option>
+              <option value="repeating">${t('siteAdmin.promoFormDurationMonthsOption')}</option>
+              <option value="forever">${t('siteAdmin.promoDurationForever')}</option>
+            </select>
+          </div>
+          <div data-el="duration-months-wrap" class="hidden">
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormDurationMonths')}</label>
+            <input type="number" data-el="duration-months" min="1" value="3" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormUsageLimit')}</label>
+            <input type="number" data-el="usage-limit" min="1" placeholder="${t('siteAdmin.promoFormUnlimited')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormStartsAt')}</label>
+            <input type="date" data-el="starts-at" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">${t('siteAdmin.promoFormEndsAt')}</label>
+            <input type="date" data-el="ends-at" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-4 mb-3">
+          <label class="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" data-el="one-use-per-church" checked /> ${t('siteAdmin.promoFormOneUsePerChurch')}
+          </label>
+          <label class="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" data-el="new-customers-only" /> ${t('siteAdmin.promoFormNewCustomersOnly')}
+          </label>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" data-action="save-promo-code" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('siteAdmin.promoFormCreate')}</button>
+          <button type="button" data-action="cancel-promo-code" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('common.cancel')}</button>
+          <span data-el="promo-form-status" class="text-sm"></span>
+        </div>
+      </div>
+    `;
+
+    const durationSelect = formEl.querySelector('[data-el="duration"]');
+    const monthsWrap = formEl.querySelector('[data-el="duration-months-wrap"]');
+    durationSelect.addEventListener('change', () => monthsWrap.classList.toggle('hidden', durationSelect.value !== 'repeating'));
+
+    formEl.querySelector('[data-action="cancel-promo-code"]').addEventListener('click', () => { formEl.innerHTML = ''; });
+
+    formEl.querySelector('[data-action="save-promo-code"]').addEventListener('click', async () => {
+      const statusEl = formEl.querySelector('[data-el="promo-form-status"]');
+      const code = formEl.querySelector('[data-el="code"]').value.trim();
+      const discountPercent = Number(formEl.querySelector('[data-el="discount"]').value);
+      const appliesToPlanGroups = [...formEl.querySelectorAll('[data-plan-group]:checked')].map((el) => el.dataset.planGroup);
+      const duration = durationSelect.value;
+      const durationInMonths = Number(formEl.querySelector('[data-el="duration-months"]').value);
+      const usageLimitRaw = formEl.querySelector('[data-el="usage-limit"]').value;
+      const startsAtRaw = formEl.querySelector('[data-el="starts-at"]').value;
+      const endsAtRaw = formEl.querySelector('[data-el="ends-at"]').value;
+      const oneUsePerChurch = formEl.querySelector('[data-el="one-use-per-church"]').checked;
+      const newCustomersOnly = formEl.querySelector('[data-el="new-customers-only"]').checked;
+
+      statusEl.className = 'text-sm text-slate-500';
+      statusEl.textContent = t('common.saving');
+
+      const { data: res, error } = await supabase.functions.invoke('stripe-billing', {
+        body: {
+          action: 'create_promo_code',
+          code,
+          discountPercent,
+          appliesToPlanGroups,
+          duration,
+          durationInMonths: duration === 'repeating' ? durationInMonths : null,
+          usageLimit: usageLimitRaw ? Number(usageLimitRaw) : null,
+          startsAt: startsAtRaw ? new Date(startsAtRaw).toISOString() : null,
+          endsAt: endsAtRaw ? new Date(endsAtRaw).toISOString() : null,
+          oneUsePerChurch,
+          newCustomersOnly,
+        },
+      });
+
+      if (error || res?.error) {
+        statusEl.className = 'text-sm text-rose-600';
+        statusEl.textContent = res?.error || await extractFunctionErrorMessage(error);
+        return;
+      }
+
+      formEl.innerHTML = '';
+      loaded['promo-codes'] = false;
+      loadPromoCodes();
     });
   }
 
