@@ -19,6 +19,7 @@ import { renderToolsTab } from './toolsPage.js';
 import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
 import { renderTaxTab } from './taxPage.js';
+import { renderEventsTab } from './eventsPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
 import { renderOfferingsPageTab } from './offeringsPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
@@ -385,6 +386,7 @@ const lazyTabs = {
   training: renderTrainingTab,
   'service-program': renderServiceProgramTab,
   tax: renderTaxTab,
+  events: renderEventsTab,
   budget: renderBudgetPageTab,
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
@@ -553,7 +555,7 @@ const TAB_KIND_MAP = {
 // on any of these when a reload fired silently bounced you back to
 // Home/Dashboard -- confirmed by a Site Admin testing this exact
 // scenario on Main (same bug, identical code shape, both fixed here).
-const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin']);
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events']);
 
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
@@ -1007,6 +1009,7 @@ function buildQuickAccessItems() {
     { icon: '🎓', label: t('nav.training'), tab: 'training' },
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
     { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
+    { icon: '🎟️', label: t('nav.events'), tab: 'events' },
   ];
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
   if (hasFinanceOversight()) items.push({ icon: '🙏', label: t('nav.offerings'), tab: 'offerings' });
