@@ -21,6 +21,7 @@ import { createMenuCustomizerModal } from './components/menuCustomizer.js';
 import { createChurchLogoModal } from './components/churchLogoModal.js';
 import { createMessageModerationModal } from './components/messageModeration.js';
 import { createLoginActivityModal } from './components/loginActivity.js';
+import { createUsageDashboardModal } from './components/usageDashboardModal.js';
 import { createDepartmentModal } from './components/createDepartmentModal.js';
 import { createBibleImportModal } from './components/bibleImportTool.js';
 import { createPeopleImportModal } from './components/peopleImportModal.js';
@@ -44,6 +45,7 @@ let currentMenuCustomizerModal = null;
 let currentChurchLogoModal = null;
 let currentMessageModerationModal = null;
 let currentLoginActivityModal = null;
+let currentUsageDashboardModal = null;
 let currentCreateDepartmentModal = null;
 let currentBibleImportModal = null;
 let currentPeopleImportModal = null;
@@ -82,6 +84,10 @@ export async function openReports() {
 export async function openLoginActivity() {
   if (!currentLoginActivityModal) await renderSuperAdminHomeTab();
   currentLoginActivityModal?.open();
+}
+export async function openUsageDashboard() {
+  if (!currentUsageDashboardModal) await renderSuperAdminHomeTab();
+  currentUsageDashboardModal?.open();
 }
 export async function openCreateDepartment() {
   if (!currentCreateDepartmentModal) await renderSuperAdminHomeTab();
@@ -169,6 +175,7 @@ export async function renderSuperAdminHomeTab() {
   currentChurchLogoModal?.root.remove();
   currentMessageModerationModal?.root.remove();
   currentLoginActivityModal?.root.remove();
+  currentUsageDashboardModal?.root.remove();
   currentCreateDepartmentModal?.root.remove();
   currentBibleImportModal?.root.remove();
   currentPeopleImportModal?.root.remove();
@@ -202,6 +209,7 @@ export async function renderSuperAdminHomeTab() {
 
   if (isSuperAdmin) {
     currentLoginActivityModal = createLoginActivityModal({ supabase });
+    currentUsageDashboardModal = createUsageDashboardModal({ supabase });
     currentCreateDepartmentModal = createDepartmentModal({
       supabase,
       currentUserId: user.id,
