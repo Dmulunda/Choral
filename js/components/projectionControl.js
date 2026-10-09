@@ -32,6 +32,7 @@ import { splitLyricsIntoSlides } from '../utils/songSlides.js';
 import { createSongCreatorModal } from './songCreatorModal.js';
 import { createProjectionThemeModal } from './projectionThemeModal.js';
 import * as localMediaStore from '../utils/localMediaStore.js';
+import { isSupported as voiceSupported, buildBookAliases, createVoiceVerseDetector } from '../utils/voiceVerseDetector.js';
 
 // Lazy-loaded only when the Presentation panel's PDF import is
 // actually used -- same version/CDN already proven elsewhere in this
@@ -184,6 +185,23 @@ export function renderProjectionControl(container, { supabase }) {
       </div>
 
       <div data-el="bible-panel">
+        <div data-el="voice-controls" class="hidden items-center gap-2 mb-2 flex-wrap">
+          <button type="button" data-el="voice-toggle-btn" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">
+            🎤 ${t('projection.voiceListen')}
+          </button>
+          <select data-el="voice-lang-select" class="border border-slate-300 rounded-lg px-2 py-1 text-xs">
+            <option value="fr-FR">${t('projection.voiceLangFrench')}</option>
+            <option value="en-US">${t('projection.voiceLangEnglish')}</option>
+          </select>
+          <span data-el="voice-hint" class="text-xs text-slate-400">${t('projection.voiceHint')}</span>
+        </div>
+        <div data-el="voice-suggestion" class="hidden items-center justify-between gap-2 mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+          <span data-el="voice-suggestion-text" class="text-amber-800 font-medium"></span>
+          <span class="flex gap-1.5 shrink-0">
+            <button type="button" data-action="voice-show" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700">${t('projection.voiceShow')}</button>
+            <button type="button" data-action="voice-dismiss" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">${t('projection.voiceDismiss')}</button>
+          </span>
+        </div>
         <div class="relative mb-2">
           <input type="text" data-el="book-search" placeholder="${t('projection.bookSearchPlaceholder')}" autocomplete="off"
                  class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
@@ -363,6 +381,13 @@ export function renderProjectionControl(container, { supabase }) {
   `;
 
   const translationSelectEl = container.querySelector('[data-el="translation-select"]');
+  const voiceControlsEl = container.querySelector('[data-el="voice-controls"]');
+  const voiceToggleBtn = container.querySelector('[data-el="voice-toggle-btn"]');
+  const voiceLangSelectEl = container.querySelector('[data-el="voice-lang-select"]');
+  const voiceSuggestionEl = container.querySelector('[data-el="voice-suggestion"]');
+  const voiceSuggestionTextEl = container.querySelector('[data-el="voice-suggestion-text"]');
+  const voiceShowBtn = container.querySelector('[data-action="voice-show"]');
+  const voiceDismissBtn = container.querySelector('[data-action="voice-dismiss"]');
   const bookSearchEl = container.querySelector('[data-el="book-search"]');
   const bookSuggestionsEl = container.querySelector('[data-el="book-suggestions"]');
   const bookSelectEl = container.querySelector('[data-el="book-select"]');
@@ -440,6 +465,10 @@ export function renderProjectionControl(container, { supabase }) {
   let books = [];
   let bookVerses = []; // [{chapter, verse, text}] for the selected book+translation, ordered
   let verseIndex = -1;
+
+  let voiceAliases = []; // buildBookAliases(books) output, rebuilt once books loads
+  let voiceDetector = null;
+  let voiceSuggestion = null; // { bookNumber, chapter, verse } awaiting the operator's tap
 
   let allSongs = []; // [{id, title}], loaded once
   let songSlides = []; // [[line, line, ...], ...]
@@ -852,6 +881,7 @@ export function renderProjectionControl(container, { supabase }) {
   async function loadBooks() {
     const { data } = await supabase.from('bible_books').select('number, name_en, name_fr').order('number');
     books = data || [];
+    voiceAliases = buildBookAliases(books);
     renderBookOptions();
   }
 
@@ -977,6 +1007,89 @@ export function renderProjectionControl(container, { supabase }) {
   projectVerseBtn.addEventListener('click', stageSelectedVerse);
   prevVerseBtn.addEventListener('click', () => projectVerseAt(verseIndex - 1));
   nextVerseBtn.addEventListener('click', () => projectVerseAt(verseIndex + 1));
+
+  // Jumps the Bible panel's own selection to an arbitrary reference
+  // (not necessarily the book already loaded) and sends it live --
+  // used by the voice-detected suggestion's "Show" button below.
+  async function goLiveToBibleVerse(bookNumber, chapter, verse) {
+    bookSelectEl.value = String(bookNumber);
+    await loadBook();
+    const idx = bookVerses.findIndex((v) => v.chapter === chapter && v.verse === verse);
+    if (idx === -1) { window.alert(t('projection.voiceNotFound')); return; }
+    projectVerseAt(idx);
+  }
+
+  // --- Voice-detected verse suggestions ---
+  // Opt-in only (see utils/voiceVerseDetector.js) -- listening never
+  // starts on its own, and a detected reference only ever raises a
+  // one-tap suggestion here, never broadcasts by itself. Hidden
+  // entirely on unsupported browsers (Firefox/Safari), same pattern
+  // as the local-folder button.
+  if (voiceSupported()) {
+    voiceControlsEl.classList.remove('hidden');
+    voiceControlsEl.classList.add('flex');
+    voiceLangSelectEl.value = translationSelectEl.value === 'web' ? 'en-US' : 'fr-FR';
+
+    const renderVoiceSuggestion = () => {
+      if (!voiceSuggestion) {
+        voiceSuggestionEl.classList.add('hidden');
+        voiceSuggestionEl.classList.remove('flex');
+        return;
+      }
+      const isFrench = translationSelectEl.value === 'lsg';
+      const book = books.find((b) => b.number === voiceSuggestion.bookNumber);
+      const bookLabel = book ? (isFrench ? book.name_fr : book.name_en) : `#${voiceSuggestion.bookNumber}`;
+      voiceSuggestionTextEl.textContent = t('projection.voiceDetected', { reference: `${bookLabel} ${voiceSuggestion.chapter}:${voiceSuggestion.verse}` });
+      voiceSuggestionEl.classList.remove('hidden');
+      voiceSuggestionEl.classList.add('flex');
+    };
+
+    const setListeningButtonState = (listening) => {
+      voiceToggleBtn.textContent = `🎤 ${listening ? t('projection.voiceListening') : t('projection.voiceListen')}`;
+      voiceToggleBtn.classList.toggle('bg-red-600', listening);
+      voiceToggleBtn.classList.toggle('text-white', listening);
+      voiceToggleBtn.classList.toggle('bg-slate-100', !listening);
+      voiceToggleBtn.classList.toggle('text-slate-700', !listening);
+    };
+
+    const startVoiceListening = () => {
+      voiceDetector = createVoiceVerseDetector({
+        lang: voiceLangSelectEl.value,
+        aliases: voiceAliases,
+        onDetect: (match) => { voiceSuggestion = match; renderVoiceSuggestion(); },
+        onError: () => { setListeningButtonState(false); window.alert(t('projection.voiceMicDenied')); },
+      });
+      voiceDetector.start();
+      setListeningButtonState(true);
+    };
+
+    const stopVoiceListening = () => {
+      voiceDetector?.stop();
+      setListeningButtonState(false);
+    };
+
+    voiceToggleBtn.addEventListener('click', () => {
+      if (voiceDetector?.isListening()) stopVoiceListening();
+      else startVoiceListening();
+    });
+
+    // Switching language while live just restarts recognition with
+    // the new one -- there's no in-place way to change Chrome's
+    // SpeechRecognition.lang on a running session.
+    voiceLangSelectEl.addEventListener('change', () => {
+      if (voiceDetector?.isListening()) { stopVoiceListening(); startVoiceListening(); }
+    });
+
+    voiceShowBtn.addEventListener('click', async () => {
+      if (!voiceSuggestion) return;
+      const { bookNumber, chapter, verse } = voiceSuggestion;
+      voiceSuggestion = null;
+      renderVoiceSuggestion();
+      await goLiveToBibleVerse(bookNumber, chapter, verse);
+    });
+
+    voiceDismissBtn.addEventListener('click', () => { voiceSuggestion = null; renderVoiceSuggestion(); });
+  }
 
   // --- Song panel ---
   // Full list loaded once and filtered client-side (rather than a
@@ -1702,6 +1815,7 @@ export function renderProjectionControl(container, { supabase }) {
   return {
     destroy() {
       channel.close();
+      voiceDetector?.stop();
       document.removeEventListener('click', closeSuggestionsOnOutsideClick);
       if (pendingImageObjectUrl) URL.revokeObjectURL(pendingImageObjectUrl);
       if (currentBackdropObjectUrl) URL.revokeObjectURL(currentBackdropObjectUrl);
