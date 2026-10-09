@@ -807,20 +807,43 @@ export async function renderSiteAdminTab() {
     const tenantRows = rows || [];
 
     panels.usage.innerHTML = `
-      <div class="flex items-center gap-2 mb-4">
-        <label class="text-sm font-medium text-slate-600">${t('siteAdmin.usageSelectChurch')}</label>
-        <select data-el="church-select" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
-          <option value="">${t('siteAdmin.usageAllChurches')}</option>
-          ${tenantRows.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('')}
-        </select>
+      <div data-el="fullscreen-target" class="bg-white">
+        <div class="flex items-center gap-2 mb-4">
+          <label class="text-sm font-medium text-slate-600">${t('siteAdmin.usageSelectChurch')}</label>
+          <select data-el="church-select" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+            <option value="">${t('siteAdmin.usageAllChurches')}</option>
+            ${tenantRows.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('')}
+          </select>
+          <button type="button" data-action="fullscreen" class="ml-auto text-slate-400 hover:text-slate-600 text-lg leading-none" title="${t('siteAdmin.usageFullscreen')}">⛶</button>
+        </div>
+        <div data-el="overview-view"></div>
+        <div data-el="church-view" class="hidden"></div>
       </div>
-      <div data-el="overview-view"></div>
-      <div data-el="church-view" class="hidden"></div>
     `;
 
     const churchSelectEl = panels.usage.querySelector('[data-el="church-select"]');
     const overviewViewEl = panels.usage.querySelector('[data-el="overview-view"]');
     const churchViewEl = panels.usage.querySelector('[data-el="church-view"]');
+
+    // Native Fullscreen API on just the dashboard's own content (not
+    // the whole Site Admin page with its tab bar/other panels) -- the
+    // browser handles Esc-to-exit for free. An explicit bg-white/
+    // padding is needed here specifically because a fullscreen element
+    // leaves the normal document flow entirely, so it can no longer
+    // lean on an ancestor's background the way it does inline.
+    const fullscreenTargetEl = panels.usage.querySelector('[data-el="fullscreen-target"]');
+    const fullscreenBtn = panels.usage.querySelector('[data-action="fullscreen"]');
+    fullscreenBtn.addEventListener('click', () => {
+      if (document.fullscreenElement === fullscreenTargetEl) document.exitFullscreen();
+      else fullscreenTargetEl.requestFullscreen?.();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      const isFs = document.fullscreenElement === fullscreenTargetEl;
+      fullscreenTargetEl.classList.toggle('p-6', isFs);
+      fullscreenTargetEl.classList.toggle('overflow-y-auto', isFs);
+      fullscreenTargetEl.classList.toggle('h-full', isFs);
+      fullscreenBtn.title = isFs ? t('siteAdmin.usageExitFullscreen') : t('siteAdmin.usageFullscreen');
+    });
 
     renderUsageOverview(overviewViewEl, overview, tenantRows, (tenantId) => {
       churchSelectEl.value = tenantId;
