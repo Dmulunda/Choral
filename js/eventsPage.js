@@ -15,6 +15,8 @@
 import { getEffectiveSupabase, getGlobalRole } from './departments.js';
 import { getTenant } from './tenant.js';
 import { confirmDialog } from './components/confirmDialog.js';
+import { activateTab, invalidateTabCache } from './app.js';
+import { openFlyerForEvent } from './flyersPage.js';
 import { t } from './i18n.js';
 
 export async function renderEventsTab() {
@@ -320,6 +322,7 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
         <button type="button" data-action="copy-link" class="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">${t('events.copyLink')}</button>
         ${canManage ? `
           <button type="button" data-action="edit" class="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">${t('events.edit')}</button>
+          <button type="button" data-action="create-flyer" class="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200">${t('events.createFlyer')}</button>
           ${fullEvent.status === 'active' ? `<button type="button" data-action="cancel-event" class="px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-medium hover:bg-rose-200">${t('events.cancelEvent')}</button>` : ''}
         ` : ''}
       </div>
@@ -383,6 +386,21 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
         supabase, departments, existing: { ...fullEvent, questions },
         onSaved: () => { onChanged(); },
       });
+    });
+
+    container.querySelector('[data-action="create-flyer"]').addEventListener('click', async () => {
+      const createFlyerBtn = container.querySelector('[data-action="create-flyer"]');
+      createFlyerBtn.disabled = true;
+      const when = new Date(fullEvent.start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      const infoLine = [when, fullEvent.location].filter(Boolean).join(' · ');
+      let qrDataUrl = null;
+      try {
+        const { toDataURL } = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm');
+        qrDataUrl = await toDataURL(publicUrl, { width: 240, margin: 1 });
+      } catch { /* QR generation failed (offline, CDN blocked) -- flyer still opens without it */ }
+      openFlyerForEvent({ eventId: event.id, category: null, title: fullEvent.title, infoLine, qrDataUrl });
+      invalidateTabCache('flyers');
+      activateTab('flyers');
     });
 
     const cancelBtn = container.querySelector('[data-action="cancel-event"]');

@@ -20,6 +20,7 @@ import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
 import { renderTaxTab } from './taxPage.js';
 import { renderEventsTab } from './eventsPage.js';
+import { renderFlyersTab } from './flyersPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
 import { renderOfferingsPageTab } from './offeringsPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
@@ -387,6 +388,7 @@ const lazyTabs = {
   'service-program': renderServiceProgramTab,
   tax: renderTaxTab,
   events: renderEventsTab,
+  flyers: renderFlyersTab,
   budget: renderBudgetPageTab,
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
@@ -487,7 +489,10 @@ const DEPARTMENT_RELATIVE_TABS = new Set([
   'dept-dashboard', 'dept-scheduling', 'dept-projection', 'headcount-tally',
 ]);
 
-function activateTab(name) {
+// Exported so other tab modules can navigate the user elsewhere --
+// e.g. eventsPage.js's own "Create Flyer" button switching straight
+// to the Flyers tab with that event's details pre-filled.
+export function activateTab(name) {
   // Only an actual switch should touch scroll memory -- some call sites
   // re-invoke activateTab() with the tab that's already active (e.g.
   // just to refresh nav highlighting), and yanking the user's current
@@ -555,7 +560,7 @@ const TAB_KIND_MAP = {
 // on any of these when a reload fired silently bounced you back to
 // Home/Dashboard -- confirmed by a Site Admin testing this exact
 // scenario on Main (same bug, identical code shape, both fixed here).
-const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events']);
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events', 'flyers']);
 
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
@@ -1010,6 +1015,7 @@ function buildQuickAccessItems() {
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
     { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
     { icon: '🎟️', label: t('nav.events'), tab: 'events' },
+    { icon: '🖼️', label: t('nav.flyers'), tab: 'flyers' },
   ];
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
   if (hasFinanceOversight()) items.push({ icon: '🙏', label: t('nav.offerings'), tab: 'offerings' });
