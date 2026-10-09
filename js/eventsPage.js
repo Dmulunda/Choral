@@ -59,7 +59,7 @@ export async function renderEventsTab() {
 
     const { data: events, error } = await supabase
       .from('events')
-      .select('id, title, start_at, visibility, capacity, status, organizing_department_id, department:departments!organizing_department_id ( name )')
+      .select('id, title, start_at, visibility, capacity, price_cents, status, organizing_department_id, department:departments!organizing_department_id ( name )')
       .order('start_at', { ascending: false });
 
     if (error) {
@@ -74,10 +74,12 @@ export async function renderEventsTab() {
 
     // One extra query for registrant counts -- small enough tables
     // (one row per event) that a per-event N+1 isn't worth avoiding
-    // with a view just for this.
-    const counts = await Promise.all(events.map((e) =>
-      supabase.from('event_registrations').select('id', { count: 'exact', head: true }).eq('event_id', e.id).eq('status', 'confirmed')
-    ));
+    // with a view just for this. Summed by party_size, not row count
+    // -- a registration can be for more than one person.
+    const counts = await Promise.all(events.map(async (e) => {
+      const { data } = await supabase.from('event_registrations').select('party_size').eq('event_id', e.id).eq('status', 'confirmed');
+      return (data || []).reduce((sum, r) => sum + r.party_size, 0);
+    }));
 
     listAreaEl.innerHTML = `
       <div class="overflow-x-auto border border-slate-200 rounded-lg">
@@ -88,6 +90,7 @@ export async function renderEventsTab() {
               <th class="text-left px-3 py-2">${t('events.colDepartment')}</th>
               <th class="text-left px-3 py-2">${t('events.colWhen')}</th>
               <th class="text-left px-3 py-2">${t('events.colVisibility')}</th>
+              <th class="text-left px-3 py-2">${t('events.colPrice')}</th>
               <th class="text-right px-3 py-2">${t('events.colRegistered')}</th>
               <th class="text-left px-3 py-2"></th>
             </tr>
@@ -106,7 +109,8 @@ export async function renderEventsTab() {
           <td class="px-3 py-2 text-slate-600">${escapeHtml(ev.department?.name || '')}</td>
           <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${new Date(ev.start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</td>
           <td class="px-3 py-2 text-slate-600">${t(`events.visibility.${ev.visibility}`)}</td>
-          <td class="px-3 py-2 text-right">${counts[i].count ?? 0}${ev.capacity != null ? ` / ${ev.capacity}` : ''}</td>
+          <td class="px-3 py-2 text-slate-600">${formatPriceCents(ev.price_cents)}</td>
+          <td class="px-3 py-2 text-right">${counts[i]}${ev.capacity != null ? ` / ${ev.capacity}` : ''}</td>
           <td class="px-3 py-2 text-right">${canManage ? `<span class="text-xs text-indigo-600 font-medium">${t('events.manage')} →</span>` : ''}</td>
         </tr>
       `;
@@ -169,6 +173,11 @@ function renderEventForm(container, { supabase, departments, onSaved, existing }
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">${t('events.fieldCapacity')}</label>
           <input type="number" min="1" data-el="capacity" value="${existing?.capacity ?? ''}" placeholder="${t('events.unlimited')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">${t('events.fieldPrice')}</label>
+          <input type="number" min="0" step="0.01" data-el="price" value="${existing?.price_cents ? (existing.price_cents / 100).toFixed(2) : ''}" placeholder="${t('events.free')}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <p class="text-xs text-slate-400 mt-1">${t('events.priceHint')}</p>
         </div>
         <div class="flex items-center gap-2 mt-5">
           <input type="checkbox" data-el="waitlist" ${existing?.waitlist_enabled ? 'checked' : ''} />
@@ -247,6 +256,7 @@ function renderEventForm(container, { supabase, departments, onSaved, existing }
       organizing_department_id: departmentId,
       visibility: container.querySelector('[data-el="visibility"]').value,
       capacity: container.querySelector('[data-el="capacity"]').value ? Number(container.querySelector('[data-el="capacity"]').value) : null,
+      price_cents: container.querySelector('[data-el="price"]').value ? Math.round(Number(container.querySelector('[data-el="price"]').value) * 100) : null,
       waitlist_enabled: container.querySelector('[data-el="waitlist"]').checked,
       registration_deadline: toIsoOrNull(container.querySelector('[data-el="deadline"]').value),
     };
@@ -287,12 +297,16 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
   const [{ data: fullEvent }, { data: questions }, { data: registrations }] = await Promise.all([
     supabase.from('events').select('*').eq('id', event.id).single(),
     supabase.from('event_questions').select('id, question, required, position').eq('event_id', event.id).order('position'),
-    supabase.from('event_registrations').select('id, full_name, email, phone, status, created_at').eq('event_id', event.id).order('created_at'),
+    supabase.from('event_registrations').select('id, full_name, email, phone, status, payment_status, party_size, additional_names, created_at').eq('event_id', event.id).order('created_at'),
   ]);
 
   const publicUrl = `${window.location.origin}/event.html?event=${event.id}`;
-  const confirmedCount = (registrations || []).filter((r) => r.status === 'confirmed').length;
-  const waitlistedCount = (registrations || []).filter((r) => r.status === 'waitlisted').length;
+  // Summed by party_size -- a registration can be for more than one
+  // person, same reasoning as the capacity check in register_for_event().
+  const confirmedCount = (registrations || []).filter((r) => r.status === 'confirmed').reduce((sum, r) => sum + r.party_size, 0);
+  const waitlistedCount = (registrations || []).filter((r) => r.status === 'waitlisted').reduce((sum, r) => sum + r.party_size, 0);
+  const isPriced = !!fullEvent.price_cents;
+  const hasPartySizes = (registrations || []).some((r) => r.party_size > 1);
 
   container.innerHTML = `
     <div class="border-t border-slate-200 pt-4 mt-2">
@@ -308,7 +322,8 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
           ${fullEvent.status === 'active' ? `<button type="button" data-action="cancel-event" class="px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-medium hover:bg-rose-200">${t('events.cancelEvent')}</button>` : ''}
         ` : ''}
       </div>
-      <p class="text-sm text-slate-600 mb-3">${t('events.summaryLine', { confirmed: confirmedCount, capacity: fullEvent.capacity ?? '∞', waitlisted: waitlistedCount })}</p>
+      <p class="text-sm text-slate-600 mb-1">${t('events.summaryLine', { confirmed: confirmedCount, capacity: fullEvent.capacity ?? '∞', waitlisted: waitlistedCount })}</p>
+      <p class="text-sm text-slate-600 mb-3">${t('events.priceLine', { price: formatPriceCents(fullEvent.price_cents) })}${isPriced ? ` — ${t('events.paymentNotCollectedYet')}` : ''}</p>
       <div data-el="edit-area" class="mb-3"></div>
       ${canManage ? `
         <div class="border border-slate-200 rounded-lg p-3 mb-4">
@@ -329,17 +344,24 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
               <th class="text-left px-3 py-2">${t('events.colName')}</th>
               <th class="text-left px-3 py-2">${t('events.colEmail')}</th>
               <th class="text-left px-3 py-2">${t('events.colPhone')}</th>
+              ${hasPartySizes ? `<th class="text-right px-3 py-2">${t('events.colPeople')}</th>` : ''}
               <th class="text-left px-3 py-2">${t('events.colStatus')}</th>
+              ${isPriced ? `<th class="text-left px-3 py-2">${t('events.colPayment')}</th>` : ''}
               <th class="text-left px-3 py-2">${t('events.colRegisteredAt')}</th>
             </tr>
           </thead>
           <tbody>
-            ${(registrations || []).length === 0 ? `<tr><td colspan="5" class="px-3 py-4 text-center text-slate-400">${t('events.noRegistrants')}</td></tr>` : (registrations || []).map((r) => `
+            ${(registrations || []).length === 0 ? `<tr><td colspan="7" class="px-3 py-4 text-center text-slate-400">${t('events.noRegistrants')}</td></tr>` : (registrations || []).map((r) => `
               <tr class="border-b border-slate-100">
-                <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(r.full_name)}</td>
+                <td class="px-3 py-2 font-medium text-slate-800">
+                  ${escapeHtml(r.full_name)}
+                  ${r.additional_names?.length ? `<div class="text-xs text-slate-400 font-normal">${t('events.plusGuests', { names: r.additional_names.map(escapeHtml).join(', ') })}</div>` : ''}
+                </td>
                 <td class="px-3 py-2 text-slate-600">${escapeHtml(r.email)}</td>
                 <td class="px-3 py-2 text-slate-600">${escapeHtml(r.phone || '')}</td>
+                ${hasPartySizes ? `<td class="px-3 py-2 text-right">${r.party_size}</td>` : ''}
                 <td class="px-3 py-2">${t(`events.regStatus.${r.status}`)}</td>
+                ${isPriced ? `<td class="px-3 py-2">${t(`events.paymentStatus.${r.payment_status}`)}</td>` : ''}
                 <td class="px-3 py-2 text-slate-500">${new Date(r.created_at).toLocaleDateString()}</td>
               </tr>
             `).join('')}
@@ -375,7 +397,9 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
         [t('events.colName')]: r.full_name,
         [t('events.colEmail')]: r.email,
         [t('events.colPhone')]: r.phone || '',
+        ...(hasPartySizes ? { [t('events.colPeople')]: r.party_size, [t('events.colGuestNames')]: (r.additional_names || []).join(', ') } : {}),
         [t('events.colStatus')]: t(`events.regStatus.${r.status}`),
+        ...(isPriced ? { [t('events.colPayment')]: t(`events.paymentStatus.${r.payment_status}`) } : {}),
         [t('events.colRegisteredAt')]: new Date(r.created_at).toLocaleString(),
       }));
       const ws = window.XLSX.utils.json_to_sheet(rows);
@@ -407,6 +431,10 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
       statusEl.textContent = t('events.messageSent', { count: data.sent });
     });
   }
+}
+
+function formatPriceCents(cents) {
+  return cents ? `$${(cents / 100).toFixed(2)}` : t('events.free');
 }
 
 function toLocalInputValue(iso) {
