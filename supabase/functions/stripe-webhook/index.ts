@@ -32,6 +32,10 @@ import Stripe from 'https://esm.sh/stripe@17?target=deno';
 // trial window) -- maps back to this app's own 'trial' status, same
 // meaning either way. 'incomplete' isn't expected here, but falls back
 // to 'past_due' rather than silently doing nothing.
+function toIso(unixSeconds) {
+  return unixSeconds ? new Date(unixSeconds * 1000).toISOString() : null;
+}
+
 function mapSubscriptionStatus(stripeStatus) {
   if (stripeStatus === 'active') return 'active';
   if (stripeStatus === 'trialing') return 'trial';
@@ -84,6 +88,7 @@ Deno.serve(async (req) => {
           p_stripe_subscription_id: subscription.id,
           p_status: mapSubscriptionStatus(subscription.status),
           p_plan_id: planId,
+          p_current_period_end: toIso(subscription.current_period_end),
         });
 
         // A promo code was attached at checkout (stripe-billing's
@@ -115,6 +120,7 @@ Deno.serve(async (req) => {
         p_stripe_subscription_id: subscription.id,
         p_status: status,
         p_plan_id: status === 'canceled' ? null : planId,
+        p_current_period_end: status === 'canceled' ? null : toIso(subscription.current_period_end),
       });
     } else if (event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object;
@@ -123,6 +129,7 @@ Deno.serve(async (req) => {
         p_stripe_subscription_id: null,
         p_status: 'canceled',
         p_plan_id: null,
+        p_current_period_end: null,
       });
     }
     // Any other event type: acknowledged (200) without action -- Stripe

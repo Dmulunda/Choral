@@ -110,6 +110,7 @@ export async function renderSiteAdminTab() {
       <button type="button" data-tab="requests" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabRequests')}</button>
       <button type="button" data-tab="churches" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabChurches')}</button>
       <button type="button" data-tab="promo-codes" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabPromoCodes')}</button>
+      <button type="button" data-tab="usage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabUsage')}</button>
       <button type="button" data-tab="sandbox" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSandbox')}</button>
       <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
     </div>
@@ -119,6 +120,7 @@ export async function renderSiteAdminTab() {
     <div data-panel="requests" class="hidden"></div>
     <div data-panel="churches" class="hidden"></div>
     <div data-panel="promo-codes" class="hidden"></div>
+    <div data-panel="usage" class="hidden"></div>
     <div data-panel="sandbox" class="hidden"></div>
     <div data-panel="manage" class="hidden"></div>
   `;
@@ -131,10 +133,11 @@ export async function renderSiteAdminTab() {
     requests: container.querySelector('[data-panel="requests"]'),
     churches: container.querySelector('[data-panel="churches"]'),
     'promo-codes': container.querySelector('[data-panel="promo-codes"]'),
+    usage: container.querySelector('[data-panel="usage"]'),
     sandbox: container.querySelector('[data-panel="sandbox"]'),
     manage: container.querySelector('[data-panel="manage"]'),
   };
-  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, 'promo-codes': false, sandbox: false, manage: false };
+  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, 'promo-codes': false, usage: false, sandbox: false, manage: false };
 
   tabBtns.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
@@ -152,6 +155,7 @@ export async function renderSiteAdminTab() {
     if (tab === 'requests' && !loaded.requests) loadRequests();
     if (tab === 'churches' && !loaded.churches) loadChurches();
     if (tab === 'promo-codes' && !loaded['promo-codes']) loadPromoCodes();
+    if (tab === 'usage' && !loaded.usage) loadUsageDashboard();
     if (tab === 'sandbox' && !loaded.sandbox) loadSandbox();
     if (tab === 'manage' && !loaded.manage) loadManage();
   }
@@ -751,6 +755,95 @@ export async function renderSiteAdminTab() {
       loaded['promo-codes'] = false;
       loadPromoCodes();
     });
+  }
+
+  // ---- Usage Dashboard (SAAS only -- sql/saas_platform/76_usage_dashboard.sql).
+  // Scoped to what's actually instrumented today: login_events gives
+  // real per-login counts (not just a single last-sign-in timestamp),
+  // current_period_end is the real Stripe renewal date now that the
+  // webhook persists it. Events/tickets and messages/emails-sent
+  // numbers from the feature spec aren't shown -- neither feature
+  // exists yet. Per-department breakdown is a separate, deeper
+  // drill-down left for later. ----
+  function formatDate(iso) {
+    return iso ? new Date(iso).toLocaleDateString() : '—';
+  }
+
+  async function loadUsageDashboard() {
+    panels.usage.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+    const [{ data: overview, error: overviewError }, { data: rows, error: rowsError }] = await Promise.all([
+      supabase.rpc('get_platform_usage_overview'),
+      supabase.rpc('list_tenant_usage_for_site_admin'),
+    ]);
+    if (overviewError || rowsError) {
+      panels.usage.innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: (overviewError || rowsError).message })}</p>`;
+      return;
+    }
+    loaded.usage = true;
+
+    const byPlan = overview?.byPlan || {};
+    const planCards = Object.entries(byPlan).map(([planName, count]) => `
+      <div class="border border-slate-200 rounded-lg px-3 py-2">
+        <p class="text-xs text-slate-500">${escapeHtml(planName)}</p>
+        <p class="text-xl font-bold text-slate-800">${count}</p>
+      </div>
+    `).join('');
+
+    panels.usage.innerHTML = `
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        ${planCards}
+        <div class="border border-slate-200 rounded-lg px-3 py-2">
+          <p class="text-xs text-slate-500">${t('siteAdmin.usageNewThisMonth')}</p>
+          <p class="text-xl font-bold text-emerald-600">${overview?.newThisMonth ?? 0}</p>
+        </div>
+        <div class="border border-slate-200 rounded-lg px-3 py-2">
+          <p class="text-xs text-slate-500">${t('siteAdmin.usageCancelledThisMonth')}</p>
+          <p class="text-xl font-bold text-rose-600">${overview?.cancelledThisMonth ?? 0}</p>
+        </div>
+        <div class="border border-amber-200 bg-amber-50 rounded-lg px-3 py-2">
+          <p class="text-xs text-amber-700">${t('siteAdmin.usageAtRisk')}</p>
+          <p class="text-xl font-bold text-amber-700">${overview?.atRiskCount ?? 0}</p>
+        </div>
+      </div>
+      <div class="overflow-x-auto border border-slate-200 rounded-lg">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th class="text-left px-3 py-2">${t('siteAdmin.colChurch')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.usageColPlan')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.usageColRenews')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.usageColMembers')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.usageColExtensions')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.usageColLogins7d')}</th>
+              <th class="text-right px-3 py-2">${t('siteAdmin.usageColLogins30d')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.colLastActive')}</th>
+            </tr>
+          </thead>
+          <tbody data-el="rows"></tbody>
+        </table>
+      </div>
+    `;
+
+    const now = Date.now();
+    const rowsEl = panels.usage.querySelector('[data-el="rows"]');
+    rowsEl.innerHTML = (rows || []).map((row) => {
+      const isAtRisk = !row.last_active_at || (now - new Date(row.last_active_at).getTime()) > 14 * 24 * 60 * 60 * 1000;
+      const membersNearLimit = row.max_members != null && row.member_count >= row.max_members * 0.9;
+      const extensionsNearLimit = row.max_extensions != null && row.extension_count >= row.max_extensions * 0.9;
+      const renewsLabel = row.status === 'trial' ? t('siteAdmin.usageTrialEnds', { date: formatDate(row.trial_ends_at) }) : formatDate(row.current_period_end);
+      return `
+        <tr class="border-b border-slate-100 ${isAtRisk ? 'bg-amber-50' : ''}">
+          <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(row.name)}</td>
+          <td class="px-3 py-2 text-slate-600">${escapeHtml(row.plan_name || 'Basic')}</td>
+          <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${renewsLabel}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap ${membersNearLimit ? 'text-amber-700 font-semibold' : ''}">${row.member_count} / ${row.max_members ?? '∞'}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap ${extensionsNearLimit ? 'text-amber-700 font-semibold' : ''}">${row.extension_count} / ${row.max_extensions ?? '∞'}</td>
+          <td class="px-3 py-2 text-right">${row.logins_7d}</td>
+          <td class="px-3 py-2 text-right">${row.logins_30d}</td>
+          <td class="px-3 py-2 ${isAtRisk ? 'text-amber-700 font-medium' : 'text-slate-500'}">${formatDate(row.last_active_at)}${isAtRisk ? ` ⚠ ${t('siteAdmin.usageAtRisk')}` : ''}</td>
+        </tr>
+      `;
+    }).join('');
   }
 
   // ---- Training Sandbox ----
