@@ -249,9 +249,15 @@ Deno.serve(async (req) => {
       // specifically so this doesn't restart the clock for someone who
       // waits until day 20 of their trial to finally check out. Not
       // applied at all once the trial's over (e.g. re-subscribing after
-      // a cancellation) -- immediate billing, same as today.
+      // a cancellation) -- immediate billing, same as today. Stripe
+      // itself additionally requires trial_end to be at least 2 days
+      // out ("The trial_end date has to be at least 2 days in the
+      // future") -- a trial ending sooner than that (checking out in
+      // its final 48 hours) falls through to immediate billing instead
+      // of passing a trial_end Stripe would just reject outright.
       const trialEndsAt = tenant.status === 'trial' && tenant.trial_ends_at ? new Date(tenant.trial_ends_at) : null;
-      const subscriptionData = trialEndsAt && trialEndsAt.getTime() > Date.now()
+      const MIN_STRIPE_TRIAL_END_MS = 2 * 24 * 60 * 60 * 1000;
+      const subscriptionData = trialEndsAt && trialEndsAt.getTime() > Date.now() + MIN_STRIPE_TRIAL_END_MS
         ? { trial_end: Math.floor(trialEndsAt.getTime() / 1000) }
         : undefined;
 
