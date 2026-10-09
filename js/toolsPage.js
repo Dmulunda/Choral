@@ -11,7 +11,7 @@ import {
   openDirectory, openMemberCases, openPrayerRequests, openPastorMeetings,
   openReports, openLoginActivity, openCreateDepartment, openMenuCustomizer,
   openChurchLogo, openMessageModeration, openBibleImport, openPeopleImport,
-  openGuestOnboardingHub, openAttendanceManager,
+  openGuestOnboardingHub, openAttendanceManager, openUsageDashboard,
 } from './superAdminHome.js';
 import { runSidebarTool } from './app.js';
 import { t } from './i18n.js';
@@ -69,6 +69,7 @@ export function renderToolsTab() {
       items: [
         { icon: '📈', color: '#0369a1', name: t('superHome.reportsTitle'), desc: t('tools.reportsDesc'), onClick: openReports },
         isSuperAdmin && { icon: '🔑', color: '#0369a1', name: t('loginActivity.title'), desc: t('tools.loginActivityDesc'), onClick: openLoginActivity },
+        isSuperAdmin && { icon: '📊', color: '#0369a1', name: t('usageDashboard.title'), desc: t('tools.usageDashboardDesc'), onClick: openUsageDashboard },
       ].filter(Boolean),
     },
     isSuperAdmin && {
