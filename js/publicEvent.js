@@ -95,6 +95,14 @@ function renderForm(formArea, event, { supabase: sb, eventId, tenantSlug, willWa
         <label class="block text-sm font-medium text-slate-600 mb-1">${t('events.phone')}</label>
         <input type="tel" name="phone" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
       </div>
+      ${event.capacity != null ? `
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">${t('events.partySize')}</label>
+          <input type="number" name="party_size" min="1" value="1" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <p class="text-xs text-slate-400 mt-1">${t('events.partySizeHint')}</p>
+        </div>
+        <div data-el="additional-names"></div>
+      ` : ''}
       ${event.questions.map((q) => `
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">${escapeHtml(q.question)}${q.required ? ' *' : ''}</label>
@@ -108,6 +116,23 @@ function renderForm(formArea, event, { supabase: sb, eventId, tenantSlug, willWa
 
   const form = formArea.querySelector('#event-register-form');
   const statusEl = formArea.querySelector('#event-form-status');
+  const partySizeInput = form.querySelector('input[name="party_size"]');
+  const additionalNamesEl = formArea.querySelector('[data-el="additional-names"]');
+
+  // Additional-name inputs re-render to match whatever party size was
+  // just typed -- e.g. going from 1 to 3 adds 2 name fields for "who
+  // else is coming," not counting the registrant themselves (already
+  // collected above as the full_name field).
+  function renderAdditionalNames() {
+    if (!additionalNamesEl) return;
+    const count = Math.max(1, Number(partySizeInput.value) || 1) - 1;
+    additionalNamesEl.innerHTML = count > 0
+      ? `<label class="block text-sm font-medium text-slate-600 mb-1">${t('events.additionalNames')}</label>` +
+        Array.from({ length: count }, (_, i) => `<input type="text" name="additional_name_${i}" placeholder="${t('events.additionalNamePlaceholder', { n: i + 2 })}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-1.5" />`).join('')
+      : '';
+  }
+  partySizeInput?.addEventListener('input', renderAdditionalNames);
+  renderAdditionalNames();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -117,6 +142,8 @@ function renderForm(formArea, event, { supabase: sb, eventId, tenantSlug, willWa
 
     const fd = new FormData(form);
     const answers = event.questions.map((q) => ({ question_id: q.id, answer: fd.get(`q_${q.id}`) || '' }));
+    const partySize = partySizeInput ? Math.max(1, Number(fd.get('party_size')) || 1) : 1;
+    const additionalNames = Array.from({ length: partySize - 1 }, (_, i) => (fd.get(`additional_name_${i}`) || '').trim()).filter(Boolean);
 
     const { data, error } = await sb.rpc('register_for_event', {
       p_event_id: eventId,
@@ -125,6 +152,8 @@ function renderForm(formArea, event, { supabase: sb, eventId, tenantSlug, willWa
       p_email: fd.get('email'),
       p_phone: fd.get('phone'),
       p_answers: answers,
+      p_party_size: partySize,
+      p_additional_names: additionalNames,
     });
 
     if (error) {

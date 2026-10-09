@@ -75,10 +75,12 @@ export async function renderEventsTab() {
 
     // One extra query for registrant counts -- small enough tables
     // (one row per event) that a per-event N+1 isn't worth avoiding
-    // with a view just for this.
-    const counts = await Promise.all(events.map((e) =>
-      supabase.from('event_registrations').select('id', { count: 'exact', head: true }).eq('event_id', e.id).eq('status', 'confirmed')
-    ));
+    // with a view just for this. Summed by party_size, not row count
+    // -- a registration can be for more than one person.
+    const counts = await Promise.all(events.map(async (e) => {
+      const { data } = await supabase.from('event_registrations').select('party_size').eq('event_id', e.id).eq('status', 'confirmed');
+      return (data || []).reduce((sum, r) => sum + r.party_size, 0);
+    }));
 
     listAreaEl.innerHTML = `
       <div class="overflow-x-auto border border-slate-200 rounded-lg">
@@ -109,7 +111,7 @@ export async function renderEventsTab() {
           <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${new Date(ev.start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</td>
           <td class="px-3 py-2 text-slate-600">${t(`events.visibility.${ev.visibility}`)}</td>
           <td class="px-3 py-2 text-slate-600">${formatPriceCents(ev.price_cents)}</td>
-          <td class="px-3 py-2 text-right">${counts[i].count ?? 0}${ev.capacity != null ? ` / ${ev.capacity}` : ''}</td>
+          <td class="px-3 py-2 text-right">${counts[i]}${ev.capacity != null ? ` / ${ev.capacity}` : ''}</td>
           <td class="px-3 py-2 text-right">${canManage ? `<span class="text-xs text-indigo-600 font-medium">${t('events.manage')} →</span>` : ''}</td>
         </tr>
       `;
@@ -296,13 +298,16 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
   const [{ data: fullEvent }, { data: questions }, { data: registrations }] = await Promise.all([
     supabase.from('events').select('*').eq('id', event.id).single(),
     supabase.from('event_questions').select('id, question, required, position').eq('event_id', event.id).order('position'),
-    supabase.from('event_registrations').select('id, full_name, email, phone, status, payment_status, created_at').eq('event_id', event.id).order('created_at'),
+    supabase.from('event_registrations').select('id, full_name, email, phone, status, payment_status, party_size, additional_names, created_at').eq('event_id', event.id).order('created_at'),
   ]);
 
   const publicUrl = `${window.location.origin}/event.html?event=${event.id}&church=${encodeURIComponent(getTenant()?.slug || '')}`;
-  const confirmedCount = (registrations || []).filter((r) => r.status === 'confirmed').length;
-  const waitlistedCount = (registrations || []).filter((r) => r.status === 'waitlisted').length;
+  // Summed by party_size -- a registration can be for more than one
+  // person, same reasoning as the capacity check in register_for_event().
+  const confirmedCount = (registrations || []).filter((r) => r.status === 'confirmed').reduce((sum, r) => sum + r.party_size, 0);
+  const waitlistedCount = (registrations || []).filter((r) => r.status === 'waitlisted').reduce((sum, r) => sum + r.party_size, 0);
   const isPriced = !!fullEvent.price_cents;
+  const hasPartySizes = (registrations || []).some((r) => r.party_size > 1);
 
   container.innerHTML = `
     <div class="border-t border-slate-200 pt-4 mt-2">
@@ -340,17 +345,22 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
               <th class="text-left px-3 py-2">${t('events.colName')}</th>
               <th class="text-left px-3 py-2">${t('events.colEmail')}</th>
               <th class="text-left px-3 py-2">${t('events.colPhone')}</th>
+              ${hasPartySizes ? `<th class="text-right px-3 py-2">${t('events.colPeople')}</th>` : ''}
               <th class="text-left px-3 py-2">${t('events.colStatus')}</th>
               ${isPriced ? `<th class="text-left px-3 py-2">${t('events.colPayment')}</th>` : ''}
               <th class="text-left px-3 py-2">${t('events.colRegisteredAt')}</th>
             </tr>
           </thead>
           <tbody>
-            ${(registrations || []).length === 0 ? `<tr><td colspan="6" class="px-3 py-4 text-center text-slate-400">${t('events.noRegistrants')}</td></tr>` : (registrations || []).map((r) => `
+            ${(registrations || []).length === 0 ? `<tr><td colspan="7" class="px-3 py-4 text-center text-slate-400">${t('events.noRegistrants')}</td></tr>` : (registrations || []).map((r) => `
               <tr class="border-b border-slate-100">
-                <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(r.full_name)}</td>
+                <td class="px-3 py-2 font-medium text-slate-800">
+                  ${escapeHtml(r.full_name)}
+                  ${r.additional_names?.length ? `<div class="text-xs text-slate-400 font-normal">${t('events.plusGuests', { names: r.additional_names.map(escapeHtml).join(', ') })}</div>` : ''}
+                </td>
                 <td class="px-3 py-2 text-slate-600">${escapeHtml(r.email)}</td>
                 <td class="px-3 py-2 text-slate-600">${escapeHtml(r.phone || '')}</td>
+                ${hasPartySizes ? `<td class="px-3 py-2 text-right">${r.party_size}</td>` : ''}
                 <td class="px-3 py-2">${t(`events.regStatus.${r.status}`)}</td>
                 ${isPriced ? `<td class="px-3 py-2">${t(`events.paymentStatus.${r.payment_status}`)}</td>` : ''}
                 <td class="px-3 py-2 text-slate-500">${new Date(r.created_at).toLocaleDateString()}</td>
@@ -388,6 +398,7 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
         [t('events.colName')]: r.full_name,
         [t('events.colEmail')]: r.email,
         [t('events.colPhone')]: r.phone || '',
+        ...(hasPartySizes ? { [t('events.colPeople')]: r.party_size, [t('events.colGuestNames')]: (r.additional_names || []).join(', ') } : {}),
         [t('events.colStatus')]: t(`events.regStatus.${r.status}`),
         ...(isPriced ? { [t('events.colPayment')]: t(`events.paymentStatus.${r.payment_status}`) } : {}),
         [t('events.colRegisteredAt')]: new Date(r.created_at).toLocaleString(),
