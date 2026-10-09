@@ -19,6 +19,7 @@ import { renderToolsTab } from './toolsPage.js';
 import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
 import { renderTaxTab } from './taxPage.js';
+import { renderEventsTab } from './eventsPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
 import { renderOfferingsPageTab } from './offeringsPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
@@ -117,6 +118,7 @@ const lazyTabs = {
   training: renderTrainingTab,
   'service-program': renderServiceProgramTab,
   tax: renderTaxTab,
+  events: renderEventsTab,
   budget: renderBudgetPageTab,
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
@@ -284,7 +286,7 @@ const TAB_KIND_MAP = {
 // department-relative tab correctly does. Before this existed, being
 // on Site Admin (or any of these) when a reload fired silently
 // bounced you back to Home/Dashboard.
-const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin']);
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events']);
 
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
@@ -752,6 +754,7 @@ function buildQuickAccessItems() {
     { icon: '🎓', label: t('nav.training'), tab: 'training' },
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
     { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
+    { icon: '🎟️', label: t('nav.events'), tab: 'events' },
   ];
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
   if (hasFinanceOversight()) items.push({ icon: '🙏', label: t('nav.offerings'), tab: 'offerings' });
