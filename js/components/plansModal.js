@@ -8,7 +8,7 @@
 // Stripe's hosted pages and back; it never writes billing state itself.
 import { t } from '../i18n.js';
 import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from '../utils/planPresentation.js';
-import { validatePromoCode, discountedPriceCents, promoErrorMessage } from '../utils/promoCode.js';
+import { validatePromoCode, discountedPriceCents, promoErrorMessage, extractEdgeFunctionError } from '../utils/promoCode.js';
 
 export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCustomerId }) {
   let allPlans = [];
@@ -191,7 +191,11 @@ export function createPlansModal({ supabase, currentPlanId, tenantName, stripeCu
     // browser's default referrer policy, so the function can't recover
     // this app's subpath (e.g. /ChurchOs/app.html) from headers alone.
     const returnUrl = `${window.location.origin}${window.location.pathname}`;
-    const { data, error } = await supabase.functions.invoke('stripe-billing', { body: { action, returnUrl, ...extraBody } });
+    const { data: rawData, error } = await supabase.functions.invoke('stripe-billing', { body: { action, returnUrl, ...extraBody } });
+    // See extractEdgeFunctionError()'s own comment -- `data` comes back
+    // null on any non-2xx response (e.g. a rejected promo code), so the
+    // real error/reason has to be unwrapped from error.context instead.
+    const data = rawData || (error ? await extractEdgeFunctionError(error) : null);
 
     if (error || data?.error || !data?.url) {
       statusEl.className = 'text-sm text-rose-600 mt-3';

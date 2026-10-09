@@ -17,7 +17,7 @@
 // exactly like today's cardless trial.
 import { t } from '../i18n.js';
 import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from '../utils/planPresentation.js';
-import { validatePromoCode, discountedPriceCents, promoErrorMessage } from '../utils/promoCode.js';
+import { validatePromoCode, discountedPriceCents, promoErrorMessage, extractEdgeFunctionError } from '../utils/promoCode.js';
 
 export function createPlanPickerModal({ supabase, onSkip }) {
   let allPlans = [];
@@ -172,9 +172,13 @@ export function createPlanPickerModal({ supabase, onSkip }) {
     statusEl.textContent = t('plans.redirecting');
 
     const returnUrl = `${window.location.origin}${window.location.pathname}`;
-    const { data, error } = await supabase.functions.invoke('stripe-billing', {
+    const { data: rawData, error } = await supabase.functions.invoke('stripe-billing', {
       body: { action: 'create_checkout_session', plan_key: planKey, returnUrl, promo_code: appliedPromo?.code },
     });
+    // See extractEdgeFunctionError()'s own comment -- `data` comes back
+    // null on any non-2xx response (e.g. a rejected promo code), so the
+    // real error/reason has to be unwrapped from error.context instead.
+    const data = rawData || (error ? await extractEdgeFunctionError(error) : null);
 
     if (error || data?.error || !data?.url) {
       statusEl.className = 'text-sm text-rose-600 mt-3';

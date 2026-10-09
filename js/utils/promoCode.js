@@ -16,6 +16,24 @@ export async function validatePromoCode(supabase, code) {
   return data;
 }
 
+// supabase-js's functions.invoke() only populates `data` on a 2xx
+// response -- create_checkout_session deliberately returns 400 for a
+// rejected promo code (an existing, working plan/Stripe failure would
+// use 404/500 the same way), which means `data` comes back null and
+// the real `{ error, reason }` body is only reachable via
+// error.context (a raw Response that hasn't been read yet). Without
+// this, every one of those rejections fell back to supabase-js's own
+// generic "Edge Function returned a non-2xx status code" instead of
+// the actual reason.
+export async function extractEdgeFunctionError(error) {
+  if (!error) return {};
+  try {
+    const body = await error.context?.clone().json();
+    if (body) return body;
+  } catch { /* context wasn't JSON (e.g. a network failure) -- fall through */ }
+  return { error: error.message };
+}
+
 export function discountedPriceCents(priceCents, discountPercent) {
   return Math.max(0, Math.round(priceCents * (1 - discountPercent / 100)));
 }
