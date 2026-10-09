@@ -409,9 +409,15 @@ export async function renderSiteAdminTab() {
   // ---- Churches (SAAS only) ----
   async function loadChurches() {
     panels.churches.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
-    const [{ data: tenants, error }, usageResp] = await Promise.all([
+    const [{ data: tenants, error }, usageResp, { data: redemptions }] = await Promise.all([
       supabase.rpc('list_all_tenants_for_site_admin'),
       supabase.functions.invoke('site-admin-usage').catch(() => ({ data: null, error: null })),
+      // RLS-readable directly (Site Admin), no edge function needed --
+      // ordered newest-first so the Map below keeps each tenant's MOST
+      // RECENT redemption when a church has used more than one code.
+      supabase.from('promo_code_redemptions')
+        .select('tenant_id, discount_percent, duration, duration_in_months, redeemed_at, promo_codes ( code )')
+        .order('redeemed_at', { ascending: false }),
     ]);
     if (error) {
       panels.churches.innerHTML = `<p class="text-rose-600">${t('siteAdmin.loadFailed', { message: error.message })}</p>`;
@@ -419,6 +425,8 @@ export async function renderSiteAdminTab() {
     }
     loaded.churches = true;
     const r2ByTenant = usageResp?.data?.byTenant || {};
+    const promoByTenant = new Map();
+    (redemptions || []).forEach((r) => { if (!promoByTenant.has(r.tenant_id)) promoByTenant.set(r.tenant_id, r); });
 
     panels.churches.innerHTML = `
       <div class="overflow-x-auto border border-slate-200 rounded-lg mb-2">
@@ -430,6 +438,7 @@ export async function renderSiteAdminTab() {
               <th class="text-right px-3 py-2">${t('siteAdmin.colMembers')}</th>
               <th class="text-right px-3 py-2">${t('siteAdmin.colStorage')}</th>
               <th class="text-left px-3 py-2">${t('siteAdmin.colLastActive')}</th>
+              <th class="text-left px-3 py-2">${t('siteAdmin.promoColCode')}</th>
               <th class="text-left px-3 py-2"></th>
             </tr>
           </thead>
@@ -442,6 +451,10 @@ export async function renderSiteAdminTab() {
     rowsEl.innerHTML = (tenants || []).map((row) => {
       const totalBytes = Number(row.storage_bytes || 0) + Number(r2ByTenant[row.id] || 0);
       const isDeleted = !!row.deleted_at;
+      const promo = promoByTenant.get(row.id);
+      const promoCell = promo
+        ? `<span class="font-mono font-medium">${escapeHtml(promo.promo_codes?.code || '—')}</span> <span class="text-slate-400">(${promo.discount_percent}% · ${promoDurationLabel(promo.duration, promo.duration_in_months)})</span>`
+        : '<span class="text-slate-300">—</span>';
       return `
         <tr class="border-b border-slate-100 ${isDeleted ? 'bg-rose-50 opacity-70' : ''}" data-row-id="${row.id}">
           <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(row.name)}${isDeleted ? ` <span class="text-xs text-rose-600">(${t('siteAdmin.deleted')})</span>` : ''}</td>
@@ -449,6 +462,7 @@ export async function renderSiteAdminTab() {
           <td class="px-3 py-2 text-right">${row.member_count} / ${row.department_count}</td>
           <td class="px-3 py-2 text-right whitespace-nowrap">${centsOrBytesToSize(totalBytes)}</td>
           <td class="px-3 py-2 text-slate-500">${row.last_active_at ? new Date(row.last_active_at).toLocaleDateString() : '—'}</td>
+          <td class="px-3 py-2 whitespace-nowrap">${promoCell}</td>
           <td class="px-3 py-2 text-right">
             ${isDeleted
               ? `<button type="button" data-action="restore" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">${t('siteAdmin.restore')}</button>`
@@ -500,6 +514,12 @@ export async function renderSiteAdminTab() {
     return `$${(Number(cents || 0) / 100).toFixed(2)}`;
   }
 
+  function promoDurationLabel(duration, durationInMonths) {
+    if (duration === 'once') return t('siteAdmin.promoDurationOnce');
+    if (duration === 'forever') return t('siteAdmin.promoDurationForever');
+    return t('siteAdmin.promoDurationMonths', { count: durationInMonths });
+  }
+
   async function loadPromoCodes() {
     panels['promo-codes'].innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
     const { data, error } = await supabase.functions.invoke('stripe-billing', { body: { action: 'list_promo_codes' } });
@@ -540,9 +560,7 @@ export async function renderSiteAdminTab() {
 
     const rowsEl = panels['promo-codes'].querySelector('[data-el="rows"]');
     rowsEl.innerHTML = codes.map((c) => {
-      const durationLabel = c.duration === 'once' ? t('siteAdmin.promoDurationOnce')
-        : c.duration === 'forever' ? t('siteAdmin.promoDurationForever')
-        : t('siteAdmin.promoDurationMonths', { count: c.duration_in_months });
+      const durationLabel = promoDurationLabel(c.duration, c.duration_in_months);
       const plansLabel = c.applies_to_plan_groups ? c.applies_to_plan_groups.map(groupName).join(', ') : t('siteAdmin.promoAllPlans');
       const usesLabel = c.usage_limit != null ? `${c.redemptionCount} / ${c.usage_limit}` : `${c.redemptionCount}`;
       return `
