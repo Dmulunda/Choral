@@ -988,6 +988,8 @@ const TRANSLATIONS = {
     'usageDashboard.shiftsScheduled': 'Shifts Scheduled',
     'usageDashboard.upcomingShifts': 'Upcoming Shifts',
     'usageDashboard.attendanceNote': 'Attendance is tracked per service, not per department, so a department-level attendance rate isn’t available.',
+    'usageDashboard.fullscreen': 'Full screen',
+    'usageDashboard.exitFullscreen': 'Exit full screen',
 
     'appSuggestion.title': 'App Suggestion',
     'appSuggestion.intro': 'Send a suggestion directly to the primary administrator.',
@@ -3128,6 +3130,8 @@ const TRANSLATIONS = {
     'usageDashboard.shiftsScheduled': 'Horaires planifiés',
     'usageDashboard.upcomingShifts': 'Horaires à venir',
     'usageDashboard.attendanceNote': "La présence est suivie par service, pas par département -- un taux de présence par département n'est donc pas disponible.",
+    'usageDashboard.fullscreen': 'Plein écran',
+    'usageDashboard.exitFullscreen': 'Quitter le plein écran',
 
     'appSuggestion.title': "Suggestion pour l'application",
     'appSuggestion.intro': "Envoyez une suggestion directement à l'administrateur principal.",
