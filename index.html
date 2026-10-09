@@ -440,6 +440,15 @@
                   class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Tax / Impôts
           </button>
+          <!-- Events -- same unconditional/everyone-sees-it placement;
+               who can actually CREATE one is checked inside
+               js/eventsPage.js (department admin of the organizing
+               department, or Super Admin), same as every other
+               department-scoped write in this app. -->
+          <button data-tab-target="events" data-i18n="nav.events"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Events
+          </button>
           <!-- Budget nav button is intentionally NOT here — unlike
                Academy/Service Program above, this one must leave zero
                trace for anyone who isn't a department admin/secretary or
@@ -667,6 +676,13 @@
       <section data-tab-panel="tax" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-i18n="nav.tax">Tax / Impôts</h1>
         <div id="tax-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <section data-tab-panel="events" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.events">Events</h1>
+        <div id="events-content">
           <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
         </div>
       </section>
