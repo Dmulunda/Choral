@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
 
       const { data: registration } = await admin
         .from('event_registrations')
-        .select('id, full_name, email, status, qr_token, event:events ( title, start_at, location, online_link, tenants ( name ) )')
+        .select('id, full_name, email, status, payment_status, qr_token, event:events ( title, start_at, location, online_link, price_cents, tenants ( name ) )')
         .eq('id', registration_id)
         .maybeSingle();
       if (!registration) return json({ skipped: 'registration not found' });
@@ -80,6 +80,12 @@ Deno.serve(async (req) => {
       const whereLine = registration.event.online_link
         ? `<p><strong>Online:</strong> <a href="${escapeAttr(registration.event.online_link)}">${escapeHtml(registration.event.online_link)}</a></p>`
         : registration.event.location ? `<p><strong>Location:</strong> ${escapeHtml(registration.event.location)}</p>` : '';
+      // Payment isn't collected through the app yet (sql/saas_platform/
+      // 80_event_pricing.sql's own header comment) -- say so plainly
+      // rather than implying a charge already happened.
+      const priceLine = registration.event.price_cents
+        ? `<p><strong>Price:</strong> $${(registration.event.price_cents / 100).toFixed(2)} — online payment isn't available yet; the organizing department will follow up about how to pay.</p>`
+        : '';
 
       const result = await sendResendEmail({
         to: registration.email,
@@ -91,6 +97,7 @@ Deno.serve(async (req) => {
             : `You're registered for <strong>${escapeHtml(registration.event.title)}</strong>.`}</p>
           <p><strong>When:</strong> ${formatEventWhen(registration.event.start_at)}</p>
           ${whereLine}
+          ${priceLine}
           ${!isWaitlisted ? `<p>Show this QR code at check-in:</p><img src="${qrDataUrl}" alt="Ticket QR code" width="240" height="240" />` : ''}
           <p style="color:#888;font-size:12px;">${registration.event.tenants?.name ? `${escapeHtml(registration.event.tenants.name)} — ` : ''}ChurchOnPoint</p>
         `,

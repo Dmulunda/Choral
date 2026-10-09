@@ -58,6 +58,7 @@ function renderEvent(container, event, { supabase: sb, eventId, tenantSlug }) {
       ${event.description ? `<p class="text-sm text-slate-600 whitespace-pre-wrap mb-3">${escapeHtml(event.description)}</p>` : ''}
       <p class="text-sm text-slate-600"><strong>${t('events.when')}:</strong> ${escapeHtml(when)}</p>
       ${whereLine}
+      <p class="text-sm text-slate-600"><strong>${t('events.price')}:</strong> ${event.priceCents ? formatPriceCents(event.priceCents) : t('events.free')}</p>
       ${event.capacity != null ? `<p class="text-sm text-slate-500 mt-2">${t('events.placesRemaining', { count: event.placesRemaining })}</p>` : ''}
     </div>
     <div id="event-form-area"></div>
@@ -81,6 +82,7 @@ function renderForm(formArea, event, { supabase: sb, eventId, tenantSlug, willWa
   formArea.innerHTML = `
     <form id="event-register-form" class="bg-white rounded-xl shadow p-4 sm:p-6 space-y-3">
       ${willWaitlist ? `<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${t('events.willWaitlist')}</p>` : ''}
+      ${event.priceCents ? `<p class="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">${t('events.priceNotice', { price: formatPriceCents(event.priceCents) })}</p>` : ''}
       <div>
         <label class="block text-sm font-medium text-slate-600 mb-1">${t('events.fullName')}</label>
         <input type="text" name="full_name" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
@@ -138,6 +140,10 @@ function renderForm(formArea, event, { supabase: sb, eventId, tenantSlug, willWa
       </div>
     `;
   });
+}
+
+function formatPriceCents(cents) {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function escapeHtml(str) {
