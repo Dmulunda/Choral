@@ -67,6 +67,17 @@ function getMainClient() {
   return mainClient;
 }
 
+// Usage Dashboard charts only -- loaded on first use, not at module
+// load, same lazy pattern as pdfjs-dist/JSZip in projectionControl.js.
+// Module-level (not per-tab-visit) so switching away from Site Admin
+// and back doesn't re-fetch it. `/auto` auto-registers every
+// controller/element this file uses (line, bar) in one import.
+let chartJsPromise = null;
+function loadChartJs() {
+  if (!chartJsPromise) chartJsPromise = import('https://cdn.jsdelivr.net/npm/chart.js@4/auto/+esm').then((m) => m.default);
+  return chartJsPromise;
+}
+
 // supabase-js's functions.invoke() only gives a generic "Edge Function
 // returned a non-2xx status code" in error.message -- the real reason
 // (the JSON body this function's own error responses carry) is on
@@ -757,14 +768,27 @@ export async function renderSiteAdminTab() {
     });
   }
 
-  // ---- Usage Dashboard (SAAS only -- sql/saas_platform/76_usage_dashboard.sql).
+  // ---- Usage Dashboard (SAAS only -- sql/saas_platform/76/77_*.sql).
   // Scoped to what's actually instrumented today: login_events gives
   // real per-login counts (not just a single last-sign-in timestamp),
   // current_period_end is the real Stripe renewal date now that the
-  // webhook persists it. Events/tickets and messages/emails-sent
-  // numbers from the feature spec aren't shown -- neither feature
-  // exists yet. Per-department breakdown is a separate, deeper
-  // drill-down left for later. ----
+  // webhook persists it, department_shifts gives a real per-department
+  // schedule count. Events/tickets and messages/emails-sent numbers
+  // from the feature spec aren't shown -- neither feature exists yet.
+  // Attendance rate is deliberately not shown per-department --
+  // attendance_records has no department_id at all (it's a whole
+  // SERVICE's attendance), so there's no real figure to report there
+  // without fabricating one.
+  //
+  // Two levels: a church picker drives between the platform-wide
+  // overview (cards + table, click any row to drill in) and a single
+  // church's own view (plan/renewal + member/extension meters, a
+  // 30-day login trend, and a members-per-department bar chart whose
+  // bars -- or a plain dropdown -- drill into that department's own
+  // numbers). Follows the data-viz skill's form rules: a ratio against
+  // a limit is a linear METER, not a gauge/donut; single-series
+  // bar/line charts get one sequential hue (this app's own indigo) and
+  // no legend, since the chart's own title already names the series.
   function formatDate(iso) {
     return iso ? new Date(iso).toLocaleDateString() : '—';
   }
@@ -780,7 +804,44 @@ export async function renderSiteAdminTab() {
       return;
     }
     loaded.usage = true;
+    const tenantRows = rows || [];
 
+    panels.usage.innerHTML = `
+      <div class="flex items-center gap-2 mb-4">
+        <label class="text-sm font-medium text-slate-600">${t('siteAdmin.usageSelectChurch')}</label>
+        <select data-el="church-select" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+          <option value="">${t('siteAdmin.usageAllChurches')}</option>
+          ${tenantRows.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div data-el="overview-view"></div>
+      <div data-el="church-view" class="hidden"></div>
+    `;
+
+    const churchSelectEl = panels.usage.querySelector('[data-el="church-select"]');
+    const overviewViewEl = panels.usage.querySelector('[data-el="overview-view"]');
+    const churchViewEl = panels.usage.querySelector('[data-el="church-view"]');
+
+    renderUsageOverview(overviewViewEl, overview, tenantRows, (tenantId) => {
+      churchSelectEl.value = tenantId;
+      churchSelectEl.dispatchEvent(new Event('change'));
+    });
+
+    churchSelectEl.addEventListener('change', (e) => {
+      const tenantId = e.target.value;
+      if (!tenantId) {
+        overviewViewEl.classList.remove('hidden');
+        churchViewEl.classList.add('hidden');
+        return;
+      }
+      overviewViewEl.classList.add('hidden');
+      churchViewEl.classList.remove('hidden');
+      const tenantRow = tenantRows.find((r) => r.id === tenantId);
+      renderChurchUsage(churchViewEl, tenantRow, () => { churchSelectEl.value = ''; churchSelectEl.dispatchEvent(new Event('change')); });
+    });
+  }
+
+  function renderUsageOverview(container, overview, tenantRows, onSelectChurch) {
     const byPlan = overview?.byPlan || {};
     const planCards = Object.entries(byPlan).map(([planName, count]) => `
       <div class="border border-slate-200 rounded-lg px-3 py-2">
@@ -789,7 +850,7 @@ export async function renderSiteAdminTab() {
       </div>
     `).join('');
 
-    panels.usage.innerHTML = `
+    container.innerHTML = `
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         ${planCards}
         <div class="border border-slate-200 rounded-lg px-3 py-2">
@@ -825,14 +886,14 @@ export async function renderSiteAdminTab() {
     `;
 
     const now = Date.now();
-    const rowsEl = panels.usage.querySelector('[data-el="rows"]');
-    rowsEl.innerHTML = (rows || []).map((row) => {
+    const rowsEl = container.querySelector('[data-el="rows"]');
+    rowsEl.innerHTML = (tenantRows || []).map((row) => {
       const isAtRisk = !row.last_active_at || (now - new Date(row.last_active_at).getTime()) > 14 * 24 * 60 * 60 * 1000;
       const membersNearLimit = row.max_members != null && row.member_count >= row.max_members * 0.9;
       const extensionsNearLimit = row.max_extensions != null && row.extension_count >= row.max_extensions * 0.9;
       const renewsLabel = row.status === 'trial' ? t('siteAdmin.usageTrialEnds', { date: formatDate(row.trial_ends_at) }) : formatDate(row.current_period_end);
       return `
-        <tr class="border-b border-slate-100 ${isAtRisk ? 'bg-amber-50' : ''}">
+        <tr class="border-b border-slate-100 cursor-pointer hover:bg-slate-50 ${isAtRisk ? 'bg-amber-50' : ''}" data-tenant-id="${row.id}">
           <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(row.name)}</td>
           <td class="px-3 py-2 text-slate-600">${escapeHtml(row.plan_name || 'Basic')}</td>
           <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${renewsLabel}</td>
@@ -844,6 +905,153 @@ export async function renderSiteAdminTab() {
         </tr>
       `;
     }).join('');
+
+    rowsEl.querySelectorAll('[data-tenant-id]').forEach((tr) => {
+      tr.addEventListener('click', () => onSelectChurch(tr.dataset.tenantId));
+    });
+  }
+
+  // A ratio against a limit is a linear track+fill meter, not a
+  // gauge/donut -- amber once it crosses 90%, matching the overview
+  // table's own near-limit highlight.
+  function usageMeterHtml(label, count, limit) {
+    const pct = limit ? Math.min(100, Math.round((count / limit) * 100)) : null;
+    const nearLimit = pct != null && pct >= 90;
+    return `
+      <div>
+        <div class="flex items-center justify-between text-xs text-slate-500 mb-1">
+          <span>${label}</span>
+          <span class="${nearLimit ? 'text-amber-700 font-semibold' : ''}">${count} / ${limit ?? '∞'}</span>
+        </div>
+        <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div class="h-full rounded-full ${nearLimit ? 'bg-amber-500' : 'bg-indigo-600'}" style="width:${pct ?? 0}%"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function renderChurchUsage(container, tenantRow, onBack) {
+    if (!tenantRow) { container.innerHTML = ''; return; }
+    container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
+
+    const [{ data: trend }, { data: depts }] = await Promise.all([
+      supabase.rpc('get_tenant_login_trend', { p_tenant_id: tenantRow.id }),
+      supabase.rpc('list_department_usage_for_tenant', { p_tenant_id: tenantRow.id }),
+    ]);
+    const departments = depts || [];
+
+    const renewsLabel = tenantRow.status === 'trial' ? t('siteAdmin.usageTrialEnds', { date: formatDate(tenantRow.trial_ends_at) }) : formatDate(tenantRow.current_period_end);
+
+    container.innerHTML = `
+      <button type="button" data-action="back-to-overview" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium mb-3">&larr; ${t('siteAdmin.usageBackToOverview')}</button>
+      <h3 class="text-lg font-bold text-slate-800 mb-3">${escapeHtml(tenantRow.name)}</h3>
+      <div class="grid sm:grid-cols-3 gap-3 mb-4">
+        <div class="border border-slate-200 rounded-lg px-3 py-2">
+          <p class="text-xs text-slate-500">${t('siteAdmin.usageColPlan')}</p>
+          <p class="text-lg font-bold text-slate-800">${escapeHtml(tenantRow.plan_name || 'Basic')}</p>
+          <p class="text-xs text-slate-500">${renewsLabel}</p>
+        </div>
+        <div class="border border-slate-200 rounded-lg px-3 py-2 flex flex-col justify-center">${usageMeterHtml(t('siteAdmin.usageColMembers'), tenantRow.member_count, tenantRow.max_members)}</div>
+        <div class="border border-slate-200 rounded-lg px-3 py-2 flex flex-col justify-center">${usageMeterHtml(t('siteAdmin.usageColExtensions'), tenantRow.extension_count, tenantRow.max_extensions)}</div>
+      </div>
+      <div class="grid lg:grid-cols-2 gap-4 mb-4">
+        <div class="border border-slate-200 rounded-lg p-3">
+          <p class="text-sm font-semibold text-slate-700 mb-2">${t('siteAdmin.usageLoginTrend')}</p>
+          <canvas data-el="login-chart" height="160"></canvas>
+        </div>
+        <div class="border border-slate-200 rounded-lg p-3">
+          <p class="text-sm font-semibold text-slate-700 mb-2">${t('siteAdmin.usageMembersByDept')}</p>
+          ${departments.length ? '<canvas data-el="dept-chart" height="160"></canvas>' : `<p class="text-sm text-slate-400">${t('siteAdmin.usageNoDepartments')}</p>`}
+        </div>
+      </div>
+      ${departments.length ? `
+        <div class="mb-2">
+          <label class="text-sm font-medium text-slate-600 mr-2">${t('siteAdmin.usageSelectDepartment')}</label>
+          <select data-el="dept-select" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+            <option value="">${t('siteAdmin.usageSelectDepartmentPlaceholder')}</option>
+            ${departments.map((d) => `<option value="${d.department_id}">${escapeHtml(d.department_name)}</option>`).join('')}
+          </select>
+        </div>
+        <div data-el="dept-detail"></div>
+      ` : ''}
+    `;
+
+    container.querySelector('[data-action="back-to-overview"]').addEventListener('click', onBack);
+
+    await renderLoginTrendChart(container.querySelector('[data-el="login-chart"]'), trend || []);
+
+    if (departments.length) {
+      const deptDetailEl = container.querySelector('[data-el="dept-detail"]');
+      const deptSelectEl = container.querySelector('[data-el="dept-select"]');
+      const selectDept = (deptId) => {
+        deptSelectEl.value = deptId;
+        renderDepartmentUsage(deptDetailEl, departments.find((d) => d.department_id === deptId));
+      };
+      await renderDeptMembersChart(container.querySelector('[data-el="dept-chart"]'), departments, selectDept);
+      deptSelectEl.addEventListener('change', (e) => renderDepartmentUsage(deptDetailEl, departments.find((d) => d.department_id === e.target.value)));
+    }
+  }
+
+  function renderDepartmentUsage(container, dept) {
+    if (!dept) { container.innerHTML = ''; return; }
+    container.innerHTML = `
+      <div class="border border-indigo-200 bg-indigo-50 rounded-lg p-4">
+        <p class="text-sm font-semibold text-indigo-900 mb-2">${escapeHtml(dept.department_name)}</p>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><p class="text-xs text-slate-500">${t('siteAdmin.usageColMembers')}</p><p class="text-xl font-bold text-slate-800">${dept.active_member_count}</p></div>
+          <div><p class="text-xs text-slate-500">${t('siteAdmin.usageShiftsScheduled')}</p><p class="text-xl font-bold text-slate-800">${dept.shift_count}</p></div>
+          <div><p class="text-xs text-slate-500">${t('siteAdmin.usageUpcomingShifts')}</p><p class="text-xl font-bold text-slate-800">${dept.upcoming_shift_count}</p></div>
+        </div>
+        <p class="text-xs text-slate-400 mt-3">${t('siteAdmin.usageAttendanceNote')}</p>
+      </div>
+    `;
+  }
+
+  // Sequential single hue (this app's own indigo), no legend -- a
+  // single-series chart's title already names it (data-viz skill:
+  // "a single series needs no legend box").
+  const USAGE_CHART_INDIGO = '#4f46e5';
+
+  async function renderLoginTrendChart(canvas, trendRows) {
+    if (!canvas) return;
+    const Chart = await loadChartJs();
+    const byDay = new Map((trendRows || []).map((r) => [r.day, Number(r.logins)]));
+    const labels = [];
+    const counts = [];
+    for (let i = 29; i >= 0; i -= 1) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      labels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+      counts.push(byDay.get(key) || 0);
+    }
+    new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets: [{ data: counts, borderColor: USAGE_CHART_INDIGO, backgroundColor: 'rgba(79,70,229,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { maxTicksLimit: 6 }, grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  }
+
+  async function renderDeptMembersChart(canvas, departments, onSelectDept) {
+    if (!canvas) return;
+    const Chart = await loadChartJs();
+    new Chart(canvas, {
+      type: 'bar',
+      data: { labels: departments.map((d) => d.department_name), datasets: [{ data: departments.map((d) => d.active_member_count), backgroundColor: USAGE_CHART_INDIGO, borderRadius: 4 }] },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+        onClick: (evt, elements) => {
+          if (!elements.length) return;
+          const dept = departments[elements[0].index];
+          if (dept) onSelectDept(dept.department_id);
+        },
+        onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+      },
+    });
   }
 
   // ---- Training Sandbox ----
