@@ -820,6 +820,9 @@ const TRANSLATIONS = {
     'flyers.save': 'Save',
     'flyers.saved': 'Saved.',
     'flyers.saveFailed': 'Failed to save: {message}',
+    'flyers.draftFound': 'You have an unsaved flyer from {minutes} min ago.',
+    'flyers.draftResume': 'Resume editing',
+    'flyers.draftDiscard': 'Discard',
     'nav.budget': 'Budget',
     'nav.offerings': 'Offerings',
 
@@ -3121,6 +3124,9 @@ const TRANSLATIONS = {
     'flyers.save': 'Enregistrer',
     'flyers.saved': 'Enregistré.',
     'flyers.saveFailed': "Échec de l'enregistrement : {message}",
+    'flyers.draftFound': 'Vous avez une affiche non enregistrée depuis {minutes} min.',
+    'flyers.draftResume': 'Reprendre la modification',
+    'flyers.draftDiscard': 'Ignorer',
     'nav.budget': 'Budget',
     'nav.offerings': 'Offrandes',
 

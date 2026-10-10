@@ -6,7 +6,7 @@
 // Admin, via can_manage_flyers() on the DB side -- this page's own
 // show/hide of buttons is a convenience, not the real gate).
 import { getEffectiveSupabase, getGlobalRole } from './departments.js';
-import { renderFlyerEditor } from './components/flyerEditor.js';
+import { renderFlyerEditor, loadFlyerDraft, clearFlyerDraft } from './components/flyerEditor.js';
 import { FLYER_TEMPLATES, FLYER_SIZES } from './flyerTemplates.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { t } from './i18n.js';
@@ -45,14 +45,45 @@ export async function renderFlyersTab() {
       <p class="text-sm text-slate-500">${t('flyers.intro')}</p>
       ${canManage ? `<button type="button" data-action="new-flyer" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">${t('flyers.newFlyer')}</button>` : ''}
     </div>
+    <div data-el="draft-banner" class="hidden mb-4"></div>
     <div data-el="template-picker" class="hidden mb-4"></div>
     <div data-el="list-area"></div>
     <div data-el="editor-area"></div>
   `;
 
+  const draftBannerEl = container.querySelector('[data-el="draft-banner"]');
   const templatePickerEl = container.querySelector('[data-el="template-picker"]');
   const listAreaEl = container.querySelector('[data-el="list-area"]');
   const editorAreaEl = container.querySelector('[data-el="editor-area"]');
+
+  // A draft left behind by a reload (versionCheck.js's own auto-update
+  // now holds off while the editor is open, but a plain F5 or the OS
+  // killing a backgrounded tab on mobile still get here) -- offer to
+  // pick the in-progress edit back up instead of silently discarding it.
+  function renderDraftBanner(draft) {
+    const ageMinutes = Math.max(1, Math.round((Date.now() - draft.savedAt) / 60000));
+    draftBannerEl.classList.remove('hidden');
+    draftBannerEl.innerHTML = `
+      <div class="flex items-center justify-between gap-3 border border-amber-200 bg-amber-50 rounded-lg px-4 py-2.5 flex-wrap">
+        <p class="text-sm text-amber-800">${t('flyers.draftFound', { minutes: ageMinutes })}</p>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" data-action="resume-draft" class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700">${t('flyers.draftResume')}</button>
+          <button type="button" data-action="discard-draft" class="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-700 text-xs font-medium hover:bg-amber-100">${t('flyers.draftDiscard')}</button>
+        </div>
+      </div>
+    `;
+    draftBannerEl.querySelector('[data-action="resume-draft"]').addEventListener('click', () => {
+      draftBannerEl.classList.add('hidden');
+      draftBannerEl.innerHTML = '';
+      listAreaEl.classList.add('hidden');
+      openEditor({ flyerId: draft.flyerId, resumeDraft: draft });
+    });
+    draftBannerEl.querySelector('[data-action="discard-draft"]').addEventListener('click', () => {
+      clearFlyerDraft();
+      draftBannerEl.classList.add('hidden');
+      draftBannerEl.innerHTML = '';
+    });
+  }
 
   container.querySelector('[data-action="new-flyer"]')?.addEventListener('click', () => {
     listAreaEl.classList.add('hidden');
@@ -174,6 +205,9 @@ export async function renderFlyersTab() {
   }
 
   if (pendingEventPrefill) {
+    // A fresh, explicit action always wins over a stale draft from a
+    // previous, unrelated edit session.
+    clearFlyerDraft();
     const prefill = pendingEventPrefill;
     pendingEventPrefill = null;
     const tpl = FLYER_TEMPLATES.find((x) => x.category === prefill.category) || FLYER_TEMPLATES[0];
@@ -181,6 +215,8 @@ export async function renderFlyersTab() {
     openEditor({ template: tpl, sizeKey: 'instagram_square', logoUrl, eventPrefill: prefill });
   } else {
     loadList();
+    const draft = loadFlyerDraft();
+    if (draft) renderDraftBanner(draft);
   }
 }
 

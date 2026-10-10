@@ -12,12 +12,43 @@
 // globally for js/components/memberIdCard.js's own PDF export.
 import { t } from '../i18n.js';
 import { FLYER_SIZES } from '../flyerTemplates.js';
+import { registerUnsavedWork, unregisterUnsavedWork } from '../utils/unsavedWorkGuard.js';
 
 let fabricPromise = null;
 function loadFabric() {
   if (!fabricPromise) fabricPromise = import('https://cdn.jsdelivr.net/npm/fabric@6/+esm');
   return fabricPromise;
 }
+
+// Safety net against a reload wiping out an in-progress flyer -- whether
+// from versionCheck.js's own auto-update reload (now held off while this
+// guard is registered, see below), a plain F5, or the OS killing a
+// backgrounded tab on mobile. Saved every few seconds while the editor is
+// open and cleared once the real DB row is saved (or the editor is
+// explicitly left via Back) -- at that point the draft would just be a
+// stale duplicate of what's already safe. One fixed key: only one flyer
+// is ever being edited in a given tab at a time.
+const DRAFT_STORAGE_KEY = 'choir-hub-flyer-draft';
+const DRAFT_SAVE_INTERVAL_MS = 5000;
+
+export function loadFlyerDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearFlyerDraft() {
+  try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch { /* best effort */ }
+}
+
+// Module-level (not per-call) so a fresh renderFlyerEditor() invocation
+// can always stop whatever interval a previous instance left running --
+// e.g. when the Flyers tab is force-re-rendered (invalidateTabCache) out
+// from under an open editor instead of via its own Back button.
+let activeDraftInterval = null;
 
 const FONT_FAMILIES = ['Arial, sans-serif', 'Georgia, serif', 'Helvetica, sans-serif', 'Courier New, monospace', 'Verdana, sans-serif', 'Trebuchet MS, sans-serif'];
 
@@ -82,20 +113,29 @@ async function addImageCorner(fabric, canvas, url, size, { corner, widthFraction
 
 export async function renderFlyerEditor(container, {
   supabase, tenantId, currentUserId, canManage,
-  flyerId, template, sizeKey, logoUrl, eventPrefill,
+  flyerId, template, sizeKey, logoUrl, eventPrefill, resumeDraft,
   onBack, onSaved,
 }) {
+  // Reset any guard/interval a previous editor instance left behind --
+  // see activeDraftInterval's own comment above for why this can't rely
+  // on that instance's own Back/Save handlers having run.
+  if (activeDraftInterval) { clearInterval(activeDraftInterval); activeDraftInterval = null; }
+  unregisterUnsavedWork('flyer-editor');
+
   container.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
   const fabric = await loadFabric();
 
-  const workingFlyerId = flyerId || crypto.randomUUID();
+  const workingFlyerId = resumeDraft?.workingFlyerId || flyerId || crypto.randomUUID();
   const tenantPrefix = tenantId ? `${tenantId}/` : '';
-  let existingCategory = template?.category || null;
-  let existingEventId = eventPrefill?.eventId || null;
-  let size = sizeKey ? FLYER_SIZES[sizeKey] : null;
+  let existingCategory = resumeDraft ? resumeDraft.category : (template?.category || null);
+  let existingEventId = resumeDraft ? resumeDraft.eventId : (eventPrefill?.eventId || null);
+  let size = resumeDraft ? { width: resumeDraft.canvasWidth, height: resumeDraft.canvasHeight } : (sizeKey ? FLYER_SIZES[sizeKey] : null);
   let existingFlyer = null;
 
-  if (flyerId) {
+  // A resumed draft already carries everything the DB row would have
+  // given us (and may be ahead of it, which is the whole point) -- skip
+  // the fetch entirely rather than risk overwriting the draft's content.
+  if (flyerId && !resumeDraft) {
     const { data } = await supabase.from('flyers').select('*').eq('id', flyerId).single();
     existingFlyer = data;
     size = { width: data.canvas_width, height: data.canvas_height };
@@ -113,7 +153,7 @@ export async function renderFlyerEditor(container, {
         ${canManage ? `<button type="button" data-action="save" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('flyers.save')}</button>` : ''}
       </div>
     </div>
-    <input type="text" data-el="flyer-title" value="${escapeAttr(existingFlyer?.title || '')}" placeholder="${t('flyers.titlePlaceholder')}"
+    <input type="text" data-el="flyer-title" value="${escapeAttr((resumeDraft ? resumeDraft.title : existingFlyer?.title) || '')}" placeholder="${t('flyers.titlePlaceholder')}"
            class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-full max-w-sm mb-3" ${canManage ? '' : 'readonly'} />
     ${canManage ? `
       <div class="flex items-center gap-2 mb-3 flex-wrap border-b border-slate-200 pb-3">
@@ -139,7 +179,12 @@ export async function renderFlyerEditor(container, {
     <p data-el="status" class="text-sm mt-2"></p>
   `;
 
-  container.querySelector('[data-action="back"]').addEventListener('click', () => onBack());
+  container.querySelector('[data-action="back"]').addEventListener('click', () => {
+    if (activeDraftInterval) { clearInterval(activeDraftInterval); activeDraftInterval = null; }
+    clearFlyerDraft();
+    unregisterUnsavedWork('flyer-editor');
+    onBack();
+  });
 
   const canvasEl = container.querySelector('[data-el="fabric-canvas"]');
   const titleInput = container.querySelector('[data-el="flyer-title"]');
@@ -158,7 +203,10 @@ export async function renderFlyerEditor(container, {
     canvas.setZoom(scale);
   }
 
-  if (existingFlyer) {
+  if (resumeDraft) {
+    await canvas.loadFromJSON(resumeDraft.canvasJson);
+    canvas.renderAll();
+  } else if (existingFlyer) {
     await canvas.loadFromJSON(existingFlyer.canvas_json);
     canvas.renderAll();
   } else {
@@ -176,6 +224,24 @@ export async function renderFlyerEditor(container, {
   window.addEventListener('resize', fitToScreen);
 
   if (!canManage) return; // read-only viewers get no toolbar/panel wiring below
+
+  registerUnsavedWork('flyer-editor');
+  function saveDraft() {
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({
+        workingFlyerId,
+        flyerId: flyerId || null,
+        title: titleInput.value,
+        category: existingCategory,
+        eventId: existingEventId,
+        canvasWidth: size.width,
+        canvasHeight: size.height,
+        canvasJson: canvas.toJSON(['flyerRole']),
+        savedAt: Date.now(),
+      }));
+    } catch { /* localStorage full/unavailable -- draft is a safety net, not critical */ }
+  }
+  activeDraftInterval = setInterval(saveDraft, DRAFT_SAVE_INTERVAL_MS);
 
   const bgColorInput = container.querySelector('[data-el="bg-color"]');
   bgColorInput.addEventListener('input', () => {
@@ -356,6 +422,7 @@ export async function renderFlyerEditor(container, {
     }
     statusEl.className = 'text-sm text-emerald-600 mt-2';
     statusEl.textContent = t('flyers.saved');
+    clearFlyerDraft();
     onSaved?.(workingFlyerId);
   });
 }
