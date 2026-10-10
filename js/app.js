@@ -704,6 +704,9 @@ function applyActiveDepartment() {
   // is genuinely "the tab we were on a moment ago," used to land back
   // on the same kind of page after a department switch.
   const previousTabName = currentTabName;
+  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
+  // is root-caused).
+  console.debug('[diag] applyActiveDepartment', { previousTabName, active, storedTab: localStorage.getItem(TAB_STORAGE_KEY), storedDept: localStorage.getItem('choir-hub-active-department') });
 
   // Unconditional, independent of which tab we're landing on — the
   // projection panel's own teardown (deptDashboard.js) only runs when
@@ -1677,6 +1680,9 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // a global-role holder to Super Admin Mode and their Home console —
   // "upon login" per the routing requirement, not "on every page load."
   // setActingAsStandardUser(false) also calls goHome() internally.
+  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
+  // is root-caused).
+  console.debug('[diag] showApp', { isFreshSignIn, globalRole: getGlobalRole() });
   if (isFreshSignIn && getGlobalRole()) setActingAsStandardUser(false);
 
   if (isFreshSignIn) markSessionStart(); else checkSessionAge();
@@ -1780,6 +1786,10 @@ let hasHandledInitialAuthEvent = false;
 supabase.auth.onAuthStateChange((event, session) => {
   const isInitialFiring = !hasHandledInitialAuthEvent;
   hasHandledInitialAuthEvent = true;
+
+  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
+  // is root-caused).
+  console.debug('[diag] onAuthStateChange', { event, isInitialFiring, hasSession: !!session, visibilityState: document.visibilityState });
 
   if (event === 'PASSWORD_RECOVERY') {
     showPasswordRecovery();

@@ -161,6 +161,11 @@ export function isHomeActive() {
 }
 
 export function goHome() {
+  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
+  // is root-caused) -- console.trace prints the full call stack, which
+  // settles exactly which code path is landing people back on Home
+  // instead of guessing from static reading of the auth library.
+  console.trace('[diag] goHome() called');
   localStorage.setItem(ACTIVE_DEPT_STORAGE_KEY, HOME_KEY);
 }
 
