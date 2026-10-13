@@ -59,6 +59,7 @@ import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
 import { loadChurchBranding } from './churchBranding.js';
 import { confirmLeaveIfProjecting } from './utils/projectionGuard.js';
+import { consumeInteractiveSignIn } from './utils/authIntent.js';
 
 registerServiceWorker();
 
@@ -449,9 +450,6 @@ function applyActiveDepartment() {
   // is genuinely "the tab we were on a moment ago," used to land back
   // on the same kind of page after a department switch.
   const previousTabName = currentTabName;
-  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
-  // is root-caused).
-  console.debug('[diag] applyActiveDepartment', { previousTabName, active, storedTab: localStorage.getItem(TAB_STORAGE_KEY), storedDept: localStorage.getItem('choir-hub-active-department') });
 
   // Unconditional, independent of which tab we're landing on — the
   // projection panel's own teardown (deptDashboard.js) only runs when
@@ -1383,9 +1381,6 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   // a global-role holder to Super Admin Mode and their Home console —
   // "upon login" per the routing requirement, not "on every page load."
   // setActingAsStandardUser(false) also calls goHome() internally.
-  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
-  // is root-caused).
-  console.debug('[diag] showApp', { isFreshSignIn, globalRole: getGlobalRole() });
   if (isFreshSignIn && getGlobalRole()) setActingAsStandardUser(false);
 
   if (isFreshSignIn) markSessionStart(); else checkSessionAge();
@@ -1474,26 +1469,20 @@ supabase.auth.getSession().then(({ data: { session }, error }) => {
 
 initVersionCheck();
 
-// supabase-js fires this listener's very first callback at subscribe time
-// on every page load (restoring an existing session or reporting none),
-// and in this SDK setup that first firing can itself carry event
-// 'SIGNED_IN' -- indistinguishable by event name alone from a real,
-// interactive login. Treating that as isFreshSignIn (see showApp()) wrongly
-// forced any global-role holder (Super Admin/Secretary) out of whatever
-// department/tab they were on and back to Home on a plain refresh. A real
-// login can only happen after the auth form is mounted and submitted,
-// which is always after this first firing, so only firings after the
-// first one are ever treated as a fresh sign-in.
-let hasHandledInitialAuthEvent = false;
-
+// supabase-js can fire a 'SIGNED_IN' event for reasons that have
+// nothing to do with a real, interactive login -- confirmed (via
+// console.trace on a live reproduction) that its own internal
+// visibilitychange handling re-notifies 'SIGNED_IN' every time this tab
+// regains focus, as long as the stored session is still valid. Event
+// name alone can't distinguish that from a genuine sign-in, so
+// markInteractiveSignIn()/consumeInteractiveSignIn() (js/utils/
+// authIntent.js) tag the real ones explicitly instead of guessing from
+// firing order -- only a SIGNED_IN that was actually preceded by this
+// tab's own signUp()/signInWithPassword() call is ever treated as a
+// fresh sign-in (see showApp()'s isFreshSignIn, which resets a
+// global-role holder to Home -- exactly what must NOT happen on a
+// plain tab switch).
 supabase.auth.onAuthStateChange((event, session) => {
-  const isInitialFiring = !hasHandledInitialAuthEvent;
-  hasHandledInitialAuthEvent = true;
-
-  // TEMP DIAGNOSTIC (remove once the tab-switch-returns-to-Home report
-  // is root-caused).
-  console.debug('[diag] onAuthStateChange', { event, isInitialFiring, hasSession: !!session, visibilityState: document.visibilityState });
-
   if (event === 'PASSWORD_RECOVERY') {
     showPasswordRecovery();
     return;
@@ -1502,7 +1491,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     showAuth();
     return;
   }
-  if (event === 'SIGNED_IN' && !isInitialFiring) {
+  if (event === 'SIGNED_IN' && consumeInteractiveSignIn()) {
     showSplashThenApp(session);
   } else {
     showApp(session);
