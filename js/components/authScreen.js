@@ -3,6 +3,7 @@
 import { t, departmentLabel } from '../i18n.js';
 import { DEPARTMENT_KEYS, requestDepartmentMemberships } from '../departments.js';
 import { createPlanPickerModal } from './planPickerModal.js';
+import { markInteractiveSignIn } from '../utils/authIntent.js';
 
 export function renderAuthScreen(container, { supabase }) {
   let mode = 'login';
@@ -282,6 +283,7 @@ export function renderAuthScreen(container, { supabase }) {
         return;
       }
 
+      markInteractiveSignIn();
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -322,6 +324,7 @@ export function renderAuthScreen(container, { supabase }) {
       }
       const fullName = form.elements.full_name.value.trim();
       const selectedDepartments = Array.from(form.querySelectorAll('[data-dept-checkbox]:checked')).map((cb) => cb.value);
+      markInteractiveSignIn();
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -342,6 +345,7 @@ export function renderAuthScreen(container, { supabase }) {
         // onAuthStateChange in app.js takes over from here.
       }
     } else {
+      markInteractiveSignIn();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         statusEl.className = 'text-sm text-rose-600';
