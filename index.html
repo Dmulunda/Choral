@@ -523,6 +523,16 @@
                   class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Projection
           </button>
+          <!-- Media & Tech only: equipment inventory. -->
+          <button data-tab-target="dept-equipment" data-i18n="nav.equipment" id="dept-equipment-nav-btn" data-nav-group="dept-equipment-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Equipment
+          </button>
+          <!-- Cleaning only: supplies/stock tracking. -->
+          <button data-tab-target="dept-supplies" data-i18n="nav.supplies" id="dept-supplies-nav-btn" data-nav-group="dept-supplies-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+            Supplies
+          </button>
           <!-- Ushers/Welcoming & Socialisation/Ecodem only (see
                HEADCOUNT_DEPARTMENT_KEYS in deptDashboard.js) — open to
                every approved member of the department, not just an
@@ -655,6 +665,22 @@
       <section data-tab-panel="dept-projection" class="hidden">
         <h1 class="text-2xl font-bold mb-4" data-i18n="nav.projection">Projection</h1>
         <div id="dept-projection-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Media & Tech only. -->
+      <section data-tab-panel="dept-equipment" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.equipment">Equipment</h1>
+        <div id="dept-equipment-content">
+          <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
+        </div>
+      </section>
+
+      <!-- Cleaning only. -->
+      <section data-tab-panel="dept-supplies" class="hidden">
+        <h1 class="text-2xl font-bold mb-4" data-i18n="nav.supplies">Supplies</h1>
+        <div id="dept-supplies-content">
           <p class="text-slate-500 bg-white rounded-xl shadow p-4 sm:p-6" data-i18n="common.loading">Loading…</p>
         </div>
       </section>
