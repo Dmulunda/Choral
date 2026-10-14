@@ -12,6 +12,8 @@ import { renderDashboardTab } from './dashboard.js';
 import { renderDeptDashboardTab, HEADCOUNT_DEPARTMENT_KEYS } from './deptDashboard.js';
 import { renderHeadcountTallyTab } from './headcountTallyPage.js';
 import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
+import { renderDepartmentSuppliesTab } from './components/departmentSupplies.js';
+import { renderEquipmentInventoryTab } from './components/equipmentInventory.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab, openGuestOnboardingHub, openDirectory } from './superAdminHome.js';
 import { createUserManagerModal } from './components/userManager.js';
@@ -384,6 +386,8 @@ const lazyTabs = {
   'dept-dashboard': renderDeptDashboardTab,
   'dept-scheduling': renderDeptSchedulingTab,
   'dept-projection': renderDeptProjectionTab,
+  'dept-supplies': renderDepartmentSuppliesTab,
+  'dept-equipment': renderEquipmentInventoryTab,
   'headcount-tally': renderHeadcountTallyTab,
   'super-home': renderSuperAdminHomeTab,
   tools: renderToolsTab,
@@ -492,6 +496,7 @@ try { departmentLastTab = JSON.parse(localStorage.getItem(DEPARTMENT_LAST_TAB_KE
 const DEPARTMENT_RELATIVE_TABS = new Set([
   'dashboard', 'scheduling', 'songbook', 'voice-exercises', 'uniform', 'members',
   'dept-dashboard', 'dept-scheduling', 'dept-projection', 'headcount-tally',
+  'dept-supplies', 'dept-equipment',
 ]);
 
 // Exported so other tab modules can navigate the user elsewhere --
@@ -603,6 +608,8 @@ function rememberedDeptTab(active, isChoir) {
     case 'members': return isChoir ? tab : null;
     case 'uniform': return (isChoir || active.key === 'ushers') ? tab : null;
     case 'dept-projection': return active.key === 'media_tech' ? tab : null;
+    case 'dept-equipment': return active.key === 'media_tech' ? tab : null;
+    case 'dept-supplies': return active.key === 'cleaning' ? tab : null;
     case 'headcount-tally': return HEADCOUNT_DEPARTMENT_KEYS.includes(active.key) ? tab : null;
     default: return null;
   }
@@ -775,6 +782,10 @@ function applyActiveDepartment() {
   forEachNavGroup('uniform-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers')));
   // Projection: its own page, Media & Tech only.
   forEachNavGroup('dept-projection-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
+  // Equipment inventory: Media & Tech only.
+  forEachNavGroup('dept-equipment-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
+  // Supplies: Cleaning only.
+  forEachNavGroup('dept-supplies-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'cleaning')));
   // Headcount Tally: Ushers/Welcoming & Socialisation/Ecodem, every
   // approved member (not just admin/secretary) -- counting people at
   // the door isn't an admin-only task.
@@ -795,6 +806,8 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-dashboard');
     loadedTabs.delete('dept-scheduling');
     loadedTabs.delete('dept-projection');
+    loadedTabs.delete('dept-equipment');
+    loadedTabs.delete('dept-supplies');
     loadedTabs.delete('headcount-tally');
     activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (rememberedDeptTab(active, false) || resolveLandingTab(previousTabName, active, false) || 'dept-dashboard'));
   } else {
@@ -1035,6 +1048,8 @@ function buildQuickAccessItems() {
     if (isChoir) items.push({ icon: '🎤', label: t('nav.voiceExercises'), tab: 'voice-exercises' });
     if (isChoir || active.key === 'ushers') items.push({ icon: '🎽', label: t('nav.uniform'), tab: 'uniform' });
     if (active.key === 'media_tech') items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
+    if (active.key === 'media_tech') items.push({ icon: '🎦', label: t('nav.equipment'), tab: 'dept-equipment' });
+    if (active.key === 'cleaning') items.push({ icon: '🧹', label: t('nav.supplies'), tab: 'dept-supplies' });
     if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
   }
   return items;
