@@ -25,6 +25,7 @@ import { renderBudgetPageTab } from './budgetPage.js';
 import { renderOfferingsPageTab } from './offeringsPage.js';
 import { loadSchoolAdminStatus } from './schoolAdmin.js';
 import { loadSiteAdminStatus, getIsSiteAdmin } from './siteAdmin.js';
+import { loadPlatformOwnerStatus, getIsPlatformOwner } from './platformOwner.js';
 import { renderDepartmentApprovals } from './components/departmentApprovals.js';
 import { createViewAsPickerModal } from './components/viewAsPicker.js';
 import { createReportAbsenceModal } from './components/reportAbsenceModal.js';
@@ -40,6 +41,7 @@ import { createAttendanceManagerModal } from './components/attendanceManager.js'
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
 import { createSupportRequestModal } from './components/supportRequestModal.js';
 import { renderSiteAdminTab } from './siteAdminPage.js';
+import { renderOwnerTab } from './ownerPage.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
@@ -336,7 +338,7 @@ function showToast(message) {
   setTimeout(() => toast.remove(), 4000);
 }
 
-function renderEntitlementGates() {
+export function renderEntitlementGates() {
   for (const [tabName, featureKey] of Object.entries(GATED_TABS)) {
     const locked = !hasFeature(featureKey);
     forEachNavGroup(`${featureKey.replace(/_/g, '-')}-nav`, (el) => {
@@ -394,6 +396,7 @@ const lazyTabs = {
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
   'site-admin': renderSiteAdminTab,
+  'owner': renderOwnerTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -453,6 +456,7 @@ function restoreScrollPosition(tabName) {
 // powers that page's own Back button (no top-level tab in this app has
 // one otherwise; everything else relies on the global sidebar Home icon).
 let siteAdminReturnTab = 'dashboard';
+let ownerReturnTab = 'dashboard';
 
 // activateTab() only toggles a panel's visibility -- it never unmounts
 // or re-renders an already-loaded tab's DOM, so a tab whose data was
@@ -537,6 +541,8 @@ export function activateTab(name) {
 
 document.querySelector('[data-tab-panel="site-admin"] [data-el="site-admin-back"]')
   ?.addEventListener('click', () => activateTab(siteAdminReturnTab || 'dashboard'));
+document.querySelector('[data-tab-panel="owner"] [data-el="owner-back"]')
+  ?.addEventListener('click', () => activateTab(ownerReturnTab || 'dashboard'));
 
 // Choir and every other department name the "same kind" of page
 // differently (dashboard/dept-dashboard, scheduling/dept-scheduling) —
@@ -561,7 +567,7 @@ const TAB_KIND_MAP = {
 // on any of these when a reload fired silently bounced you back to
 // Home/Dashboard -- confirmed by a Site Admin testing this exact
 // scenario on Main (same bug, identical code shape, both fixed here).
-const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events', 'flyers']);
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'owner', 'events', 'flyers']);
 
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
@@ -1131,6 +1137,7 @@ function updateSidebarToolsSelect() {
   options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   options.push({ value: 'support-request', label: t('sidebar.supportRequest') });
   if (getIsSiteAdmin()) options.push({ value: 'site-admin', label: t('sidebar.siteAdmin') });
+  if (getIsPlatformOwner()) options.push({ value: 'owner', label: t('sidebar.owner') });
   if (hasAccess) {
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
@@ -1215,6 +1222,9 @@ function runSidebarTool(value) {
   } else if (value === 'site-admin') {
     siteAdminReturnTab = currentTabName;
     activateTab('site-admin');
+  } else if (value === 'owner') {
+    ownerReturnTab = currentTabName;
+    activateTab('owner');
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'join-department') {
@@ -1673,6 +1683,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   await loadMyDepartments(session.user.id);
   await loadSchoolAdminStatus(session.user.id);
   await loadSiteAdminStatus();
+  await loadPlatformOwnerStatus();
 
   // A fresh sign-in (not a page-refresh session restore) always resets
   // a global-role holder to Super Admin Mode and their Home console —
