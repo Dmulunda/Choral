@@ -944,13 +944,28 @@ export function renderProjectionControl(container, { supabase }) {
     verseSelectEl.disabled = true;
     projectVerseBtn.disabled = true;
 
-    const { data, error } = await supabase
-      .from('bible_verses')
-      .select('chapter, verse, text')
-      .eq('translation', translationSelectEl.value)
-      .eq('book_number', bookNumber)
-      .order('chapter')
-      .order('verse');
+    // Supabase's default PostgREST row cap (1000) would otherwise
+    // silently truncate any book past that many verses -- Psalms
+    // (2461-2527 verses depending on translation) is the only book big
+    // enough to hit this, cutting it off right around chapter 66-67.
+    // Paginate the same way bibleImportTool.js's own
+    // fetchBookVerseCounts() already does for the same reason.
+    const pageSize = 1000;
+    let data = [];
+    let error = null;
+    for (let from = 0; ; from += pageSize) {
+      const { data: page, error: pageError } = await supabase
+        .from('bible_verses')
+        .select('chapter, verse, text')
+        .eq('translation', translationSelectEl.value)
+        .eq('book_number', bookNumber)
+        .order('chapter')
+        .order('verse')
+        .range(from, from + pageSize - 1);
+      if (pageError) { error = pageError; break; }
+      data = data.concat(page || []);
+      if (!page || page.length < pageSize) break;
+    }
 
     if (error || !data || data.length === 0) {
       bookVerses = [];
