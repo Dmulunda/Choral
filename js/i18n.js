@@ -1616,7 +1616,9 @@ const TRANSLATIONS = {
     'projection.addToSchedule': '+ Add to Schedule',
     'projection.scheduleEmpty': 'Nothing planned for this date yet — use "+ Add to Schedule" on the other tabs.',
     'projection.scheduleSaveFailed': 'Could not save the schedule: {message}',
-    'projection.bookSearchPlaceholder': 'Type a book name… (e.g. "s" for Samuel)',
+    'projection.bookSearchPlaceholder': 'Type a reference… (e.g. "Mal 3 10" or "Malachi 3:10")',
+    'projection.smartSearchChapterOutOfRange': '{book} only has {max} chapters.',
+    'projection.smartSearchVerseOutOfRange': '{book} {chapter} only has {max} verses.',
 
     'auth.joinDepartments': 'Which departments would you like to join?',
     'auth.joinDepartmentsHint': 'An admin for each department needs to approve your request before you can access it.',
@@ -3978,7 +3980,9 @@ const TRANSLATIONS = {
     'projection.addToSchedule': '+ Ajouter au programme',
     'projection.scheduleEmpty': 'Rien de prévu pour cette date — utilisez « + Ajouter au programme » sur les autres onglets.',
     'projection.scheduleSaveFailed': 'Impossible d’enregistrer le programme : {message}',
-    'projection.bookSearchPlaceholder': 'Tapez un nom de livre… (ex. « s » pour Samuel)',
+    'projection.bookSearchPlaceholder': 'Tapez une référence… (ex. « Mal 3 10 » ou « Malachie 3:10 »)',
+    'projection.smartSearchChapterOutOfRange': '{book} n’a que {max} chapitres.',
+    'projection.smartSearchVerseOutOfRange': '{book} {chapter} n’a que {max} versets.',
 
     'auth.joinDepartments': 'À quels départements souhaitez-vous adhérer ?',
     'auth.joinDepartmentsHint': "Un administrateur de chaque département doit approuver votre demande avant que vous puissiez y accéder.",
