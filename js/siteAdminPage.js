@@ -51,6 +51,8 @@ import { confirmDialog } from './components/confirmDialog.js';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { getEffectiveSupabase } from './departments.js';
 import { getTenant } from './tenant.js';
+import { getIsPlatformOwner } from './platformOwner.js';
+import { renderOwnerTab } from './ownerPage.js';
 
 const SUGGESTION_STATUSES = ['new', 'planned', 'done', 'declined'];
 const REQUEST_STATUSES = ['new', 'answered', 'closed'];
@@ -124,6 +126,7 @@ export async function renderSiteAdminTab() {
       <button type="button" data-tab="usage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabUsage')}</button>
       <button type="button" data-tab="sandbox" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabSandbox')}</button>
       <button type="button" data-tab="manage" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('siteAdmin.tabManage')}</button>
+      ${getIsPlatformOwner() ? `<button type="button" data-tab="owner" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">${t('owner.title')}</button>` : ''}
     </div>
 
     <div data-panel="inquiries"></div>
@@ -134,6 +137,7 @@ export async function renderSiteAdminTab() {
     <div data-panel="usage" class="hidden"></div>
     <div data-panel="sandbox" class="hidden"></div>
     <div data-panel="manage" class="hidden"></div>
+    ${getIsPlatformOwner() ? `<div data-panel="owner" class="hidden"></div>` : ''}
   `;
 
   const mainConnectEl = container.querySelector('[data-el="main-connect"]');
@@ -147,8 +151,9 @@ export async function renderSiteAdminTab() {
     usage: container.querySelector('[data-panel="usage"]'),
     sandbox: container.querySelector('[data-panel="sandbox"]'),
     manage: container.querySelector('[data-panel="manage"]'),
+    ...(getIsPlatformOwner() ? { owner: container.querySelector('[data-panel="owner"]') } : {}),
   };
-  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, 'promo-codes': false, usage: false, sandbox: false, manage: false };
+  const loaded = { inquiries: false, suggestions: false, requests: false, churches: false, 'promo-codes': false, usage: false, sandbox: false, manage: false, owner: false };
 
   tabBtns.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
@@ -169,6 +174,7 @@ export async function renderSiteAdminTab() {
     if (tab === 'usage' && !loaded.usage) loadUsageDashboard();
     if (tab === 'sandbox' && !loaded.sandbox) loadSandbox();
     if (tab === 'manage' && !loaded.manage) loadManage();
+    if (tab === 'owner' && !loaded.owner && panels.owner) { renderOwnerTab(panels.owner); loaded.owner = true; }
   }
 
   // ---- Main connection (one login, two data sources) ----

@@ -1,10 +1,10 @@
-// Platform Owner panel -- a single page (same "full page, not a
-// popup" shape as js/siteAdminPage.js) reached only via the tools-menu
-// "Owner" entry, visible only to the one account in
-// public.platform_owner (see js/platformOwner.js, sql/083). Lets the
-// owner manually set any tenant's plan without Stripe -- to comp a
-// partner church for free, or to preview Basic/Pro/Premium on their
-// own account by applying a plan to themselves the same way.
+// Platform Owner panel -- reached two ways: its own standalone page
+// (tools-menu "Owner" entry) and as a tab inside Site Admin, for
+// whoever holds both roles (see js/siteAdminPage.js). Visible only to
+// accounts in public.platform_owner (see js/platformOwner.js, sql/083).
+// Lets the owner manually set any tenant's plan without Stripe -- to
+// comp a partner church for free, or to preview Basic/Pro/Premium on
+// their own account by applying a plan to themselves the same way.
 import { t } from './i18n.js';
 import { supabase } from './supabaseClient.js';
 import { getTenantId } from './tenant.js';
@@ -13,8 +13,9 @@ import { renderEntitlementGates } from './app.js';
 
 const PLAN_KEYS = ['basic', 'pro', 'premium'];
 
-export async function renderOwnerTab() {
-  const container = document.querySelector('#owner-content');
+// container defaults to the standalone page's own element -- Site
+// Admin passes its own tab panel element explicitly instead.
+export async function renderOwnerTab(container = document.querySelector('#owner-content')) {
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
   const { data: tenants, error } = await supabase.rpc('owner_list_tenants');
@@ -82,7 +83,7 @@ export async function renderOwnerTab() {
         await loadMyEntitlements();
         renderEntitlementGates();
       }
-      renderOwnerTab();
+      renderOwnerTab(container);
     });
     row.querySelector('[data-action="clear-override"]')?.addEventListener('click', async () => {
       const { error: clearError } = await supabase.rpc('owner_clear_tenant_override', { p_tenant_id: tenantId });
@@ -90,7 +91,7 @@ export async function renderOwnerTab() {
         window.alert(t('owner.clearFailed', { message: clearError.message }));
         return;
       }
-      renderOwnerTab();
+      renderOwnerTab(container);
     });
   });
 }
