@@ -33,6 +33,7 @@ import { createSongCreatorModal } from './songCreatorModal.js';
 import { createProjectionThemeModal } from './projectionThemeModal.js';
 import * as localMediaStore from '../utils/localMediaStore.js';
 import { isSupported as voiceSupported, buildBookAliases, createVoiceVerseDetector } from '../utils/voiceVerseDetector.js';
+import { parseReference } from '../utils/bibleReferenceParser.js';
 
 // Lazy-loaded only when the Presentation panel's PDF import is
 // actually used -- same version/CDN already proven elsewhere in this
@@ -206,6 +207,7 @@ export function renderProjectionControl(container, { supabase }) {
           <input type="text" data-el="book-search" placeholder="${t('projection.bookSearchPlaceholder')}" autocomplete="off"
                  class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
           <div data-el="book-suggestions" class="hidden absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
+          <p data-el="bible-search-status" class="hidden text-xs text-amber-600 mt-1"></p>
         </div>
         <div class="grid sm:grid-cols-4 gap-3 mb-3">
           <select data-el="translation-select" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
@@ -390,6 +392,7 @@ export function renderProjectionControl(container, { supabase }) {
   const voiceDismissBtn = container.querySelector('[data-action="voice-dismiss"]');
   const bookSearchEl = container.querySelector('[data-el="book-search"]');
   const bookSuggestionsEl = container.querySelector('[data-el="book-suggestions"]');
+  const bibleSearchStatusEl = container.querySelector('[data-el="bible-search-status"]');
   const bookSelectEl = container.querySelector('[data-el="book-select"]');
   const chapterSelectEl = container.querySelector('[data-el="chapter-select"]');
   const verseSelectEl = container.querySelector('[data-el="verse-select"]');
@@ -890,45 +893,185 @@ export function renderProjectionControl(container, { supabase }) {
     bookSelectEl.innerHTML = books.map((b) => `<option value="${b.number}">${escapeHtml(isFrench ? b.name_fr : b.name_en)}</option>`).join('');
   }
 
-  // Matches on the book name with French accents stripped either way
-  // (so "esaie" finds "Ésaïe") and, separately, on the name with any
-  // leading "1 "/"2 "/"3 " stripped (so typing "s" finds "1 Samuel"
-  // and "2 Samuel" alongside "Sophonie", not just names that literally
-  // start with S).
-  function bookMatchesQuery(name, query) {
-    const normName = stripAccents(name).toLowerCase();
-    const normQuery = stripAccents(query).toLowerCase().trim();
-    if (!normQuery) return false;
-    if (normName.startsWith(normQuery)) return true;
-    return normName.replace(/^\d+\s+/, '').startsWith(normQuery);
+  // Smart search: type a whole reference in one line ("Mal 3 10",
+  // "Malachie 3:10", "mal 3.10") and see it resolve as you go --
+  // js/utils/bibleReferenceParser.js does the actual book/chapter/
+  // verse splitting; this just renders suggestions/status and commits
+  // the final selection the same way the three dropdowns already do
+  // (reuses loadBook()/renderVerseOptions()/stageSelectedVerse() as-is,
+  // so Preview/Add to Schedule/Next/Previous all keep working
+  // unchanged afterward).
+  const RECENT_SEARCHES_KEY = 'choir-hub-bible-recent-searches';
+  const MAX_RECENT_SEARCHES = 8;
+  let pendingNavigation = null; // { bookNumber, chapter, verse } once the typed reference is fully valid
+  let smartSearchLoadedBook = null; // which book loadBook() last loaded, so retyping digits doesn't refetch
+  let smartSearchRequestSeq = 0; // race guard: a later keystroke's fetch always wins over an earlier one
+
+  function loadRecentSearches() {
+    try {
+      const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
   }
 
-  function renderBookSuggestions(query) {
-    const isFrench = translationSelectEl.value === 'lsg';
-    const matches = query.trim() ? books.filter((b) => bookMatchesQuery(isFrench ? b.name_fr : b.name_en, query)) : [];
+  function saveRecentSearch(entry) {
+    try {
+      const existing = loadRecentSearches().filter((r) => !(r.bookNumber === entry.bookNumber && r.chapter === entry.chapter && r.verse === entry.verse));
+      existing.unshift(entry);
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(existing.slice(0, MAX_RECENT_SEARCHES)));
+    } catch { /* localStorage full/unavailable -- recent list is a convenience, not critical */ }
+  }
 
-    if (matches.length === 0) {
+  function currentBookLabel(bookNumber) {
+    const b = books.find((x) => x.number === bookNumber);
+    if (!b) return `#${bookNumber}`;
+    return translationSelectEl.value === 'lsg' ? b.name_fr : b.name_en;
+  }
+
+  function renderSuggestionRows(rows) {
+    if (rows.length === 0) {
       bookSuggestionsEl.classList.add('hidden');
       bookSuggestionsEl.innerHTML = '';
       return;
     }
-
     bookSuggestionsEl.classList.remove('hidden');
-    bookSuggestionsEl.innerHTML = matches.map((b) => `<button type="button" data-book-number="${b.number}" class="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50">${escapeHtml(isFrench ? b.name_fr : b.name_en)}</button>`).join('');
-    bookSuggestionsEl.querySelectorAll('[data-book-number]').forEach((btn) => {
-      btn.addEventListener('click', () => pickBook(Number(btn.dataset.bookNumber)));
+    bookSuggestionsEl.innerHTML = rows.map((r, i) => `<button type="button" data-row-index="${i}" class="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50">${r.label}</button>`).join('');
+    bookSuggestionsEl.querySelectorAll('[data-row-index]').forEach((btn) => {
+      btn.addEventListener('click', () => rows[Number(btn.dataset.rowIndex)].onPick());
     });
   }
 
-  function pickBook(bookNumber) {
-    bookSelectEl.value = String(bookNumber);
-    bookSearchEl.value = '';
-    bookSuggestionsEl.classList.add('hidden');
-    loadBook();
+  function showSmartSearchStatus(message) {
+    if (!message) {
+      bibleSearchStatusEl.classList.add('hidden');
+      bibleSearchStatusEl.textContent = '';
+      return;
+    }
+    bibleSearchStatusEl.classList.remove('hidden');
+    bibleSearchStatusEl.textContent = message;
   }
 
-  bookSearchEl.addEventListener('input', () => renderBookSuggestions(bookSearchEl.value));
-  bookSearchEl.addEventListener('focus', () => { if (bookSearchEl.value) renderBookSuggestions(bookSearchEl.value); });
+  // Tapping a still-ambiguous book suggestion fills in that book's
+  // name and leaves focus in the field for the chapter/verse to
+  // continue being typed, rather than jumping anywhere yet -- there's
+  // no chapter typed at this point.
+  function pickBookForContinuedTyping(book) {
+    bookSearchEl.value = `${currentBookLabel(book.number)} `;
+    bookSearchEl.focus();
+    handleSmartSearchInput();
+  }
+
+  async function handleSmartSearchInput() {
+    const raw = bookSearchEl.value;
+    pendingNavigation = null;
+
+    if (!raw.trim()) {
+      showSmartSearchStatus('');
+      const recents = loadRecentSearches();
+      renderSuggestionRows(recents.map((r) => ({
+        label: escapeHtml(r.label),
+        onPick: () => commitNavigation(r),
+      })));
+      return;
+    }
+
+    const isFrench = translationSelectEl.value === 'lsg';
+    const { matches, book, chapter, verse } = parseReference(books, raw, isFrench);
+
+    if (!book) {
+      showSmartSearchStatus('');
+      renderSuggestionRows(matches.map((b) => ({
+        label: escapeHtml(isFrench ? b.name_fr : b.name_en),
+        onPick: () => pickBookForContinuedTyping(b),
+      })));
+      return;
+    }
+
+    const mySeq = ++smartSearchRequestSeq;
+    if (smartSearchLoadedBook !== book.number) {
+      showSmartSearchStatus(t('common.loading'));
+      renderSuggestionRows([]);
+      bookSelectEl.value = String(book.number);
+      await loadBook();
+      if (mySeq !== smartSearchRequestSeq) return; // superseded by a newer keystroke
+      smartSearchLoadedBook = book.number;
+    }
+
+    const chapters = [...new Set(bookVerses.map((v) => v.chapter))];
+    const maxChapter = chapters.length ? Math.max(...chapters) : 0;
+
+    if (chapter === null) {
+      showSmartSearchStatus('');
+      renderSuggestionRows([{
+        label: `&rarr; ${escapeHtml(currentBookLabel(book.number))}`,
+        onPick: () => commitNavigation({ bookNumber: book.number, chapter: 1, verse: null, label: currentBookLabel(book.number) }),
+      }]);
+      return;
+    }
+
+    if (chapter > maxChapter) {
+      showSmartSearchStatus(t('projection.smartSearchChapterOutOfRange', { book: currentBookLabel(book.number), max: maxChapter }));
+      renderSuggestionRows([]);
+      return;
+    }
+
+    const versesInChapter = bookVerses.filter((v) => v.chapter === chapter).map((v) => v.verse);
+    const maxVerse = versesInChapter.length ? Math.max(...versesInChapter) : 0;
+
+    if (verse === null) {
+      showSmartSearchStatus('');
+      renderSuggestionRows([{
+        label: `&rarr; ${escapeHtml(currentBookLabel(book.number))} ${chapter}`,
+        onPick: () => commitNavigation({ bookNumber: book.number, chapter, verse: null, label: `${currentBookLabel(book.number)} ${chapter}` }),
+      }]);
+      return;
+    }
+
+    if (!versesInChapter.includes(verse)) {
+      showSmartSearchStatus(t('projection.smartSearchVerseOutOfRange', { book: currentBookLabel(book.number), chapter, max: maxVerse }));
+      renderSuggestionRows([]);
+      return;
+    }
+
+    showSmartSearchStatus('');
+    const label = `${currentBookLabel(book.number)} ${chapter}:${verse}`;
+    pendingNavigation = { bookNumber: book.number, chapter, verse, label };
+    renderSuggestionRows([{ label: `&rarr; ${escapeHtml(label)}`, onPick: () => commitNavigation(pendingNavigation) }]);
+  }
+
+  async function commitNavigation({ bookNumber, chapter, verse, label }) {
+    bookSelectEl.value = String(bookNumber);
+    if (smartSearchLoadedBook !== bookNumber) {
+      await loadBook();
+      smartSearchLoadedBook = bookNumber;
+    }
+    const chapters = [...new Set(bookVerses.map((v) => v.chapter))];
+    const resolvedChapter = chapter && chapters.includes(chapter) ? chapter : chapters[0];
+    chapterSelectEl.value = String(resolvedChapter);
+    renderVerseOptions();
+    const versesInChapter = bookVerses.filter((v) => v.chapter === resolvedChapter).map((v) => v.verse);
+    const resolvedVerse = verse && versesInChapter.includes(verse) ? verse : versesInChapter[0];
+    verseSelectEl.value = String(resolvedVerse);
+    stageSelectedVerse();
+
+    saveRecentSearch({
+      bookNumber, chapter: resolvedChapter, verse: resolvedVerse,
+      label: label || `${currentBookLabel(bookNumber)} ${resolvedChapter}:${resolvedVerse}`,
+    });
+
+    bookSearchEl.value = '';
+    pendingNavigation = null;
+    showSmartSearchStatus('');
+    bookSuggestionsEl.classList.add('hidden');
+  }
+
+  bookSearchEl.addEventListener('input', () => { handleSmartSearchInput(); });
+  bookSearchEl.addEventListener('focus', () => handleSmartSearchInput());
+  bookSearchEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (pendingNavigation) commitNavigation(pendingNavigation);
+  });
   // On document, not just the input, so clicking anywhere outside
   // closes the suggestion list — removed again in destroy() below, so
   // repeated visits to this panel (it's rebuilt fresh every time) don't
@@ -1892,8 +2035,4 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return escapeHtml(str).replace(/"/g, '&quot;');
-}
-
-function stripAccents(str) {
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
