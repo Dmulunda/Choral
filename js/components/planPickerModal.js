@@ -1,6 +1,6 @@
 // Plan picker shown right after a brand-new church signs up
-// (authScreen.js) -- same 3-card grid and Monthly/Yearly toggle as
-// plansModal.js (the existing in-app "Plans & Pricing", reused via
+// (authScreen.js) -- same comparison table and Monthly/Yearly toggle
+// as plansModal.js (the existing in-app "Plans & Pricing", reused via
 // the same js/utils/planPresentation.js helpers so the two can never
 // describe a plan differently), but simplified for a first-time
 // choice: no "current plan" badge, no Manage Billing section, every
@@ -16,7 +16,7 @@
 // just closes the modal and lets authScreen.js carry on into the app
 // exactly like today's cardless trial.
 import { t } from '../i18n.js';
-import { BASE_FEATURE_KEYS, buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from '../utils/planPresentation.js';
+import { BASE_FEATURE_KEYS, renderComparisonTable, formatPlanPrice, formatMonthlyEquivalent } from '../utils/planPresentation.js';
 import { validatePromoCode, discountedPriceCents, promoErrorMessage, extractEdgeFunctionError } from '../utils/promoCode.js';
 
 export function createPlanPickerModal({ supabase, onSkip }) {
@@ -107,57 +107,36 @@ export function createPlanPickerModal({ supabase, onSkip }) {
     updateIntervalButtons();
     const plans = allPlans.filter((p) => p.billing_interval === selectedInterval);
     bodyEl.innerHTML = '';
+    if (plans.length === 0) return;
 
-    const grid = document.createElement('div');
-    grid.className = 'grid sm:grid-cols-3 gap-4';
-
-    for (const plan of plans) {
-      const card = document.createElement('div');
-      card.className = 'rounded-xl border-2 border-slate-200 p-5 flex flex-col';
-
+    const priceCellsHtml = plans.map((plan) => {
       const promoEligible = appliedPromo && (!appliedPromo.appliesToPlanGroups || appliedPromo.appliesToPlanGroups.includes(plan.plan_group));
       const price = promoEligible
-        ? `<span class="line-through text-slate-400 text-lg mr-1.5">${formatPlanPrice(plan.price_cents, plan.billing_interval)}</span>${formatPlanPrice(discountedPriceCents(plan.price_cents, appliedPromo.discountPercent), plan.billing_interval)}`
+        ? `<span class="line-through text-slate-400 text-xs mr-1">${formatPlanPrice(plan.price_cents, plan.billing_interval)}</span>${formatPlanPrice(discountedPriceCents(plan.price_cents, appliedPromo.discountPercent), plan.billing_interval)}`
         : formatPlanPrice(plan.price_cents, plan.billing_interval);
       const monthlyEquivalent = plan.billing_interval === 'yearly' && plan.price_cents > 0
-        ? `<p class="text-xs text-slate-500 -mt-2 mb-3">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</p>`
+        ? `<div class="text-[11px] font-normal text-slate-500">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</div>`
         : '';
+      return `<div class="font-bold text-slate-900">${price}</div>${monthlyEquivalent}`;
+    });
 
-      const features = plan.plan_features.map((pf) => pf.features).filter((f) => f.key !== 'vpd_academy');
-      const hasCourses = plan.plan_features.some((pf) => pf.features.key === 'vpd_academy');
-      const limitBullets = buildLimitBullets(plan, hasCourses);
-      const bulletList = (items) => items.map((b) => `<li class="flex items-start gap-1.5"><span class="text-emerald-600">✓</span> ${b}</li>`).join('');
+    const actionCellsHtml = plans.map((plan) => (plan.stripe_price_id
+      ? `<button type="button" data-plan-key="${plan.key}" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('planPicker.selectPlan')}</button>`
+      : ''));
 
-      card.innerHTML = `
-        <h3 class="text-lg font-bold text-slate-800">${escapeHtml(plan.name)}</h3>
-        <p class="text-2xl font-bold text-slate-900 ${monthlyEquivalent ? 'mb-0' : 'mb-3'}">${price}</p>
-        ${monthlyEquivalent}
-        <div class="flex-1 mb-4">
-          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${t('plans.accessHeading')}</p>
-          <ul class="text-sm text-slate-600 space-y-1.5 mb-3">
-            ${bulletList(limitBullets)}
-            ${bulletList(features.map((f) => escapeHtml(f.name)))}
-          </ul>
-          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${t('plans.featuresHeading')}</p>
-          <ul class="text-sm text-slate-600 space-y-1.5">
-            ${bulletList(BASE_FEATURE_KEYS.map((key) => t(key)))}
-          </ul>
-        </div>
-      `;
+    bodyEl.innerHTML = `
+      <div class="overflow-x-auto">
+        ${renderComparisonTable({ plans, currentPlanId: null, priceCellsHtml, actionCellsHtml })}
+      </div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-4 mb-1.5">${t('plans.featuresHeading')}</p>
+      <ul class="text-sm text-slate-600 grid sm:grid-cols-2 gap-x-4 gap-y-1">
+        ${BASE_FEATURE_KEYS.map((key) => `<li class="flex items-start gap-1.5"><span class="text-emerald-600">✓</span> ${t(key)}</li>`).join('')}
+      </ul>
+    `;
 
-      if (plan.stripe_price_id) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700';
-        btn.textContent = t('planPicker.selectPlan');
-        btn.addEventListener('click', () => startCheckout(plan.key));
-        card.appendChild(btn);
-      }
-
-      grid.appendChild(card);
-    }
-
-    bodyEl.appendChild(grid);
+    bodyEl.querySelectorAll('[data-plan-key]').forEach((btn) => {
+      btn.addEventListener('click', () => startCheckout(btn.dataset.planKey));
+    });
   }
 
   function updateIntervalButtons() {
@@ -209,10 +188,4 @@ export function createPlanPickerModal({ supabase, onSkip }) {
   }
 
   return { open };
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }

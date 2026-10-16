@@ -6,7 +6,7 @@
 // from what plansModal.js shows a signed-in Super Admin — one plan
 // catalog, two places it's rendered.
 import { supabase } from './supabaseClient.js';
-import { buildLimitBullets, formatPlanPrice, formatMonthlyEquivalent } from './utils/planPresentation.js';
+import { renderComparisonTable, formatPlanPrice, formatMonthlyEquivalent } from './utils/planPresentation.js';
 import { getLang, setLang, onLangChange, loadLabelOverrides, applyStaticTranslations, departmentLabel, t } from './i18n.js';
 import { DEPARTMENT_KEYS } from './departments.js';
 
@@ -81,7 +81,7 @@ function renderFeatures() {
 
 async function loadPricing() {
   const grid = document.querySelector('[data-el="pricing-grid"]');
-  grid.innerHTML = `<p class="col-span-3 text-center text-slate-400">${escapeHtml(t('welcome.loadingPlans'))}</p>`;
+  grid.innerHTML = `<p class="text-center text-slate-400">${escapeHtml(t('welcome.loadingPlans'))}</p>`;
 
   const { data: plans, error } = await supabase
     .from('plans')
@@ -93,7 +93,7 @@ async function loadPricing() {
     .order('price_cents');
 
   if (error || !plans) {
-    grid.innerHTML = `<p class="col-span-3 text-center text-rose-600">${escapeHtml(t('welcome.pricingFailed'))}</p>`;
+    grid.innerHTML = `<p class="text-center text-rose-600">${escapeHtml(t('welcome.pricingFailed'))}</p>`;
     return;
   }
 
@@ -112,26 +112,16 @@ function renderPricing() {
   const grid = document.querySelector('[data-el="pricing-grid"]');
   if (allPlans.length === 0) return;
 
-  grid.innerHTML = allPlans.filter((p) => p.billing_interval === selectedPricingInterval).map((plan) => {
-    const hasCourses = plan.plan_features.some((pf) => pf.features.key === 'vpd_academy');
-    const bullets = buildLimitBullets(plan, hasCourses);
+  const plans = allPlans.filter((p) => p.billing_interval === selectedPricingInterval);
+  const priceCellsHtml = plans.map((plan) => {
     const monthlyEquivalent = plan.billing_interval === 'yearly' && plan.price_cents > 0
-      ? `<p class="text-xs text-slate-500 -mt-3 mb-4">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</p>`
+      ? `<div class="text-[11px] font-normal text-slate-500">${t('plans.monthlyEquivalent', { amount: formatMonthlyEquivalent(plan.price_cents) })}</div>`
       : '';
-    return `
-      <div class="rounded-xl border-2 border-slate-200 p-6 flex flex-col">
-        <h3 class="text-lg font-bold text-slate-800">${escapeHtml(plan.name)}</h3>
-        <p class="text-3xl font-bold text-slate-900 mt-1 ${monthlyEquivalent ? 'mb-0' : 'mb-4'}">${formatPlanPrice(plan.price_cents, plan.billing_interval)}</p>
-        ${monthlyEquivalent}
-        <ul class="text-sm text-slate-600 space-y-1.5 mb-6 flex-1">
-          ${bullets.map((b) => `<li class="flex items-start gap-1.5"><span class="text-emerald-600">✓</span> ${b}</li>`).join('')}
-        </ul>
-        <a href="app.html?mode=new-church" class="text-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-          ${escapeHtml(t('welcome.getStarted'))}
-        </a>
-      </div>
-    `;
-  }).join('');
+    return `<div class="font-bold text-slate-900">${formatPlanPrice(plan.price_cents, plan.billing_interval)}</div>${monthlyEquivalent}`;
+  });
+  const actionCellsHtml = plans.map(() => `<a href="app.html?mode=new-church" class="inline-block px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${escapeHtml(t('welcome.getStarted'))}</a>`);
+
+  grid.innerHTML = `<div class="overflow-x-auto">${renderComparisonTable({ plans, currentPlanId: null, priceCellsHtml, actionCellsHtml })}</div>`;
 }
 
 const TOPIC_KEYS = { demo: 'welcome.topicDemo', general: 'welcome.topicGeneral', support: 'welcome.topicSupport' };
