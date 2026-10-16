@@ -1,10 +1,15 @@
-// Platform Owner panel -- reached two ways: its own standalone page
-// (tools-menu "Owner" entry) and as a tab inside Site Admin, for
-// whoever holds both roles (see js/siteAdminPage.js). Visible only to
+// Platform Owner panel -- reached three ways: its own standalone page
+// (tools-menu "Owner" entry), as a tab inside Site Admin (for whoever
+// holds both roles, see js/siteAdminPage.js), and embedded directly on
+// the trial-ended lockout screen (js/app.js's showTrialEnded()) so the
+// owner can fix their own (or anyone's) trial/plan without getting
+// stuck behind the very screen they're previewing. Visible only to
 // accounts in public.platform_owner (see js/platformOwner.js, sql/083).
 // Lets the owner manually set any tenant's plan without Stripe -- to
 // comp a partner church for free, or to preview Basic/Pro/Premium on
-// their own account by applying a plan to themselves the same way.
+// their own account by applying a plan to themselves the same way --
+// and move a tenant's trial end date, including their own, to preview
+// exactly what a trial-expired user sees.
 import { t } from './i18n.js';
 import { supabase } from './supabaseClient.js';
 import { getTenantId } from './tenant.js';
@@ -13,9 +18,14 @@ import { renderEntitlementGates } from './app.js';
 
 const PLAN_KEYS = ['basic', 'pro', 'premium'];
 
-// container defaults to the standalone page's own element -- Site
-// Admin passes its own tab panel element explicitly instead.
-export async function renderOwnerTab(container = document.querySelector('#owner-content')) {
+// container defaults to the standalone page's own element -- other
+// call sites pass their own element instead. onOwnTenantChanged (if
+// given) fires, IN ADDITION to the usual live entitlement refresh
+// below, whenever the OWNER's own tenant's plan or trial end was just
+// changed -- the lockout screen uses it to actually re-run showApp()'s
+// trial-status check (entitlements alone wouldn't escape that screen),
+// the other two call sites simply don't pass it.
+export async function renderOwnerTab(container = document.querySelector('#owner-content'), { onOwnTenantChanged } = {}) {
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
   const { data: tenants, error } = await supabase.rpc('owner_list_tenants');
@@ -36,6 +46,7 @@ export async function renderOwnerTab(container = document.querySelector('#owner-
             <th class="text-left px-3 py-2">${t('owner.colPlan')}</th>
             <th class="text-left px-3 py-2">${t('owner.colPaying')}</th>
             <th class="text-left px-3 py-2">${t('owner.colOverride')}</th>
+            <th class="text-left px-3 py-2">${t('owner.colTrialEnds')}</th>
             <th class="text-left px-3 py-2"></th>
           </tr>
         </thead>
@@ -48,6 +59,7 @@ export async function renderOwnerTab(container = document.querySelector('#owner-
   rowsEl.innerHTML = (tenants || []).map((tn) => {
     const isMine = tn.id === myTenantId;
     const isOverridden = tn.plan_override_source === 'owner';
+    const trialEndsDateValue = tn.trial_ends_at ? tn.trial_ends_at.slice(0, 10) : '';
     return `
       <tr class="border-t border-slate-100" data-tenant-id="${tn.id}">
         <td class="px-3 py-2">
@@ -62,9 +74,13 @@ export async function renderOwnerTab(container = document.querySelector('#owner-
         </td>
         <td class="px-3 py-2">${tn.is_paying ? `<span class="text-emerald-600">${t('owner.paying')}</span>` : `<span class="text-slate-400">${t('owner.notPaying')}</span>`}</td>
         <td class="px-3 py-2">${isOverridden ? `<span class="text-amber-600">${t('owner.overriddenByOwner')}</span>` : ''}</td>
+        <td class="px-3 py-2">
+          <input type="date" data-el="trial-ends-input" value="${trialEndsDateValue}" class="border border-slate-300 rounded-lg px-2 py-1 text-xs" />
+        </td>
         <td class="px-3 py-2 whitespace-nowrap">
           <button type="button" data-action="apply-plan" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium mr-2">${t('owner.applyPlan')}</button>
-          ${isOverridden ? `<button type="button" data-action="clear-override" class="text-xs text-slate-500 hover:text-slate-700">${t('owner.clearOverride')}</button>` : ''}
+          ${isOverridden ? `<button type="button" data-action="clear-override" class="text-xs text-slate-500 hover:text-slate-700 mr-2">${t('owner.clearOverride')}</button>` : ''}
+          <button type="button" data-action="set-trial-end" class="text-xs text-slate-500 hover:text-slate-700">${t('owner.setTrialEnd')}</button>
         </td>
       </tr>
     `;
@@ -82,8 +98,9 @@ export async function renderOwnerTab(container = document.querySelector('#owner-
       if (tenantId === myTenantId) {
         await loadMyEntitlements();
         renderEntitlementGates();
+        onOwnTenantChanged?.();
       }
-      renderOwnerTab(container);
+      renderOwnerTab(container, { onOwnTenantChanged });
     });
     row.querySelector('[data-action="clear-override"]')?.addEventListener('click', async () => {
       const { error: clearError } = await supabase.rpc('owner_clear_tenant_override', { p_tenant_id: tenantId });
@@ -91,7 +108,25 @@ export async function renderOwnerTab(container = document.querySelector('#owner-
         window.alert(t('owner.clearFailed', { message: clearError.message }));
         return;
       }
-      renderOwnerTab(container);
+      renderOwnerTab(container, { onOwnTenantChanged });
+    });
+    row.querySelector('[data-action="set-trial-end"]').addEventListener('click', async () => {
+      const dateValue = row.querySelector('[data-el="trial-ends-input"]').value;
+      if (!dateValue) return;
+      // End of that calendar day, not midnight-start -- "ends October
+      // 20th" should still mean access all day on the 20th.
+      const trialEndsAt = new Date(`${dateValue}T23:59:59`).toISOString();
+      const { error: trialError } = await supabase.rpc('owner_set_tenant_trial_end', { p_tenant_id: tenantId, p_trial_ends_at: trialEndsAt });
+      if (trialError) {
+        window.alert(t('owner.setTrialEndFailed', { message: trialError.message }));
+        return;
+      }
+      if (tenantId === myTenantId) {
+        await loadMyEntitlements();
+        renderEntitlementGates();
+        onOwnTenantChanged?.();
+      }
+      renderOwnerTab(container, { onOwnTenantChanged });
     });
   });
 }

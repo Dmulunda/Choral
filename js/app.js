@@ -1535,6 +1535,7 @@ document.querySelector('[data-mobile-nav="settings"]')?.addEventListener('click'
 const authScreenEl = document.querySelector('#auth-screen');
 const appShellEl = document.querySelector('#app-shell');
 const passwordRecoveryEl = document.querySelector('#password-recovery-screen');
+const trialEndedEl = document.querySelector('#trial-ended-screen');
 const signOutBtn = document.querySelector('#sign-out-btn');
 
 renderAuthScreen(authScreenEl, { supabase });
@@ -1705,6 +1706,20 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   await loadMyEntitlements();
   renderEntitlementGates();
   await handleCheckoutReturn(session.user.id);
+
+  // Checked AFTER handleCheckoutReturn() on purpose -- that call
+  // re-fetches tenant status when returning from a successful Stripe
+  // Checkout (the webhook that actually flips status away from
+  // 'trial_expired' can lag the redirect by a second or two), so
+  // checking before it would risk trapping someone who just paid on
+  // this exact screen.
+  if (getTenantStatus() === 'trial_expired') {
+    await showTrialEnded();
+    return;
+  }
+  trialEndedEl.classList.add('hidden');
+  trialEndedEl.classList.remove('flex');
+
   await loadAppTheme();
   await loadMyDepartments(session.user.id, { allowedDepartmentKeys: hasFeature('all_departments') ? null : CORE_DEPARTMENT_KEYS });
   await loadSchoolAdminStatus(session.user.id);
@@ -1750,6 +1765,59 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
 const SPLASH_MIN_DURATION_MS = 1100;
 const HAS_WELCOMED_KEY = 'choir-hub-has-welcomed';
 
+// Full-screen lockout once a tenant's trial has ended with no plan
+// assigned (tenants.status = 'trial_expired') -- replaces the app
+// shell entirely (same "swap which top-level section is visible"
+// pattern as showAuth()/showPasswordRecovery()) rather than just a
+// dismissible banner, since every department/tool should be
+// unreachable until the owner assigns a plan (owner_set_tenant_plan
+// also flips status back to 'active', see sql/saas_platform/87_
+// trial_lockout.sql) or the tenant upgrades themselves.
+//
+// The Platform Owner is deliberately NOT exempted from this screen --
+// they explicitly wanted to be able to preview exactly what a locked-
+// out user sees, the same way they can preview a plan on their own
+// account. So they don't get trapped doing that, this screen embeds
+// the Owner panel directly (renderOwnerTab() already accepts an
+// arbitrary container, built for exactly this kind of reuse) so they
+// can fix their own (or anyone's) trial/plan right here without
+// needing a separate escape hatch.
+async function showTrialEnded() {
+  await loadPlatformOwnerStatus();
+  const tenant = getTenant();
+  const isOwner = getIsPlatformOwner();
+
+  trialEndedEl.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full ${isOwner ? 'max-w-4xl' : 'max-w-lg'} p-6 my-8">
+      <h1 class="text-xl font-bold text-slate-800 mb-2">${t('trial.endedTitle')}</h1>
+      <p class="text-sm text-slate-600 mb-4">${t('trial.endedBody', { church: tenant?.name || '' })}</p>
+      <div class="flex items-center gap-3">
+        <button type="button" data-action="upgrade" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">${t('trial.upgradeNow')}</button>
+        <button type="button" data-action="sign-out" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">${t('sidebar.signOut')}</button>
+      </div>
+      ${isOwner ? `
+        <div class="border-t border-slate-200 mt-6 pt-6">
+          <p class="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">${t('trial.ownerPreviewNote')}</p>
+          <div id="trial-ended-owner-panel"></div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  trialEndedEl.querySelector('[data-action="upgrade"]').addEventListener('click', openPlansModal);
+  trialEndedEl.querySelector('[data-action="sign-out"]').addEventListener('click', () => supabase.auth.signOut());
+  // A reload, not a live in-place update -- fixing the own tenant's
+  // plan/trial from right here crosses the trial_expired status
+  // boundary itself, which needs showApp()'s own gate check to re-run
+  // from scratch, not just an entitlements refresh.
+  if (isOwner) renderOwnerTab(trialEndedEl.querySelector('#trial-ended-owner-panel'), { onOwnTenantChanged: () => window.location.reload() });
+
+  authScreenEl.classList.add('hidden');
+  passwordRecoveryEl.classList.add('hidden');
+  appShellEl.classList.add('hidden');
+  trialEndedEl.classList.remove('hidden');
+  trialEndedEl.classList.add('flex');
+}
+
 async function showSplashThenApp(session) {
   if (localStorage.getItem(HAS_WELCOMED_KEY)) {
     await showApp(session, { isFreshSignIn: true });
@@ -1780,6 +1848,8 @@ function showAuth() {
   document.querySelector('#stay-connected-prompt')?.remove();
   passwordRecoveryEl.classList.add('hidden');
   appShellEl.classList.add('hidden');
+  trialEndedEl.classList.add('hidden');
+  trialEndedEl.classList.remove('flex');
   authScreenEl.classList.remove('hidden');
   forEachNavGroup('members-nav', (el) => el.classList.add('hidden'));
   departmentSwitcherWrapEl.classList.add('hidden');
