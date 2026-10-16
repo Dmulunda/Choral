@@ -59,7 +59,7 @@ import {
   getGlobalRole, isViewingAs, getViewAsTarget, startViewAs, stopViewAs, getEffectiveSupabase,
   hasGlobalReach, isActingAsStandardUser, setActingAsStandardUser, isHomeActive, HOME_KEY,
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
-  canRecordOfferings, hasFinanceOversight,
+  canRecordOfferings, hasFinanceOversight, CORE_DEPARTMENT_KEYS,
 } from './departments.js';
 import { loadMyTenant, getTenant, getTenantId, getTenantStatus, getTrialDaysLeft, getPendingTrialCharge, isActingAsExtension } from './tenant.js';
 import { formatPlanPrice } from './utils/planPresentation.js';
@@ -296,9 +296,9 @@ trialBannerEl.querySelector('[data-action="dismiss-trial-banner"]').addEventList
 // policy on each feature's tables (see sql/saas_platform/08_plans_and_features.sql);
 // this only decides what the button looks like and whether clicking it
 // opens the tab or an upgrade prompt.
-const GATED_TABS = { training: 'vpd_academy' };
+const GATED_TABS = { training: 'vpd_academy', 'dept-projection': 'projection', flyers: 'flyers' };
 
-function openPlansModal() {
+export function openPlansModal() {
   createPlansModal({
     supabase: getEffectiveSupabase(),
     currentPlanId: getTenant()?.plan_id || null,
@@ -348,6 +348,15 @@ export function renderEntitlementGates() {
       el.classList.toggle('opacity-60', locked);
     });
   }
+  // Projection/Flyers' own nav buttons already use data-nav-group for
+  // department-visibility toggling (applyActiveDepartment()), so the
+  // name-convention lookup above can't double as their entitlement
+  // lock too -- this separate attribute lets a button carry both.
+  document.querySelectorAll('[data-entitlement-feature]').forEach((el) => {
+    const locked = !hasFeature(el.dataset.entitlementFeature);
+    el.querySelector('[data-el*="-lock"]')?.classList.toggle('hidden', !locked);
+    el.classList.toggle('opacity-60', locked);
+  });
 }
 const inboxBadgeEl = document.querySelector('#inbox-badge');
 const sidebarToolsSelect = document.querySelector('#sidebar-tools-select');
@@ -1031,12 +1040,14 @@ function buildQuickAccessItems() {
   const active = getActiveDepartment();
   const isChoir = active?.key === 'choir';
   const items = [
-    { icon: '🎓', label: t('nav.training'), tab: 'training' },
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
     { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
     { icon: '🎟️', label: t('nav.events'), tab: 'events' },
-    { icon: '🖼️', label: t('nav.flyers'), tab: 'flyers' },
   ];
+  // Plan-gated -- a dead-end tile for a feature the tenant's plan
+  // doesn't include would be worse than just not offering the shortcut.
+  if (hasFeature('vpd_academy')) items.push({ icon: '🎓', label: t('nav.training'), tab: 'training' });
+  if (hasFeature('flyers')) items.push({ icon: '🖼️', label: t('nav.flyers'), tab: 'flyers' });
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
   if (hasFinanceOversight()) items.push({ icon: '🙏', label: t('nav.offerings'), tab: 'offerings' });
   if (active) {
@@ -1047,7 +1058,7 @@ function buildQuickAccessItems() {
     if (isChoir) items.push({ icon: '🎵', label: t('nav.songbook'), tab: 'songbook' });
     if (isChoir) items.push({ icon: '🎤', label: t('nav.voiceExercises'), tab: 'voice-exercises' });
     if (isChoir || active.key === 'ushers') items.push({ icon: '🎽', label: t('nav.uniform'), tab: 'uniform' });
-    if (active.key === 'media_tech') items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
+    if (active.key === 'media_tech' && hasFeature('projection')) items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
     if (active.key === 'media_tech') items.push({ icon: '🎦', label: t('nav.equipment'), tab: 'dept-equipment' });
     if (active.key === 'cleaning') items.push({ icon: '🧹', label: t('nav.supplies'), tab: 'dept-supplies' });
     if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
@@ -1695,7 +1706,7 @@ async function showApp(session, { isFreshSignIn = false } = {}) {
   renderEntitlementGates();
   await handleCheckoutReturn(session.user.id);
   await loadAppTheme();
-  await loadMyDepartments(session.user.id);
+  await loadMyDepartments(session.user.id, { allowedDepartmentKeys: hasFeature('all_departments') ? null : CORE_DEPARTMENT_KEYS });
   await loadSchoolAdminStatus(session.user.id);
   await loadSiteAdminStatus();
   await loadPlatformOwnerStatus();

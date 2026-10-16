@@ -89,7 +89,7 @@ export function createPlanPickerModal({ supabase, onSkip }) {
       .from('plans')
       .select(`
         id, key, name, price_cents, billing_interval, plan_group, stripe_price_id,
-        max_extensions, max_super_admins_per_tenant, max_members, storage_gb,
+        max_extensions, max_super_admins_per_tenant, max_members, max_admins, max_global_admins, storage_gb,
         plan_features ( features ( key, name ) )
       `)
       .order('price_cents');

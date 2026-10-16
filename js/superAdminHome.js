@@ -13,6 +13,8 @@
 // button, via openGuestOnboardingHub) can reach them without
 // duplicating the create/teardown logic in a second file.
 import { getEffectiveSupabase, getGlobalRole } from './departments.js';
+import { hasFeature } from './entitlements.js';
+import { openPlansModal } from './app.js';
 import { createUserManagerModal } from './components/userManager.js';
 import { renderAllDepartmentApprovals } from './components/allDepartmentApprovals.js';
 import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
@@ -82,10 +84,12 @@ export async function openLoginActivity() {
   currentLoginActivityModal?.open();
 }
 export async function openCreateDepartment() {
+  if (!hasFeature('create_departments')) { openPlansModal(); return; }
   if (!currentCreateDepartmentModal) await renderSuperAdminHomeTab();
   currentCreateDepartmentModal?.open();
 }
 export async function openMenuCustomizer() {
+  if (!hasFeature('customize_departments')) { openPlansModal(); return; }
   if (!currentMenuCustomizerModal) await renderSuperAdminHomeTab();
   currentMenuCustomizerModal?.open();
 }

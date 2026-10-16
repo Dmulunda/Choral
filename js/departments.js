@@ -25,12 +25,29 @@ export const DEPARTMENT_KEYS = [
   'welcoming_socialisation', 'grand_jeunes_couples', 'finance',
 ];
 
+// Mirrors sql/saas_platform/86_pricing_v2.sql's is_core_department_key()
+// exactly -- the 7 departments a Basic-plan SAAS tenant can use.
+// Main has no plans at all, so this constant is simply unused there
+// (loadMyDepartments()'s allowedDepartmentKeys param defaults to
+// undefined/no filter, same as every call site that doesn't pass it).
+export const CORE_DEPARTMENT_KEYS = ['media_tech', 'preaching', 'finance', 'ushers', 'ecodem', 'choir', 'cleaning'];
+
 let myDepartments = null; // [{ id, key, name, kind, meeting_link, role }] — synthesized: role is the global role string for a global-role holder, else their real department_role
 let literalDepartments = null; // the same shape, but always from their real department_memberships rows, ignoring any global role — what "Standard User Mode" below shows
 let globalRole = null;
 let actingAsStandardUser = false;
 
-export async function loadMyDepartments(userId) {
+// allowedDepartmentKeys: optional. When passed (SAAS only, a
+// Basic-plan tenant), a GLOBAL-role holder's synthesized "every
+// department" view (below) is filtered down to just those keys --
+// matches sql/86_pricing_v2.sql's backend block on actually JOINING a
+// non-core department as a regular member, so a Super Admin on Basic
+// doesn't see departments nobody else on their plan can use either.
+// Real existing memberships (literalDepartments) are never filtered
+// here -- only this synthesized view, consistent with the "block new
+// growth, never retroactively hide/remove existing data" rule the
+// backend side follows too.
+export async function loadMyDepartments(userId, { allowedDepartmentKeys } = {}) {
   const [{ data: profile }, { data: memberships }] = await Promise.all([
     supabase.from('profiles').select('global_role').eq('id', userId).single(),
     supabase
@@ -48,7 +65,8 @@ export async function loadMyDepartments(userId) {
 
   if (globalRole) {
     const { data: allDepartments } = await supabase.from('departments').select('id, key, name, kind, meeting_link').order('name');
-    myDepartments = (allDepartments || []).map((d) => ({ ...d, role: globalRole }));
+    const visible = allowedDepartmentKeys ? (allDepartments || []).filter((d) => allowedDepartmentKeys.includes(d.key)) : allDepartments;
+    myDepartments = (visible || []).map((d) => ({ ...d, role: globalRole }));
   } else {
     myDepartments = literalDepartments;
   }

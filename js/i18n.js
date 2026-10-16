@@ -539,6 +539,7 @@ const TRANSLATIONS = {
     'trial.expired': 'Your free trial has ended. Your data is safe, but some features are locked until you choose a plan.',
 
     'entitlements.upgrade': 'Upgrade',
+    'entitlements.memberCardLocked': 'The member ID card isn\'t included in your church\'s current plan. Ask your admin to upgrade.',
     'entitlements.upgradePrompt': 'This feature isn\'t included in your current plan. Upgrade to unlock it.',
 
     'plans.title': 'Plans & Pricing',
@@ -579,7 +580,11 @@ const TRANSLATIONS = {
     'plans.limitSuperAdminsUnlimited': 'Unlimited super admins',
     'plans.limitMembers': 'Up to {count} members/users',
     'plans.limitMembersUnlimited': 'Unlimited members/users',
-    'plans.limitProjection': 'Projection module included',
+    'plans.limitAdmins': 'Up to {count} department admins',
+    'plans.limitAdminsUnlimited': 'Unlimited department admins',
+    'plans.limitGlobalAdminsNone': 'No additional global admins',
+    'plans.limitGlobalAdmins': 'Up to {count} additional global admin(s)',
+    'plans.limitGlobalAdminsUnlimited': 'Unlimited global admins',
     'plans.limitCoursesIncluded': 'Online courses included',
     'plans.limitCoursesNotIncluded': 'Online courses not included',
     'plans.limitStorage': '{count} GB storage for course materials',
@@ -3166,6 +3171,7 @@ const TRANSLATIONS = {
     'trial.expired': "Votre essai gratuit est terminé. Vos données sont en sécurité, mais certaines fonctionnalités sont verrouillées jusqu'à ce que vous choisissiez un forfait.",
 
     'entitlements.upgrade': 'Améliorer',
+    'entitlements.memberCardLocked': "La carte de membre n'est pas incluse dans le forfait actuel de votre église. Demandez à votre administrateur de le mettre à niveau.",
     'entitlements.upgradePrompt': "Cette fonctionnalité n'est pas incluse dans votre forfait actuel. Améliorez votre forfait pour la débloquer.",
 
     'plans.title': 'Forfaits et tarifs',
@@ -3206,7 +3212,11 @@ const TRANSLATIONS = {
     'plans.limitSuperAdminsUnlimited': 'Super administrateurs illimités',
     'plans.limitMembers': "Jusqu'à {count} membres/utilisateurs",
     'plans.limitMembersUnlimited': 'Membres/utilisateurs illimités',
-    'plans.limitProjection': 'Module de projection inclus',
+    'plans.limitAdmins': "Jusqu'à {count} administrateurs de département",
+    'plans.limitAdminsUnlimited': 'Administrateurs de département illimités',
+    'plans.limitGlobalAdminsNone': 'Aucun administrateur global additionnel',
+    'plans.limitGlobalAdmins': "Jusqu'à {count} administrateur(s) global(aux) additionnel(s)",
+    'plans.limitGlobalAdminsUnlimited': 'Administrateurs globaux illimités',
     'plans.limitCoursesIncluded': 'Cours en ligne inclus',
     'plans.limitCoursesNotIncluded': 'Cours en ligne non inclus',
     'plans.limitStorage': '{count} Go de stockage pour le contenu des cours',

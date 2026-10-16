@@ -37,7 +37,26 @@ export function buildLimitBullets(plan, hasCourses) {
     ? t('plans.limitMembersUnlimited')
     : t('plans.limitMembers', { count: plan.max_members }));
 
-  bullets.push(t('plans.limitProjection'));
+  if (plan.max_admins !== undefined) {
+    bullets.push(plan.max_admins === null
+      ? t('plans.limitAdminsUnlimited')
+      : t('plans.limitAdmins', { count: plan.max_admins }));
+  }
+
+  if (plan.max_global_admins !== undefined) {
+    bullets.push(plan.max_global_admins === null
+      ? t('plans.limitGlobalAdminsUnlimited')
+      : plan.max_global_admins === 0
+        ? t('plans.limitGlobalAdminsNone')
+        : t('plans.limitGlobalAdmins', { count: plan.max_global_admins }));
+  }
+
+  // Projection/Flyers/Member Card/department-tier access are now real
+  // plan_features rows (sql/saas_platform/86_pricing_v2.sql) -- they
+  // already appear via the generic feature-name bullet list in
+  // plansModal.js, so no hardcoded "Projection included" bullet here
+  // any more (it used to be unconditional, which went stale/wrong the
+  // moment Projection stopped being included on every plan).
 
   bullets.push(hasCourses ? t('plans.limitCoursesIncluded') : t('plans.limitCoursesNotIncluded'));
 

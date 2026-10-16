@@ -9,6 +9,18 @@
 import { t } from '../i18n.js';
 import { renderMemberIdCard } from './memberIdCard.js';
 import { createSignaturePad } from './signaturePad.js';
+import { hasFeature } from '../entitlements.js';
+
+// Member Card is a plan-gated feature (sql/saas_platform/86_pricing_v2.sql)
+// -- its own data is just ordinary profile columns used elsewhere too,
+// so this is a UI-level gate, not a table-level RESTRICTIVE policy.
+function renderMemberIdCardGated(container, opts) {
+  if (hasFeature('member_card')) {
+    renderMemberIdCard(container, opts);
+  } else {
+    container.innerHTML = `<p class="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">${t('entitlements.memberCardLocked')}</p>`;
+  }
+}
 
 export function createMyProfileModal({ supabase, userId }) {
   const root = document.createElement('div');
@@ -135,7 +147,7 @@ export function createMyProfileModal({ supabase, userId }) {
     const looksComplete = !!(profile?.address && profile?.signature_data);
     setFormExpanded(!looksComplete);
 
-    renderMemberIdCard(cardContainer, { supabase, userId });
+    renderMemberIdCardGated(cardContainer, { supabase, userId });
   }
 
   function close() {
@@ -181,7 +193,7 @@ export function createMyProfileModal({ supabase, userId }) {
     formStatusEl.className = 'text-sm text-emerald-600';
     formStatusEl.textContent = t('myProfile.saved');
     form.querySelector('[data-el="photo-input"]').value = '';
-    renderMemberIdCard(cardContainer, { supabase, userId });
+    renderMemberIdCardGated(cardContainer, { supabase, userId });
   }
 
   return { open, root };

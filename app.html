@@ -495,9 +495,10 @@
           </button>
           <!-- Flyers -- same unconditional placement; a real Fabric.js
                drag-and-drop editor, js/components/flyerEditor.js. -->
-          <button data-tab-target="flyers" data-i18n="nav.flyers"
-                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-            Flyers
+          <button data-tab-target="flyers" data-entitlement-feature="flyers"
+                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800 flex items-center justify-between gap-2">
+            <span data-i18n="nav.flyers">Flyers</span>
+            <span data-el="flyers-lock" class="hidden text-xs font-normal text-amber-400">🔒 <span data-i18n="entitlements.upgrade">Upgrade</span></span>
           </button>
           <!-- Budget nav button is intentionally NOT here — unlike
                Academy/Service Program above, this one must leave zero
@@ -563,9 +564,10 @@
                being buried inside Dashboard, since it's what that
                department actually lives in during a service. See
                applyActiveDepartment() in app.js. -->
-          <button data-tab-target="dept-projection" data-i18n="nav.projection" id="dept-projection-nav-btn" data-nav-group="dept-projection-nav"
-                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
-            Projection
+          <button data-tab-target="dept-projection" id="dept-projection-nav-btn" data-nav-group="dept-projection-nav" data-entitlement-feature="projection"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800 flex items-center justify-between gap-2">
+            <span data-i18n="nav.projection">Projection</span>
+            <span data-el="projection-lock" class="hidden text-xs font-normal text-amber-400">🔒 <span data-i18n="entitlements.upgrade">Upgrade</span></span>
           </button>
           <!-- Media & Tech only: equipment inventory. -->
           <button data-tab-target="dept-equipment" data-i18n="nav.equipment" id="dept-equipment-nav-btn" data-nav-group="dept-equipment-nav"
