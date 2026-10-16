@@ -21,7 +21,7 @@
 // written.
 import { t } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
-import { getGlobalRole } from '../departments.js';
+import { getGlobalRole, canDeleteOfferings } from '../departments.js';
 import { createOfferingsImportModal } from './offeringsImport.js';
 
 const OFFERING_TYPES = ['tithe', 'general', 'sacrifice', 'construction', 'other'];
@@ -38,6 +38,11 @@ function currencyLabel(row) {
 
 export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   const isSuperAdmin = getGlobalRole() === 'super_admin';
+  // sql/102: a plain Finance member's read is now time-limited to
+  // today's entries only -- canDeleteOfferings() (admin/oversight) is
+  // the same bar that still sees the full period, reused here just to
+  // decide whether to warn, not to gate anything RLS already gates.
+  const seesFullPeriod = canDeleteOfferings();
 
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
@@ -95,10 +100,11 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
     </div>
 
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
-      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
         <h2 class="text-lg font-semibold">${t('offerings.currentPeriodTitle')}</h2>
         <span data-el="period-total" class="text-sm font-semibold text-slate-700"></span>
       </div>
+      ${!seesFullPeriod ? `<p class="text-xs text-amber-600 mb-3">${t('offerings.todayOnlyNote')}</p>` : ''}
       <div data-el="list"></div>
     </div>
 
