@@ -7,6 +7,12 @@
 // equivalent prior period, computed client-side from the same history
 // fetch (a department's headcount log is small enough that a second
 // query isn't worth it).
+//
+// Same department_headcounts row Headcount Tally (headcountTally.js)
+// writes to additively -- this form pre-fills from the real current
+// totals (loadCurrentValues()) rather than always starting from 0, so
+// it reads as "correct what's already been counted" instead of
+// risking silently discarding tally submissions on save.
 import { t } from '../i18n.js';
 import { todayLocal, formatDateLocal } from '../utils/date.js';
 
@@ -116,7 +122,31 @@ export function renderHeadcountBoard(container, { supabase, departmentId }) {
   const progressionEl = container.querySelector('[data-el="progression"]');
 
   form.addEventListener('submit', handleSubmit);
+  form.elements.date.addEventListener('change', loadCurrentValues);
 
+  // This form is a correction/override on top of whatever Headcount
+  // Tally (headcountTally.js) has already accumulated for the selected
+  // date -- both write the same department_headcounts row, keyed by
+  // (department_id, date). Pre-filling with the real current totals
+  // (instead of always starting from 0) means an admin opening this
+  // for a date that already has tally data sees what's actually been
+  // counted so far, and a save that only touches one field no longer
+  // silently discards the other two.
+  async function loadCurrentValues() {
+    const date = form.elements.date.value;
+    if (!date) return;
+    const { data } = await supabase
+      .from('department_headcounts')
+      .select('men_count, women_count, kids_count')
+      .eq('department_id', departmentId)
+      .eq('date', date)
+      .maybeSingle();
+    form.elements.men_count.value = data?.men_count ?? 0;
+    form.elements.women_count.value = data?.women_count ?? 0;
+    form.elements.kids_count.value = data?.kids_count ?? 0;
+  }
+
+  loadCurrentValues();
   loadHistory();
 
   async function handleSubmit(e) {
