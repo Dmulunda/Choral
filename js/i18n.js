@@ -1943,6 +1943,10 @@ const TRANSLATIONS = {
 
     'common.loading': 'Loading…',
     'app.updatingNotice': 'Updating to the latest version…',
+    'app.updateAvailableTitle': "What's new",
+    'app.updateNow': 'Update Now',
+    'app.updateLater': 'Later',
+    'app.updateRefuse': 'Refuse',
     'common.yes': 'Yes',
     'common.saving': 'Saving…',
     'common.searching': 'Searching…',
@@ -4320,6 +4324,10 @@ const TRANSLATIONS = {
 
     'common.loading': 'Chargement…',
     'app.updatingNotice': 'Mise à jour vers la dernière version…',
+    'app.updateAvailableTitle': 'Quoi de neuf',
+    'app.updateNow': 'Mettre à jour',
+    'app.updateLater': 'Plus tard',
+    'app.updateRefuse': 'Refuser',
     'common.yes': 'Oui',
     'common.saving': 'Enregistrement…',
     'common.searching': 'Recherche…',
