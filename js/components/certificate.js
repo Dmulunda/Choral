@@ -12,6 +12,7 @@
 // and none was asked for, so these are simple constants a future code
 // change would update if the actual people ever change.
 import { t } from '../i18n.js';
+import { publicPageUrl } from '../utils/publicUrl.js';
 import { getChurchLogoUrl } from '../churchBranding.js';
 
 const LEAD_INSTRUCTOR_NAME = 'Prophète Francis Ngawala';
@@ -25,7 +26,7 @@ export function openCertificate({ studentName, courseTitle, approvedAt, approval
   // uploaded yet -- see js/components/churchLogoModal.js. Works fine in
   // this detached window/tab too: getChurchLogoUrl() is an absolute
   // Supabase public-storage URL, same shape as the origin-based fallback.
-  const logoUrl = getChurchLogoUrl() || `${window.location.origin}/img/vpd-logo.png`;
+  const logoUrl = getChurchLogoUrl() || publicPageUrl('img/vpd-logo.png');
   const certificateId = formatCertificateId(approvalId, approvedAt);
 
   const html = `

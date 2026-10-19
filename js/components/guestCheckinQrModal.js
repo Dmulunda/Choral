@@ -10,6 +10,7 @@
 // Main is single-tenant -- no church slug needed in the link the way
 // SAAS's version needs.
 import { t } from '../i18n.js';
+import { publicPageUrl } from '../utils/publicUrl.js';
 
 function todayLocalDate() {
   const now = new Date();
@@ -48,7 +49,7 @@ export function createGuestCheckinQrModal() {
     root.classList.remove('hidden');
     root.classList.add('flex');
 
-    const url = `${window.location.origin}/guest-checkin.html?d=${todayLocalDate()}`;
+    const url = publicPageUrl('guest-checkin.html', { d: todayLocalDate() });
     linkInputEl.value = url;
     qrAreaEl.innerHTML = `<p class="text-xs text-slate-400">${t('common.loading')}</p>`;
 

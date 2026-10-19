@@ -31,6 +31,7 @@
 // html2canvas/jsPDF — loaded via CDN in index.html — can rasterize it
 // into an actual PNG/PDF file, not just a browser print-to-PDF.
 import { t } from '../i18n.js';
+import { publicPageUrl } from '../utils/publicUrl.js';
 import { getChurchLogoUrl } from '../churchBranding.js';
 // The `qrcode` npm package ships no browser <script> bundle (only
 // bundler-ready CommonJS source) — jsdelivr's "+esm" endpoint converts
@@ -92,7 +93,7 @@ export async function renderMemberIdCard(container, { supabase, userId }) {
   const sexLabel = profile.sex === 'M' ? t('memberCard.male') : profile.sex === 'F' ? t('memberCard.female') : '—';
   // Falls back to the default asset only if no church logo has been
   // uploaded yet -- see js/components/churchLogoModal.js.
-  const logoUrl = getChurchLogoUrl() || `${window.location.origin}/img/vpd-logo.png`;
+  const logoUrl = getChurchLogoUrl() || publicPageUrl('img/vpd-logo.png');
 
   container.innerHTML = `
     <div data-el="cards-wrap">
