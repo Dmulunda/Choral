@@ -18,6 +18,7 @@ import { renderPastorAvailabilityCalendar } from './components/pastorAvailabilit
 import { t, tn } from './i18n.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { openMeetingWindow, navigateMeetingWindow } from './components/videoMeeting.js';
+import { publicPageUrl } from './utils/publicUrl.js';
 
 const PASTORAL_TEAM_ROLES = ['super_admin', 'church_secretary'];
 
@@ -360,7 +361,7 @@ async function renderSettingsTab(container, { supabase, currentUserId }) {
     return;
   }
 
-  const publicUrl = `${window.location.origin}/booking.html`;
+  const publicUrl = publicPageUrl('booking.html');
 
   container.innerHTML = `
     <div class="bg-white rounded-xl shadow p-4 sm:p-6 mb-4">
