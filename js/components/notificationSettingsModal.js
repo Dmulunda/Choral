@@ -22,6 +22,7 @@ const PREFERENCE_TYPES = [
   { type: 'call_invite', labelKey: 'notifications.type.callInvite' },
   { type: 'disciplinary_letter', labelKey: 'notifications.type.disciplinaryLetter' },
   { type: 'app_suggestion', labelKey: 'notifications.type.appSuggestion' },
+  { type: 'guest_follow_up_reminder', labelKey: 'notifications.type.guestFollowUpReminder' },
 ];
 
 export function createNotificationSettingsModal({ supabase, currentUserId }) {
