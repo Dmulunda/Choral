@@ -47,6 +47,7 @@ import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { createChangePasswordModal } from './components/changePasswordModal.js';
 import { createMyProfileModal } from './components/myProfileModal.js';
 import { createMyLettersModal, createDisciplinaryLettersAdminModal } from './components/disciplinaryLetters.js';
+import { createChurchAdminManagerModal } from './components/churchAdminManager.js';
 import { createNotificationSettingsModal } from './components/notificationSettingsModal.js';
 import { checkSpecialProgramPopup } from './components/specialProgramPopup.js';
 import { getLang, setLang, onLangChange, applyStaticTranslations, departmentLabel, departmentIcon, t, loadLabelOverrides } from './i18n.js';
@@ -878,6 +879,7 @@ function updateSidebarToolsSelect() {
   if (getGlobalRole() === 'pastor_admin' || getGlobalRole() === 'super_admin') {
     options.push({ value: 'disciplinary-letters', label: t('sidebar.disciplinaryLetters') });
   }
+  if (getGlobalRole() === 'super_admin' && !isViewingAs()) options.push({ value: 'manage-church-admins', label: t('sidebar.manageChurchAdmins') });
   options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
   options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
@@ -941,6 +943,8 @@ export function runSidebarTool(value) {
     createMyLettersModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'disciplinary-letters') {
     createDisciplinaryLettersAdminModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'manage-church-admins') {
+    createChurchAdminManagerModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'notifications') {
     createNotificationSettingsModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'church-rules') {
