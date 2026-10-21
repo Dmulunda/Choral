@@ -157,9 +157,14 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
   form.elements.donor_name.addEventListener('input', updateMemberLinkStatus);
 
   async function loadMemberOptions() {
-    const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
-    membersByName = new Map((data || []).map((p) => [p.full_name, p.id]));
-    memberListEl.innerHTML = (data || []).map((p) => `<option value="${escapeAttr(p.full_name)}"></option>`).join('');
+    const { data } = await supabase.from('profiles').select('id, full_name, is_silent').order('full_name');
+    // Silent members are real profiles rows, so they're already in this
+    // list -- the " (Silent)" suffix is the only way to tell them apart
+    // in a plain <datalist>, and has to be part of the matched key too
+    // (it becomes the literal input value once picked).
+    const displayNames = (data || []).map((p) => (p.is_silent ? `${p.full_name} (${t('users.silentBadge')})` : p.full_name));
+    membersByName = new Map((data || []).map((p, i) => [displayNames[i], p.id]));
+    memberListEl.innerHTML = displayNames.map((name) => `<option value="${escapeAttr(name)}"></option>`).join('');
   }
 
   function updateMemberLinkStatus() {
