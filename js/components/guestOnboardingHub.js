@@ -27,6 +27,7 @@
 // offeringsBoard.js's own soft-delete already uses) and can be
 // restored.
 import { confirmDialog } from './confirmDialog.js';
+import { createUserCreatorModal } from './userCreatorModal.js';
 import { t, departmentLabel } from '../i18n.js';
 
 const STATUSES = ['new_guest', 'contacted', 'assigned_to_department'];
@@ -40,6 +41,19 @@ export function renderGuestOnboardingHub(container, { supabase, currentUserId, s
 
   let departments = [];
   let followUpOnly = false;
+  // Lazily built on first use -- a guest case's captured name/email/
+  // phone pre-fills the same "Add User" flow every other account in
+  // this app goes through (userCreatorModal.js), rather than a
+  // parallel one. Still requires an email before it can actually
+  // submit (Supabase auth here is email/password only); a phone-only
+  // guest just needs the admin to type one in at that point.
+  let userCreatorModal = null;
+  function openCreateAccount(row) {
+    if (!userCreatorModal) {
+      userCreatorModal = createUserCreatorModal({ supabase, scope, currentUserId, onCreated: load });
+    }
+    userCreatorModal.open({ fullName: row.full_name, email: row.email, phone: row.phone });
+  }
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
@@ -205,7 +219,15 @@ export function renderGuestOnboardingHub(container, { supabase, currentUserId, s
 
       if (scope.type === 'pastoral') {
         const actionsCell = document.createElement('td');
-        actionsCell.className = 'px-4 py-2.5';
+        actionsCell.className = 'px-4 py-2.5 flex items-center gap-2 flex-wrap';
+        if (isGuestLead && !row.user_id) {
+          const createAccountBtn = document.createElement('button');
+          createAccountBtn.type = 'button';
+          createAccountBtn.className = 'text-xs font-medium text-indigo-600 hover:text-indigo-800';
+          createAccountBtn.textContent = t('guestHub.createAccount');
+          createAccountBtn.addEventListener('click', () => openCreateAccount(row));
+          actionsCell.appendChild(createAccountBtn);
+        }
         if (isGuestLead) {
           const removeBtn = document.createElement('button');
           removeBtn.type = 'button';
@@ -245,6 +267,18 @@ export function renderGuestOnboardingHub(container, { supabase, currentUserId, s
         }
 
         if (isGuestLead) {
+          const generalNoteEl = document.createElement('div');
+          generalNoteEl.innerHTML = `
+            <label class="block font-medium text-slate-700 mb-1">${t('guestHub.generalNote')}</label>
+            <textarea data-el="general-note" rows="2" placeholder="${t('guestHub.generalNotePlaceholder')}"
+                      class="w-full border border-slate-300 rounded-lg px-2 py-1 text-sm mb-1.5">${escapeHtml(row.notes || '')}</textarea>
+            <button type="button" data-action="save-general-note" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">${t('guestHub.saveNote')}</button>
+            <span data-el="general-note-status" class="text-xs text-slate-500 ml-2"></span>
+          `;
+          const generalNoteTextarea = generalNoteEl.querySelector('[data-el="general-note"]');
+          generalNoteEl.querySelector('[data-action="save-general-note"]').addEventListener('click', () => saveGeneralNote(row, generalNoteTextarea.value.trim(), generalNoteEl));
+          detailsCell.appendChild(generalNoteEl);
+
           const followUpEl = document.createElement('div');
           followUpEl.className = 'border-t border-slate-200 pt-2';
           followUpEl.innerHTML = `
@@ -387,6 +421,22 @@ export function renderGuestOnboardingHub(container, { supabase, currentUserId, s
   // Independent of `status` (routing state, sql/038/041/042) on
   // purpose (sql/saas_platform/97) -- a case can be mid-routing and
   // still need/have a completed follow-up call.
+  async function saveGeneralNote(row, note, generalNoteEl) {
+    const statusEl = generalNoteEl.querySelector('[data-el="general-note-status"]');
+    statusEl.className = 'text-xs text-slate-500 ml-2';
+    statusEl.textContent = t('common.saving');
+    const { error } = await supabase.from('guest_follow_ups')
+      .update({ notes: note || null, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (error) {
+      statusEl.className = 'text-xs text-rose-600 ml-2';
+      statusEl.textContent = t('common.saveFailed', { message: error.message });
+      return;
+    }
+    statusEl.className = 'text-xs text-emerald-600 ml-2';
+    statusEl.textContent = t('common.saved');
+  }
+
   async function saveFollowUpNote(row, note) {
     const { error } = await supabase.from('guest_follow_ups')
       .update({ follow_up_note: note || null, updated_at: new Date().toISOString() })

@@ -775,13 +775,15 @@ const QUICK_ACCESS_ITEMS_CLASS = 'w-full text-left px-3 py-2.5 rounded-lg font-m
 function buildQuickAccessItems() {
   const active = getActiveDepartment();
   const isChoir = active?.key === 'choir';
-  const items = [
+  const items = [];
+  if (canSeePastoralDashboardClient()) items.push({ icon: '🧑‍🤝‍🧑', label: t('sidebar.pastoralDashboard'), tab: 'pastoral-dashboard' });
+  items.push(
     { icon: '🎓', label: t('nav.training'), tab: 'training' },
     { icon: '📖', label: t('nav.serviceProgram'), tab: 'service-program' },
     { icon: '🧾', label: t('nav.tax'), tab: 'tax' },
     { icon: '🎟️', label: t('nav.events'), tab: 'events' },
     { icon: '🖼️', label: t('nav.flyers'), tab: 'flyers' },
-  ];
+  );
   if (hasAnyDeptLeadership()) items.push({ icon: '💰', label: t('nav.budget'), tab: 'budget' });
   if (canRecordOfferings()) items.push({ icon: '🙏', label: t('nav.offerings'), tab: 'offerings' });
   if (active) {
@@ -843,6 +845,15 @@ headerNewMemberBtn.addEventListener('click', () => {
 const USHER_ATTENDANCE_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
 // Same set superAdminHome.js gates its Guest Onboarding button on.
 const PASTORAL_TEAM_ROLES = ['super_admin', 'pastor_admin', 'church_secretary'];
+
+// Mirrors pastoralDashboardPage.js's own per-tab visibility checks,
+// collapsed into "does at least one tab show" -- shared by the sidebar
+// Tools entry and the Quick Access tile so both stay in sync.
+function canSeePastoralDashboardClient() {
+  return USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
+    || getMyDepartments().some((d) => d.role === 'admin')
+    || getMyDepartments().some((d) => d.key === 'intercession' && (d.role === 'admin' || d.role === 'secretary'));
+}
 
 function updateMemberActionsUI() {
   const hasAccess = getMyDepartments().length > 0;
@@ -907,14 +918,7 @@ function updateSidebarToolsSelect() {
   options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   options.push({ value: 'support-request', label: t('sidebar.supportRequest') });
   if (getIsSiteAdmin()) options.push({ value: 'site-admin', label: t('sidebar.siteAdmin') });
-  // Mirrors pastoralDashboardPage.js's own per-tab visibility checks,
-  // just collapsed into "does at least one tab show" for the nav
-  // entry itself.
-  if (
-    USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
-    || getMyDepartments().some((d) => d.role === 'admin')
-    || getMyDepartments().some((d) => d.key === 'intercession' && (d.role === 'admin' || d.role === 'secretary'))
-  ) {
+  if (canSeePastoralDashboardClient()) {
     options.push({ value: 'pastoral-dashboard', label: t('sidebar.pastoralDashboard') });
   }
   if (hasAccess) {
