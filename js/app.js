@@ -33,7 +33,7 @@ import { createJoinDepartmentModal } from './components/joinDepartmentModal.js';
 import { createInboxModal } from './components/inboxModal.js';
 import { createNotificationsModal } from './components/notificationsModal.js';
 import { createRulesModal } from './components/rulesModal.js';
-import { createHelpModal } from './components/helpModal.js';
+import { createAssistantModal } from './components/assistantModal.js';
 import { createMonthlyReportModal } from './components/monthlyReportModal.js';
 import { createAttendanceManagerModal } from './components/attendanceManager.js';
 import { createAppSuggestionModal } from './components/appSuggestionModal.js';
@@ -1106,11 +1106,7 @@ inboxBtn.addEventListener('click', () => {
 });
 
 helpBtn.addEventListener('click', () => {
-  const modal = createHelpModal({
-    supabase: getEffectiveSupabase(),
-    currentUserId,
-    canAdminister: hasGlobalReach() && getGlobalRole() === 'super_admin',
-  });
+  const modal = createAssistantModal({ supabase: getEffectiveSupabase(), currentUserId });
   modal.open();
   closeSidebar();
 });
