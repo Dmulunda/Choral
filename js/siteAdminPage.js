@@ -37,6 +37,7 @@ import { t } from './i18n.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { getEffectiveSupabase } from './departments.js';
+import { extractFunctionErrorMessage } from './utils/edgeFunctionError.js';
 
 const SUGGESTION_STATUSES = ['new', 'planned', 'done', 'declined'];
 const REQUEST_STATUSES = ['new', 'answered', 'closed'];
@@ -56,18 +57,6 @@ function getSaasClient() {
   return saasClient;
 }
 
-// supabase-js's functions.invoke() only gives a generic "Edge Function
-// returned a non-2xx status code" in error.message -- the real reason
-// (the JSON body this function's own error responses carry) is on
-// error.context, a raw Response object whose body hasn't been read yet.
-async function extractFunctionErrorMessage(error) {
-  if (!error) return 'Unknown error';
-  try {
-    const body = await error.context?.clone().json();
-    if (body?.error) return body.error;
-  } catch { /* context wasn't JSON (e.g. a network failure) -- fall through */ }
-  return error.message || 'Unknown error';
-}
 
 function centsOrBytesToSize(bytes) {
   if (!bytes) return '0 B';
