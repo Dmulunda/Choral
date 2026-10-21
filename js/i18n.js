@@ -498,11 +498,15 @@ const TRANSLATIONS = {
     'sidebar.guestCases': 'Guest Cases',
     'sidebar.appSuggestion': 'App Suggestion',
     'sidebar.siteAdmin': 'Site Admin',
+    'sidebar.pastoralDashboard': 'Pastoral Dashboard',
     'sidebar.supportRequest': 'Contact Support',
 
     'common.back': 'Back',
 
     'siteAdmin.title': 'Site Admin',
+    'pastoralDashboard.title': 'Pastoral Dashboard',
+    'pastoralDashboard.noAccess': 'Nothing to show here yet.',
+    'pastoralDashboard.tabPrayerRequests': 'Prayer Requests',
     'siteAdmin.tabInquiries': 'Website Inquiries',
     'siteAdmin.tabChurches': 'Churches',
     'siteAdmin.tabSandbox': 'Training Sandbox',
@@ -2955,11 +2959,15 @@ const TRANSLATIONS = {
     'sidebar.guestCases': 'Dossiers des invités',
     'sidebar.appSuggestion': "Suggestion pour l'appli",
     'sidebar.siteAdmin': 'Admin du site',
+    'sidebar.pastoralDashboard': 'Tableau de bord pastoral',
     'sidebar.supportRequest': 'Contacter le support',
 
     'common.back': 'Retour',
 
     'siteAdmin.title': 'Admin du site',
+    'pastoralDashboard.title': 'Tableau de bord pastoral',
+    'pastoralDashboard.noAccess': 'Rien à afficher ici pour le moment.',
+    'pastoralDashboard.tabPrayerRequests': 'Requêtes de prière',
     'siteAdmin.tabInquiries': 'Demandes du site web',
     'siteAdmin.tabChurches': 'Églises',
     'siteAdmin.tabSandbox': 'Bac à sable de formation',

@@ -42,6 +42,7 @@ import { createGuestOnboardingModal } from './components/guestOnboardingHub.js';
 import { createMemberCaseModal } from './components/memberCaseManager.js';
 import { renderPastorMeetingsTab } from './pastorMeetingsPage.js';
 import { renderSiteAdminTab } from './siteAdminPage.js';
+import { renderPastoralDashboardTab } from './pastoralDashboardPage.js';
 import { loadSiteAdminStatus, getIsSiteAdmin } from './siteAdmin.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
 import { createUrgentPrayerCasesModal } from './components/urgentPrayerCases.js';
@@ -132,6 +133,7 @@ const lazyTabs = {
   offerings: renderOfferingsPageTab,
   'pastor-meetings': renderPastorMeetingsTab,
   'site-admin': renderSiteAdminTab,
+  'pastoral-dashboard': renderPastoralDashboardTab,
 };
 let loadedTabs = new Set();
 let currentTabName = null;
@@ -191,6 +193,7 @@ function restoreScrollPosition(tabName) {
 // powers that page's own Back button (no top-level tab in this app has
 // one otherwise; everything else relies on the global sidebar Home icon).
 let siteAdminReturnTab = 'dashboard';
+let pastoralDashboardReturnTab = 'dashboard';
 
 // activateTab() only toggles a panel's visibility -- it never unmounts
 // or re-renders an already-loaded tab's DOM, so a tab whose data was
@@ -276,6 +279,8 @@ export function activateTab(name) {
 
 document.querySelector('[data-tab-panel="site-admin"] [data-el="site-admin-back"]')
   ?.addEventListener('click', () => activateTab(siteAdminReturnTab || 'dashboard'));
+document.querySelector('[data-tab-panel="pastoral-dashboard"] [data-el="pastoral-dashboard-back"]')
+  ?.addEventListener('click', () => activateTab(pastoralDashboardReturnTab || 'dashboard'));
 
 // Choir and every other department name the "same kind" of page
 // differently (dashboard/dept-dashboard, scheduling/dept-scheduling) —
@@ -299,7 +304,7 @@ const TAB_KIND_MAP = {
 // department-relative tab correctly does. Before this existed, being
 // on Site Admin (or any of these) when a reload fired silently
 // bounced you back to Home/Dashboard.
-const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events', 'flyers']);
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events', 'flyers', 'pastoral-dashboard']);
 
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
@@ -902,6 +907,16 @@ function updateSidebarToolsSelect() {
   options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
   options.push({ value: 'support-request', label: t('sidebar.supportRequest') });
   if (getIsSiteAdmin()) options.push({ value: 'site-admin', label: t('sidebar.siteAdmin') });
+  // Mirrors pastoralDashboardPage.js's own per-tab visibility checks,
+  // just collapsed into "does at least one tab show" for the nav
+  // entry itself.
+  if (
+    USHER_ATTENDANCE_ROLES.includes(getGlobalRole())
+    || getMyDepartments().some((d) => d.role === 'admin')
+    || getMyDepartments().some((d) => d.key === 'intercession' && (d.role === 'admin' || d.role === 'secretary'))
+  ) {
+    options.push({ value: 'pastoral-dashboard', label: t('sidebar.pastoralDashboard') });
+  }
   if (hasAccess) {
     if (!isViewingAs()) options.push({ value: 'report-absence', label: t('sidebar.reportAbsence') });
     if (active) {
@@ -976,6 +991,9 @@ export function runSidebarTool(value) {
   } else if (value === 'site-admin') {
     siteAdminReturnTab = currentTabName;
     activateTab('site-admin');
+  } else if (value === 'pastoral-dashboard') {
+    pastoralDashboardReturnTab = currentTabName;
+    activateTab('pastoral-dashboard');
   } else if (value === 'report-absence') {
     createReportAbsenceModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'join-department') {
