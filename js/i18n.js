@@ -407,6 +407,13 @@ const TRANSLATIONS = {
     'myProfile.saveFailed': 'Save failed: {message}',
     'myProfile.idCardTitle': 'My Member ID Card',
 
+    'account.dangerZone': 'Danger Zone',
+    'account.leaveChurchHint': 'Left this church or no longer want access? You can remove your own account access below. An admin can reinstate you later if needed.',
+    'account.leaveChurch': 'Leave this church',
+    'account.confirmLeaveChurch': 'Are you sure you want to leave this church? You\'ll be signed out immediately and lose access until an admin reinstates you.',
+    'account.leaveChurchFailed': 'Couldn\'t leave the church: {message}',
+    'account.leftChurch': 'You\'ve left the church. You\'ve been signed out.',
+
     'memberCard.loadFailed': 'Failed to load: {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
     'memberCard.churchAddress': '2244 Russell Rd, Ottawa, ON K1B 5K2, Canada',
@@ -2895,6 +2902,13 @@ const TRANSLATIONS = {
     'myProfile.saved': 'Enregistré.',
     'myProfile.saveFailed': "Échec de l'enregistrement : {message}",
     'myProfile.idCardTitle': "Ma carte de membre",
+
+    'account.dangerZone': 'Zone de danger',
+    'account.leaveChurchHint': "Vous avez quitté cette église ou ne souhaitez plus y avoir accès ? Vous pouvez retirer votre propre accès ci-dessous. Un administrateur pourra vous réintégrer plus tard si besoin.",
+    'account.leaveChurch': 'Quitter cette église',
+    'account.confirmLeaveChurch': "Voulez-vous vraiment quitter cette église ? Vous serez déconnecté immédiatement et perdrez l'accès jusqu'à ce qu'un administrateur vous réintègre.",
+    'account.leaveChurchFailed': "Impossible de quitter l'église : {message}",
+    'account.leftChurch': "Vous avez quitté l'église. Vous avez été déconnecté.",
 
     'memberCard.loadFailed': 'Échec du chargement : {message}',
     'memberCard.churchFullName': 'Communauté La Voix de la Puissance Divine',
