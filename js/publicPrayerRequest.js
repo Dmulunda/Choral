@@ -21,7 +21,17 @@ async function main() {
   applyStaticTranslations();
 
   const container = document.querySelector('#public-prayer-content');
+  renderHeader();
   renderForm(container);
+}
+
+async function renderHeader() {
+  // Name is a static i18n string already in prayer.html
+  // (memberCard.churchFullName, single tenant) -- only the logo needs
+  // a live fetch, and even that just falls back to the COP default
+  // already in the HTML if no logo has been set.
+  const { data } = await supabase.rpc('get_public_church_info');
+  if (data?.logo_url) document.querySelector('#prayer-header-logo').src = data.logo_url;
 }
 
 function renderForm(container) {
@@ -52,11 +62,6 @@ function renderForm(container) {
           ${t('prayerRequest.wantsContact')}
         </label>
       </div>
-
-      <label class="flex items-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" name="is_private" class="rounded border-slate-300">
-        ${t('prayerRequest.keepPrivate')}
-      </label>
 
       <!-- Honeypot: left visually and from assistive tech, a real
            visitor never fills it; a filled value makes the RPC
@@ -99,7 +104,7 @@ function renderForm(container) {
       p_phone: fd.get('phone') || null,
       p_email: fd.get('email') || null,
       p_wants_contact: fd.get('wants_contact') === 'on',
-      p_is_private: fd.get('is_private') === 'on',
+      p_is_private: false,
       p_honeypot: fd.get('website') || null,
     });
 
