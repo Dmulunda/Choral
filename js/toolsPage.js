@@ -8,7 +8,7 @@
 // instances Home owns.
 import { getGlobalRole, hasGlobalReach, isViewingAs } from './departments.js';
 import {
-  openDirectory, openSilentDirectory, openMemberCases, openPrayerRequests, openPastorMeetings,
+  openDirectory, openSilentDirectory, openMemberCases, openPrayerRequests, openPrayerLinkQr, openPastorMeetings,
   openReports, openLoginActivity, openCreateDepartment, openMenuCustomizer,
   openChurchLogo, openMessageModeration, openBibleImport, openPeopleImport,
   openGuestOnboardingHub, openAttendanceManager, openUsageDashboard,
@@ -56,6 +56,7 @@ export function renderToolsTab() {
         isPastoralTeam && { icon: '📋', color: '#0369a1', name: t('memberCase.title'), desc: t('tools.casesDesc'), onClick: openMemberCases },
         isPastoralTeam && { icon: '🙌', color: '#059669', name: t('guestHub.title'), desc: t('tools.guestHubDesc'), onClick: openGuestOnboardingHub },
         isPastoralTeam && { icon: '🙏', color: '#7c3aed', name: t('prayerRequest.queueTitle'), desc: t('tools.prayerDesc'), onClick: openPrayerRequests },
+        isPastoralTeam && { icon: '🔗', color: '#7c3aed', name: t('prayerRequest.linkTitle'), desc: t('tools.prayerLinkDesc'), onClick: openPrayerLinkQr },
         isPastoralTeam && { icon: '📊', color: '#059669', name: t('attendance.title'), desc: t('tools.attendanceDesc'), onClick: openAttendanceManager },
       ].filter(Boolean),
     },
