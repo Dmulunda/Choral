@@ -90,11 +90,19 @@ Deno.serve(async (req) => {
   if (booking.confirmation_email_sent_at) return json({ skipped: 'already sent' });
   if (booking.status !== 'confirmed') return json({ skipped: 'booking is not confirmed' });
 
-  const { data: settings } = await admin.from('pastor_meeting_settings').select('church_timezone').eq('id', true).maybeSingle();
+  const { data: settings } = await admin.from('pastor_meeting_settings').select('church_timezone, booking_note_en').eq('id', true).maybeSingle();
   const churchTimezone = settings?.church_timezone || 'America/Toronto';
-  const { data: branding } = await admin.from('church_branding').select('email, phone').eq('id', true).maybeSingle();
+  const bookingNote = settings?.booking_note_en || null;
+  const { data: branding } = await admin.from('church_branding').select('address, email, phone').eq('id', true).maybeSingle();
   const churchEmail = branding?.email || null;
   const churchPhone = branding?.phone || null;
+  const officeAddress = branding?.address || null;
+
+  // Single-tenant: the church's name is this app's own static i18n
+  // string everywhere else (memberCard.churchFullName) -- Deno edge
+  // functions don't share the browser-side i18n.js module, so it's
+  // repeated here as a plain constant.
+  const CHURCH_NAME = 'Communauté La Voix de la Puissance Divine';
 
   const isOnline = booking.meeting_type === 'online';
   let accessLine;
@@ -115,11 +123,14 @@ Deno.serve(async (req) => {
     : 'If you need to cancel or have questions, please contact the church office.';
 
   const html = `
+    <h2>${escapeHtml(CHURCH_NAME)}</h2>
     <p>Hi ${escapeHtml(booking.contact_name || '')},</p>
     <p>Your meeting with ${escapeHtml(pastorName)} is confirmed.</p>
     <p><strong>${escapeHtml(dateLine)}</strong></p>
     <p>${accessLine}</p>
+    ${!isOnline && officeAddress ? `<p>Address: ${escapeHtml(officeAddress)}</p>` : ''}
     <p>${contactLine}</p>
+    ${bookingNote ? `<p>${escapeHtml(bookingNote)}</p>` : ''}
   `;
 
   const resendKey = Deno.env.get('RESEND_API_KEY');
@@ -135,7 +146,7 @@ Deno.serve(async (req) => {
       from: fromAddress,
       to: [booking.guest_email],
       ...(churchEmail ? { reply_to: churchEmail } : {}),
-      subject: `Your meeting with ${pastorName} is confirmed`,
+      subject: `${CHURCH_NAME}: Your meeting with ${pastorName} is confirmed`,
       html,
     }),
   });
