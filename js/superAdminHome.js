@@ -55,6 +55,7 @@ let currentPeopleImportModal = null;
 let currentPastorMeetingQueueModal = null;
 let currentPrayerRequestQueueModal = null;
 let currentPrayerLinkQrModal = null;
+let currentMemberRegLinkQrModal = null;
 let currentAttendanceModal = null;
 
 // Every open*() below follows the same shape: if Home hasn't rendered
@@ -84,6 +85,10 @@ export async function openPrayerRequests() {
 export async function openPrayerLinkQr() {
   if (!currentPrayerLinkQrModal) await renderSuperAdminHomeTab();
   currentPrayerLinkQrModal?.open();
+}
+export async function openMemberRegLinkQr() {
+  if (!currentMemberRegLinkQrModal) await renderSuperAdminHomeTab();
+  currentMemberRegLinkQrModal?.open();
 }
 export async function openPastorMeetings() {
   if (!currentPastorMeetingQueueModal) await renderSuperAdminHomeTab();
@@ -195,6 +200,7 @@ export async function renderSuperAdminHomeTab() {
   currentPastorMeetingQueueModal?.root.remove();
   currentPrayerRequestQueueModal?.root.remove();
   currentPrayerLinkQrModal?.root.remove();
+  currentMemberRegLinkQrModal?.root.remove();
   currentAttendanceModal?.root.remove();
 
   // Modals are still created here unconditionally-per-role (not gated
@@ -223,6 +229,11 @@ export async function renderSuperAdminHomeTab() {
       pageFile: 'prayer.html',
       titleKey: 'prayerLinkQr.title',
       hintKey: 'prayerLinkQr.hint',
+    });
+    currentMemberRegLinkQrModal = createPublicLinkQrModal({
+      pageFile: 'register.html',
+      titleKey: 'memberRegLinkQr.title',
+      hintKey: 'memberRegLinkQr.hint',
     });
     currentAttendanceModal = createAttendanceManagerModal({ supabase, currentUserId: user.id });
   }

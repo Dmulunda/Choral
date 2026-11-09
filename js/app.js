@@ -45,6 +45,7 @@ import { renderSiteAdminTab } from './siteAdminPage.js';
 import { renderPastoralDashboardTab } from './pastoralDashboardPage.js';
 import { loadSiteAdminStatus, getIsSiteAdmin } from './siteAdmin.js';
 import { createPrayerRequestModal } from './components/prayerRequests.js';
+import { createMemberRegistrationModal } from './components/memberRegistrationModal.js';
 import { createUrgentPrayerCasesModal } from './components/urgentPrayerCases.js';
 import { createChangePasswordModal } from './components/changePasswordModal.js';
 import { createMyProfileModal } from './components/myProfileModal.js';
@@ -909,6 +910,7 @@ function updateSidebarToolsSelect() {
   options.push({ value: 'join-department', label: t('sidebar.joinDepartment') });
   options.push({ value: 'pastor-meeting', label: t('sidebar.pastorMeeting') });
   options.push({ value: 'prayer-request', label: t('sidebar.prayerRequest') });
+  options.push({ value: 'member-registration', label: t('sidebar.memberRegistration') });
   // Mirrors urgent_prayer_cases' own insert policy (sql/110) as
   // closely as this client can -- same Church-Admin gap noted
   // elsewhere, not loaded client-side yet.
@@ -1011,6 +1013,8 @@ export function runSidebarTool(value) {
     activateTab('pastor-meetings');
   } else if (value === 'prayer-request') {
     createPrayerRequestModal({ supabase: effectiveSupabase, currentUserId }).open();
+  } else if (value === 'member-registration') {
+    createMemberRegistrationModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'urgent-prayer-cases') {
     createUrgentPrayerCasesModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'department-rules' && active) {

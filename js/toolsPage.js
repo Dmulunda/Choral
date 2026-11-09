@@ -8,7 +8,7 @@
 // instances Home owns.
 import { getGlobalRole, hasGlobalReach, isViewingAs } from './departments.js';
 import {
-  openDirectory, openSilentDirectory, openMemberCases, openPrayerRequests, openPrayerLinkQr, openPastorMeetings,
+  openDirectory, openSilentDirectory, openMemberCases, openPrayerRequests, openPrayerLinkQr, openMemberRegLinkQr, openPastorMeetings,
   openReports, openLoginActivity, openCreateDepartment, openMenuCustomizer,
   openChurchLogo, openMessageModeration, openBibleImport, openPeopleImport,
   openGuestOnboardingHub, openAttendanceManager, openUsageDashboard,
@@ -46,6 +46,7 @@ export function renderToolsTab() {
         { icon: '🚪', color: '#334155', name: t('sidebar.joinDepartment'), desc: t('tools.joinDepartmentDesc'), onClick: () => runSidebarTool('join-department') },
         { icon: '🗓️', color: '#b45309', name: t('sidebar.pastorMeeting'), desc: t('tools.pastorMeetingRequestDesc'), onClick: () => runSidebarTool('pastor-meeting') },
         { icon: '🙏', color: '#7c3aed', name: t('sidebar.prayerRequest'), desc: t('tools.prayerRequestSubmitDesc'), onClick: () => runSidebarTool('prayer-request') },
+        { icon: '📝', color: '#0369a1', name: t('sidebar.memberRegistration'), desc: t('tools.memberRegistrationSubmitDesc'), onClick: () => runSidebarTool('member-registration') },
       ].filter(Boolean),
     },
     {
@@ -57,6 +58,7 @@ export function renderToolsTab() {
         isPastoralTeam && { icon: '🙌', color: '#059669', name: t('guestHub.title'), desc: t('tools.guestHubDesc'), onClick: openGuestOnboardingHub },
         isPastoralTeam && { icon: '🙏', color: '#7c3aed', name: t('prayerRequest.queueTitle'), desc: t('tools.prayerDesc'), onClick: openPrayerRequests },
         isPastoralTeam && { icon: '🔗', color: '#7c3aed', name: t('prayerRequest.linkTitle'), desc: t('tools.prayerLinkDesc'), onClick: openPrayerLinkQr },
+        isPastoralTeam && { icon: '📝', color: '#0369a1', name: t('memberRegistration.linkTitle'), desc: t('tools.memberRegLinkDesc'), onClick: openMemberRegLinkQr },
         isPastoralTeam && { icon: '📊', color: '#059669', name: t('attendance.title'), desc: t('tools.attendanceDesc'), onClick: openAttendanceManager },
       ].filter(Boolean),
     },
