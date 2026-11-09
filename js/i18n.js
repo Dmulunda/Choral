@@ -713,6 +713,16 @@ const TRANSLATIONS = {
 
     'sidebar.manageChurchAdmins': 'Manage Church Admins',
     'churchAdmin.manageTitle': 'Church Admins',
+
+    'invite.title': 'Invite Members',
+    'invite.failedToLoad': 'Failed to load: {message}',
+    'invite.linkIntro': 'Share this link with people you want to join the church:',
+    'invite.copy': 'Copy',
+    'invite.copied': 'Copied to clipboard.',
+    'invite.allowToggleLabel': 'Allow people to sign up with this link',
+    'invite.allowToggleHint': 'Turn this off to require every new member\'s account be created by an admin instead.',
+    'invite.toggleSaved': 'Saved.',
+    'invite.toggleFailed': 'Failed to save: {message}',
     'churchAdmin.intro': 'Church Admins get elevated access across this church (Prayer Requests, Member Cases, Urgent Prayer Cases) without needing a specific department role.',
     'churchAdmin.loadFailed': 'Failed to load: {message}',
     'churchAdmin.addByEmail': 'Add by email',
@@ -1887,6 +1897,7 @@ const TRANSLATIONS = {
 
     'auth.joinDepartments': 'Which departments would you like to join?',
     'auth.joinDepartmentsHint': 'An admin for each department needs to approve your request before you can access it.',
+    'auth.selfSignupDisabled': "This church isn't accepting open sign-ups right now — ask an admin to create your account.",
 
     'announcements.title': 'Announcements',
     'announcements.titlePlaceholder': 'Announcement title',
@@ -3438,6 +3449,16 @@ const TRANSLATIONS = {
 
     'sidebar.manageChurchAdmins': 'Gérer les Admins d’église',
     'churchAdmin.manageTitle': 'Admins d’église',
+
+    'invite.title': 'Inviter des membres',
+    'invite.failedToLoad': 'Échec du chargement : {message}',
+    'invite.linkIntro': "Partagez ce lien avec les personnes que vous souhaitez voir rejoindre l'église :",
+    'invite.copy': 'Copier',
+    'invite.copied': 'Copié dans le presse-papiers.',
+    'invite.allowToggleLabel': "Autoriser les gens à s'inscrire avec ce lien",
+    'invite.allowToggleHint': "Désactivez ceci pour exiger que chaque nouveau compte membre soit créé par un administrateur à la place.",
+    'invite.toggleSaved': 'Enregistré.',
+    'invite.toggleFailed': "Échec de l'enregistrement : {message}",
     'churchAdmin.intro': "Les Admins d'église obtiennent un accès élargi dans cette église (Requêtes de prière, Dossiers des membres, Cas de prière urgents) sans avoir besoin d'un rôle de département spécifique.",
     'churchAdmin.loadFailed': 'Échec du chargement : {message}',
     'churchAdmin.addByEmail': 'Ajouter par courriel',
@@ -4612,6 +4633,7 @@ const TRANSLATIONS = {
 
     'auth.joinDepartments': 'À quels départements souhaitez-vous adhérer ?',
     'auth.joinDepartmentsHint': "Un administrateur de chaque département doit approuver votre demande avant que vous puissiez y accéder.",
+    'auth.selfSignupDisabled': "Cette église n'accepte pas les inscriptions ouvertes pour le moment — demandez à un administrateur de créer votre compte.",
 
     'announcements.title': 'Annonces',
     'announcements.titlePlaceholder': "Titre de l'annonce",

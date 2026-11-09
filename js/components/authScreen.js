@@ -7,6 +7,17 @@ import { extractFunctionErrorMessage } from '../utils/edgeFunctionError.js';
 
 export function renderAuthScreen(container, { supabase }) {
   let mode = 'login';
+  // Whether the Sign Up tab is shown at all -- signup_settings is a
+  // one-row church-wide toggle (sql/141_signup_settings_invite_link.sql),
+  // readable by anon since this runs pre-auth. Starts hidden (secure
+  // default) until checkSignupSettings() resolves, same as sandbox2's
+  // own invite-link gating. ?join=1 is this app's "invite link" --
+  // with no slug to resolve (one church), it only decides whether to
+  // auto-switch into the Sign Up tab (when allowed) or explain why
+  // it's hidden (when not) -- visibility itself always follows the
+  // toggle, not the query param.
+  let allowSelfSignup = false;
+  const joinRequested = new URLSearchParams(window.location.search).get('join') === '1';
 
   container.innerHTML = `
     <div class="w-full max-w-md">
@@ -25,9 +36,10 @@ export function renderAuthScreen(container, { supabase }) {
             <div class="flex mb-6 rounded-lg bg-slate-100 p-1">
               <button type="button" data-mode="login"
                       class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signIn')}</button>
-              <button type="button" data-mode="signup"
-                      class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signUp')}</button>
+              <button type="button" data-mode="signup" data-el="signup-tab-btn" class="hidden flex-1 py-1.5 rounded-md text-sm font-medium transition-colors">${t('auth.signUp')}</button>
             </div>
+
+            <p data-el="self-signup-disabled" class="hidden text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">${t('auth.selfSignupDisabled')}</p>
 
             <form data-el="form" class="space-y-4">
               <div data-el="full-name-field" class="hidden">
@@ -109,6 +121,8 @@ export function renderAuthScreen(container, { supabase }) {
   `;
 
   const modeButtons = container.querySelectorAll('[data-mode]');
+  const signupTabBtn = container.querySelector('[data-el="signup-tab-btn"]');
+  const selfSignupDisabledEl = container.querySelector('[data-el="self-signup-disabled"]');
   const fullNameField = container.querySelector('[data-el="full-name-field"]');
   const departmentsField = container.querySelector('[data-el="departments-field"]');
   const silentMatchEl = container.querySelector('[data-el="silent-match"]');
@@ -153,6 +167,18 @@ export function renderAuthScreen(container, { supabase }) {
 
   modeButtons.forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
   setMode('login');
+  checkSignupSettings();
+
+  async function checkSignupSettings() {
+    const { data } = await supabase.from('signup_settings').select('allow_self_signup').eq('id', true).maybeSingle();
+    allowSelfSignup = data?.allow_self_signup ?? true;
+    signupTabBtn.classList.toggle('hidden', !allowSelfSignup);
+    if (!allowSelfSignup && joinRequested) {
+      selfSignupDisabledEl.classList.remove('hidden');
+    } else if (allowSelfSignup && joinRequested) {
+      setMode('signup');
+    }
+  }
 
   // Confirming "yes" only remembers which Silent record was matched;
   // the actual upgrade (and its server-side corroboration check)
