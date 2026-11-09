@@ -8,7 +8,7 @@
 // instances Home owns.
 import { getGlobalRole, hasGlobalReach, isViewingAs } from './departments.js';
 import {
-  openDirectory, openSilentDirectory, openMemberCases, openMemberDirectory, openPrayerRequests, openPrayerLinkQr, openMemberRegLinkQr, openPastorMeetings,
+  openDirectory, openSilentDirectory, openMemberCases, openMemberDirectory, openExitTracking, openPrayerRequests, openPrayerLinkQr, openMemberRegLinkQr, openPastorMeetings,
   openReports, openLoginActivity, openCreateDepartment, openMenuCustomizer,
   openChurchLogo, openMessageModeration, openBibleImport, openPeopleImport,
   openGuestOnboardingHub, openAttendanceManager, openUsageDashboard,
@@ -56,6 +56,7 @@ export function renderToolsTab() {
         isGlobalReach && { icon: '🤫', color: '#4f46e5', name: t('silentDirectory.title'), desc: t('tools.silentDirectoryDesc'), onClick: openSilentDirectory },
         isPastoralTeam && { icon: '📋', color: '#0369a1', name: t('memberCase.title'), desc: t('tools.casesDesc'), onClick: openMemberCases },
         isPastoralTeam && { icon: '🗂️', color: '#0369a1', name: t('memberDirectory.title'), desc: t('tools.memberDirectoryDesc'), onClick: openMemberDirectory },
+        isPastoralTeam && { icon: '📉', color: '#dc2626', name: t('memberExit.trackingTitle'), desc: t('tools.exitTrackingDesc'), onClick: openExitTracking },
         isPastoralTeam && { icon: '🙌', color: '#059669', name: t('guestHub.title'), desc: t('tools.guestHubDesc'), onClick: openGuestOnboardingHub },
         isPastoralTeam && { icon: '🙏', color: '#7c3aed', name: t('prayerRequest.queueTitle'), desc: t('tools.prayerDesc'), onClick: openPrayerRequests },
         isPastoralTeam && { icon: '🔗', color: '#7c3aed', name: t('prayerRequest.linkTitle'), desc: t('tools.prayerLinkDesc'), onClick: openPrayerLinkQr },

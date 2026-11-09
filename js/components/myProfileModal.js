@@ -10,6 +10,7 @@ import { t } from '../i18n.js';
 import { renderMemberIdCard } from './memberIdCard.js';
 import { createSignaturePad } from './signaturePad.js';
 import { confirmDialog } from './confirmDialog.js';
+import { exitReasonDialog } from './memberExitModal.js';
 
 export function createMyProfileModal({ supabase, userId }) {
   const root = document.createElement('div');
@@ -196,7 +197,18 @@ export function createMyProfileModal({ supabase, userId }) {
     const ok = await confirmDialog({ message: t('account.confirmLeaveChurch'), danger: true });
     if (!ok) return;
 
-    const { error } = await supabase.rpc('leave_church');
+    const reason = await exitReasonDialog({ skippable: true });
+    if (!reason) return;
+
+    const { error } = await supabase.rpc('leave_church', {
+      p_main_reason: reason.main_reason,
+      p_other_reasons: reason.other_reasons,
+      p_reason_title: reason.reason_title,
+      p_notes: reason.notes,
+      p_how_we_know: reason.how_we_know,
+      p_joined_other_church: reason.joined_other_church,
+      p_open_to_follow_up: reason.open_to_follow_up,
+    });
     if (error) {
       window.alert(t('account.leaveChurchFailed', { message: error.message }));
       return;
