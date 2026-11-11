@@ -2406,7 +2406,7 @@ const TRANSLATIONS = {
     'memberCreator.success': 'Account created for {name}. Share this password with them: {password}',
 
     'nav.home': 'Home',
-    'nav.tools': 'Tools',
+    'nav.tools': 'Settings',
     'nav.quickAccess': 'Quick Access',
     'directory.title': 'User Directory',
     'directory.userStatus.new_guest': 'New Guest',
@@ -5142,7 +5142,7 @@ const TRANSLATIONS = {
     'memberCreator.success': 'Compte créé pour {name}. Partagez ce mot de passe avec cette personne : {password}',
 
     'nav.home': 'Accueil',
-    'nav.tools': 'Outils',
+    'nav.tools': 'Paramètres',
     'nav.quickAccess': 'Accès rapide',
     'directory.title': 'Annuaire des utilisateurs',
     'directory.userStatus.new_guest': 'Nouveau visiteur',
