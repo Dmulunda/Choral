@@ -19,7 +19,7 @@
 // bulk — Excel/CSV, or a best-effort PDF parse, of whatever a church
 // used before this system, reviewed row by row before anything is
 // written.
-import { t, appLocale } from '../i18n.js';
+import { t, appLocale, formatDate, formatMoney } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { getGlobalRole, canDeleteOfferings } from '../departments.js';
 import { createOfferingsImportModal } from './offeringsImport.js';
@@ -304,11 +304,11 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
         : escapeHtml(row.donor_name);
       return `
         <tr class="border-b border-slate-100" data-row-id="${row.id}">
-          <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(row.offering_date)}</td>
+          <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(formatDate(row.offering_date))}</td>
           <td class="py-2 pr-3">${nameCell}</td>
           <td class="py-2 pr-3">${escapeHtml(t(`offerings.type.${row.offering_type}`))}</td>
           <td class="py-2 pr-3">${escapeHtml(paymentLabel)}</td>
-          <td class="py-2 pr-3 text-right whitespace-nowrap">$${centsToDollarsStr(row.amount_cents)} <span class="text-slate-400">${escapeHtml(currencyLabel(row))}</span></td>
+          <td class="py-2 pr-3 text-right whitespace-nowrap">${formatMoney(row.amount_cents / 100)} <span class="text-slate-400">${escapeHtml(currencyLabel(row))}</span></td>
           <td class="py-2 pr-3 text-slate-500">${escapeHtml(row.recorder?.full_name || '—')}</td>
           <td class="py-2 text-right">${canEdit ? `<button type="button" data-action="delete" class="text-xs text-rose-600 hover:text-rose-700">${t('offerings.delete')}</button>` : ''}</td>
         </tr>
@@ -346,7 +346,7 @@ export function renderOfferingsBoard(container, { supabase, currentUserId }) {
 
     reportsListEl.innerHTML = data.map((row) => `
       <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-sm">
-        <span>${escapeHtml(row.period_start)} — ${escapeHtml(row.period_end)}</span>
+        <span>${escapeHtml(formatDate(row.period_start))} — ${escapeHtml(formatDate(row.period_end))}</span>
         <span>${row.pdf_storage_path
           ? `<a href="#" data-period-id="${escapeAttr(row.id)}" class="text-indigo-600 hover:text-indigo-700 font-medium" data-action="download">${t('offerings.downloadPdf')}</a>`
           : `<span class="text-slate-400">${t('offerings.pdfPending')}</span>`}</span>

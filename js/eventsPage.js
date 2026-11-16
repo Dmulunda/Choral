@@ -16,7 +16,7 @@ import { getEffectiveSupabase, getGlobalRole } from './departments.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { activateTab, invalidateTabCache } from './app.js';
 import { openFlyerForEvent } from './flyersPage.js';
-import { t, appLocale } from './i18n.js';
+import { t, appLocale, formatMoney } from './i18n.js';
 import { publicPageUrl } from './utils/publicUrl.js';
 
 export async function renderEventsTab() {
@@ -453,7 +453,7 @@ async function renderEventDetail(container, { supabase, event, canManage, depart
 }
 
 function formatPriceCents(cents) {
-  return cents ? `$${(cents / 100).toFixed(2)}` : t('events.free');
+  return cents ? `${formatMoney(cents / 100)}` : t('events.free');
 }
 
 function toLocalInputValue(iso) {
