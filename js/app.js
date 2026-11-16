@@ -980,7 +980,7 @@ function updateSidebarToolsSelect() {
   const grouped = new Set(TOOL_GROUPS.flatMap(([, values]) => values));
   const groupsHtml = TOOL_GROUPS.map(([labelKey, values]) => {
     const opts = values.map((v) => options.find((o) => o.value === v)).filter(Boolean);
-    return opts.length ? `<optgroup label="${escapeHtmlAttr(t(labelKey))}" style="background:#1e293b;color:#fbbf24">${opts.map(optionHtml).join('')}</optgroup>` : '';
+    return opts.length ? `<optgroup label="${escapeHtmlText(t(labelKey)).replaceAll('"', '&quot;')}" style="background:#1e293b;color:#fbbf24">${opts.map(optionHtml).join('')}</optgroup>` : '';
   }).join('');
   // Any option not assigned to a group above still shows, at the end.
   const ungroupedHtml = options.filter((o) => !grouped.has(o.value)).map(optionHtml).join('');
