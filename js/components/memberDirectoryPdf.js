@@ -5,7 +5,7 @@
 // than paginating). Main is single-tenant -- the church name is the
 // same static i18n string (memberCard.churchFullName) every other
 // public-facing page in this app already uses, not a live tenant fetch.
-import { t } from '../i18n.js';
+import { t, appLocale } from '../i18n.js';
 
 const PAGE_WIDTH = 1400;
 const ROW_HEIGHT = 34;
@@ -26,7 +26,7 @@ export async function exportMemberDirectoryPdf({ rows, columns, filtersSummary }
   wrap.innerHTML = `
     <div style="margin-bottom:16px;">
       <div style="font-size:18px;font-weight:700;">${escapeHtml(churchName)}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${escapeHtml(t('memberDirectory.title'))} — ${escapeHtml(new Date().toLocaleDateString())}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">${escapeHtml(t('memberDirectory.title'))} — ${escapeHtml(new Date().toLocaleDateString(appLocale()))}</div>
       <div style="font-size:11px;color:#94a3b8;margin-top:2px;">${escapeHtml(filtersSummary || '')}</div>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;">

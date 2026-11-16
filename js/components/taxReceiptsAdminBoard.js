@@ -5,7 +5,7 @@
 // oversight-only third tab (hasFinanceOversight()) -- matches how the
 // Reimbursements inbox there is oversight-only too, since this is a
 // church-wide financial/legal feature, not a per-department one.
-import { t } from '../i18n.js';
+import { t, formatMoney } from '../i18n.js';
 import { confirmDialog } from './confirmDialog.js';
 import { createTaxReceiptSettingsModal } from './taxReceiptSettingsModal.js';
 import { createTaxDonationImportModal } from './taxDonationImport.js';
@@ -122,6 +122,6 @@ export function renderTaxReceiptsAdminBoard(container, { supabase, currentUserId
 }
 
 function formatAmount(amount, currency) {
-  const base = '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const base = formatMoney(amount);
   return currency ? `${base} ${currency}` : base;
 }

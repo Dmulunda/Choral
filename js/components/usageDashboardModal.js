@@ -13,7 +13,7 @@
 // admin who has both systems open needs a color cue, not just a page
 // title, to tell which Usage Dashboard they're looking at (SAAS's own
 // copy, js/siteAdminPage.js, stays indigo).
-import { t } from '../i18n.js';
+import { t, appLocale } from '../i18n.js';
 
 let chartJsPromise = null;
 function loadChartJs() {
@@ -164,7 +164,7 @@ export function createUsageDashboardModal({ supabase }) {
     for (let i = 29; i >= 0; i -= 1) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const key = d.toISOString().slice(0, 10);
-      labels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+      labels.push(d.toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' }));
       counts.push(byDay.get(key) || 0);
     }
     new Chart(canvas, {

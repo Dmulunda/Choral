@@ -33,7 +33,7 @@
 // bell for suggestions/requests, or by email for anonymous
 // website_inquiries (site-admin-usage Edge Function's reply_to_inquiry
 // action, since there's no account to notify).
-import { t } from './i18n.js';
+import { t, appLocale } from './i18n.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { getEffectiveSupabase } from './departments.js';
@@ -208,7 +208,7 @@ export async function renderSiteAdminTab() {
           <div class="text-xs text-slate-500">
             ${topicBadge}<span class="font-medium text-slate-700">${escapeHtml(row.name)}</span>
             ${contactBits ? ` · ${contactBits}` : ''}
-            · ${new Date(row.created_at).toLocaleDateString()}
+            · ${new Date(row.created_at).toLocaleDateString(appLocale())}
           </div>
         </div>
         ${row.message ? `<p class="text-sm text-slate-800 mb-3 whitespace-pre-wrap">${escapeHtml(row.message)}</p>` : ''}
@@ -310,7 +310,7 @@ export async function renderSiteAdminTab() {
           <td class="px-3 py-2">${escapeHtml(row.status)}</td>
           <td class="px-3 py-2 text-right">${row.member_count} / ${row.department_count}</td>
           <td class="px-3 py-2 text-right whitespace-nowrap">${centsOrBytesToSize(totalBytes)}</td>
-          <td class="px-3 py-2 text-slate-500">${row.last_active_at ? new Date(row.last_active_at).toLocaleDateString() : '—'}</td>
+          <td class="px-3 py-2 text-slate-500">${row.last_active_at ? new Date(row.last_active_at).toLocaleDateString(appLocale()) : '—'}</td>
           <td class="px-3 py-2 text-right">
             ${isDeleted
               ? `<button type="button" data-action="restore" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">${t('siteAdmin.restore')}</button>`
@@ -416,7 +416,7 @@ export async function renderSiteAdminTab() {
           <div class="text-xs text-slate-500">
             ${systemBadge}${topicBadge}<span class="font-medium text-slate-700">${escapeHtml(row.full_name || '—')}</span>
             ${row.tenant_name ? ` · ${escapeHtml(row.tenant_name)}` : ''}
-            · ${new Date(row.created_at).toLocaleDateString()}
+            · ${new Date(row.created_at).toLocaleDateString(appLocale())}
           </div>
         </div>
         <p class="text-sm text-slate-800 mb-3 whitespace-pre-wrap">${escapeHtml(row.message)}</p>
@@ -439,7 +439,7 @@ export async function renderSiteAdminTab() {
   function buildReplyBlock(row) {
     return `
       <div class="border-t border-slate-100 pt-2 mt-1">
-        ${row.site_admin_reply ? `<p class="text-xs text-slate-500 mb-1">${t('siteAdmin.alreadyReplied', { date: new Date(row.replied_at).toLocaleDateString() })}</p>` : ''}
+        ${row.site_admin_reply ? `<p class="text-xs text-slate-500 mb-1">${t('siteAdmin.alreadyReplied', { date: new Date(row.replied_at).toLocaleDateString(appLocale()) })}</p>` : ''}
         <textarea data-el="reply" rows="2" placeholder="${escapeHtml(t('siteAdmin.replyPlaceholder'))}"
                   class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mb-1">${escapeHtml(row.site_admin_reply || '')}</textarea>
         <div class="flex items-center gap-2">
@@ -557,7 +557,7 @@ export async function renderSiteAdminTab() {
             ${escapeHtml(a.full_name || '—')}
             <span class="text-[11px] font-semibold px-1.5 py-0.5 rounded ${a._system === 'SAAS' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}">${a._system}</span>
           </p>
-          <p class="text-xs text-slate-500">${escapeHtml(a.tenant_name || '—')} · ${t('siteAdmin.grantedOn', { date: new Date(a.granted_at).toLocaleDateString() })}</p>
+          <p class="text-xs text-slate-500">${escapeHtml(a.tenant_name || '—')} · ${t('siteAdmin.grantedOn', { date: new Date(a.granted_at).toLocaleDateString(appLocale()) })}</p>
         </div>
         <button type="button" data-action="remove" class="text-sm text-rose-600 hover:text-rose-700">${t('siteAdmin.remove')}</button>
       </div>
