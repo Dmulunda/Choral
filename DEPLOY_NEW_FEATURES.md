@@ -25,3 +25,19 @@ Optional: `CHURCH_NAME` (default "La Voix de la Puissance Divine").
 
 ## Publish
 `git push origin main`
+
+## Guest portal and member privacy (November 2026)
+
+Already done on the database:
+- sql/157_profile_privacy.sql: guests (no approved department, no global
+  role, not marked member) only see their own profile; small groups are
+  members-only; get_profiles_private() and get_card_pastor_signature().
+- Edge function `public-portal` (public program, public events, sermons).
+
+To finish after `git push origin main` is live:
+1. Apply sql/158_profile_private_columns.sql. It hides address, birth
+   place, legal name and signature from direct reads. Apply it only
+   after the new app code is live (older code reads those columns
+   directly and would show "permission denied").
+2. Share https://app.eglisevpd.com/welcome.html (QR code at the entrance,
+   social media).

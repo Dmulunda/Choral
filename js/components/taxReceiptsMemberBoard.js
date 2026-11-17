@@ -11,6 +11,7 @@
 // html2canvas, embed the PNG into a jsPDF doc, hand it to the same
 // share-sheet-first / download-link-fallback delivery every other PDF
 // export in this app already uses.
+import { mergePrivateFields } from '../utils/privateProfile.js';
 import { t, appLocale, formatMoney } from '../i18n.js';
 import { createMyProfileModal } from './myProfileModal.js';
 
@@ -21,7 +22,7 @@ export async function renderTaxReceiptsMemberBoard(container, { supabase, userId
   container.innerHTML = `<p class="text-slate-500">${t('common.loading')}</p>`;
 
   const [{ data: profile, error: profileError }, { data: entries, error: entriesError }, { data: years }, { data: receipts }] = await Promise.all([
-    supabase.from('profiles').select('legal_name').eq('id', userId).single(),
+    supabase.from('profiles').select('id').eq('id', userId).single().then(async (r) => (r.data ? { ...r, data: (await mergePrivateFields(supabase, [r.data]))[0] } : r)),
     supabase.from('donation_entries').select('fiscal_year, amount, currency').eq('member_id', userId),
     supabase.from('tax_receipt_years').select('fiscal_year, status'),
     supabase.from('tax_receipts').select('fiscal_year, receipt_number, total_amount, currency, legal_name_snapshot, tenant_info_snapshot, issued_at').eq('member_id', userId),
