@@ -38,6 +38,14 @@ Already done on the database:
   TikTok and WhatsApp links on church_branding (edited in Super Admin
   Home -> Change Info).
 
+- Live services: edge function `live-status` + sql/160_live_status_cache.sql.
+  It reads the YouTube link from Change Info, checks the channel's /live
+  page (cached 60 s) and returns live / upcoming / video id. Pages:
+  live.html (dedicated live page), a live banner on welcome.html, and a
+  red banner at the top of the member app. (`live-status-debug` was a
+  temporary test function; it now returns 410 and can be deleted from
+  the Supabase dashboard.)
+
 To finish after `git push origin main` is live:
 1. Apply sql/158_profile_private_columns.sql. It hides address, birth
    place, legal name and signature from direct reads. Apply it only

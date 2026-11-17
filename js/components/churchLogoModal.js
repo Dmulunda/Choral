@@ -102,7 +102,8 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
       <p class="text-xs text-slate-400 mb-2">${t('logo.socialHint')}</p>
       ${SOCIAL_FIELDS.map((f) => `
         <label class="block text-sm font-medium text-slate-600 mb-1">${t(`logo.social.${f}`)}</label>
-        <input type="url" data-social="${f}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${SOCIAL_PLACEHOLDERS[f]}" value="${escapeAttr(links[f] || '')}" />`).join('')}
+        <input type="url" data-social="${f}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${SOCIAL_PLACEHOLDERS[f]}" value="${escapeAttr(links[f] || '')}" />
+        ${f === 'youtube_url' ? `<p class="text-xs text-slate-400 -mt-1 mb-2">${t('logo.youtubeLiveHint')}</p>` : ''}`).join('')}
       <p data-el="address-status" class="text-sm mb-2"></p>
       <button type="button" data-action="save-address" class="w-full px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 disabled:opacity-50">
         ${t('logo.saveAddressButton')}
