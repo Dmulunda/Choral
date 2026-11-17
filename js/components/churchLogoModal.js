@@ -16,11 +16,22 @@ const BUCKET = 'church-logo';
 const MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
 
+// Social links shown on the public welcome page (sql/159).
+const SOCIAL_FIELDS = ['website_url', 'facebook_url', 'youtube_url', 'instagram_url', 'tiktok_url', 'whatsapp_url'];
+const SOCIAL_PLACEHOLDERS = {
+  website_url: 'https://www.eglisevpd.com',
+  facebook_url: 'https://www.facebook.com/…',
+  youtube_url: 'https://www.youtube.com/@…',
+  instagram_url: 'https://www.instagram.com/…',
+  tiktok_url: 'https://www.tiktok.com/@…',
+  whatsapp_url: 'https://whatsapp.com/channel/…',
+};
+
 export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
   const root = document.createElement('div');
   root.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
   root.innerHTML = `
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">${t('logo.title')}</h2>
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
@@ -36,15 +47,15 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
-    const { data, error } = await supabase.from('church_branding').select('logo_url, address, email, phone').eq('id', true).maybeSingle();
+    const { data, error } = await supabase.from('church_branding').select('logo_url, address, email, phone, website_url, facebook_url, youtube_url, instagram_url, tiktok_url, whatsapp_url').eq('id', true).maybeSingle();
     if (error) {
       bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('logo.failedToLoad', { message: error.message })}</p>`;
       return;
     }
-    render(data?.logo_url || null, data?.address || '', data?.email || '', data?.phone || '');
+    render(data?.logo_url || null, data?.address || '', data?.email || '', data?.phone || '', data || {});
   }
 
-  function render(logoUrl, address, email, phone) {
+  function render(logoUrl, address, email, phone, links = {}) {
     bodyEl.innerHTML = '';
 
     if (logoUrl) {
@@ -87,6 +98,11 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
       <input type="email" data-el="email-input" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${t('logo.emailPlaceholder')}" value="${escapeAttr(email)}" />
       <label class="block text-sm font-medium text-slate-600 mb-1">${t('logo.phoneLabel')}</label>
       <input type="tel" data-el="phone-input" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${t('logo.phonePlaceholder')}" value="${escapeAttr(phone)}" />
+      <h3 class="text-sm font-semibold text-slate-700 mt-4 mb-1">${t('logo.socialTitle')}</h3>
+      <p class="text-xs text-slate-400 mb-2">${t('logo.socialHint')}</p>
+      ${SOCIAL_FIELDS.map((f) => `
+        <label class="block text-sm font-medium text-slate-600 mb-1">${t(`logo.social.${f}`)}</label>
+        <input type="url" data-social="${f}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${SOCIAL_PLACEHOLDERS[f]}" value="${escapeAttr(links[f] || '')}" />`).join('')}
       <p data-el="address-status" class="text-sm mb-2"></p>
       <button type="button" data-action="save-address" class="w-full px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 disabled:opacity-50">
         ${t('logo.saveAddressButton')}
@@ -99,20 +115,33 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
     const phoneInput = contactSection.querySelector('[data-el="phone-input"]');
     const addressStatusEl = contactSection.querySelector('[data-el="address-status"]');
     const saveAddressBtn = contactSection.querySelector('[data-action="save-address"]');
-    saveAddressBtn.addEventListener('click', () => saveContactInfo(addressInput, emailInput, phoneInput, addressStatusEl, saveAddressBtn));
+    saveAddressBtn.addEventListener('click', () => saveContactInfo(addressInput, emailInput, phoneInput, addressStatusEl, saveAddressBtn, contactSection));
   }
 
-  async function saveContactInfo(addressInput, emailInput, phoneInput, statusEl, button) {
+  async function saveContactInfo(addressInput, emailInput, phoneInput, statusEl, button, contactSection) {
     const address = addressInput.value.trim() || null;
     const email = emailInput.value.trim() || null;
     const phone = phoneInput.value.trim() || null;
+    const links = {};
+    for (const input of contactSection.querySelectorAll('[data-social]')) {
+      let v = input.value.trim().replace(/^http:\/\//i, 'https://');
+      if (v && !/^https:\/\//i.test(v)) v = `https://${v}`;
+      if (v && !/^https:\/\/\S+\.\S+$/i.test(v)) {
+        statusEl.className = 'text-sm text-rose-600 mb-2';
+        statusEl.textContent = t('logo.socialInvalid', { field: t(`logo.social.${input.dataset.social}`) });
+        input.focus();
+        return;
+      }
+      input.value = v;
+      links[input.dataset.social] = v || null;
+    }
 
     button.disabled = true;
     statusEl.className = 'text-sm text-slate-500 mb-2';
     statusEl.textContent = t('common.saving');
 
     const { error } = await supabase.from('church_branding').upsert(
-      { id: true, address, email, phone, updated_by: currentUserId, updated_at: new Date().toISOString() },
+      { id: true, address, email, phone, ...links, updated_by: currentUserId, updated_at: new Date().toISOString() },
       { onConflict: 'id' },
     );
     button.disabled = false;

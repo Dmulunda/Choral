@@ -32,7 +32,11 @@ Already done on the database:
 - sql/157_profile_privacy.sql: guests (no approved department, no global
   role, not marked member) only see their own profile; small groups are
   members-only; get_profiles_private() and get_card_pastor_signature().
-- Edge function `public-portal` (public program, public events, sermons).
+- Edge function `public-portal` (public program, public events, sermons,
+  social media links).
+- sql/159_church_social_links.sql: website, Facebook, YouTube, Instagram,
+  TikTok and WhatsApp links on church_branding (edited in Super Admin
+  Home -> Change Info).
 
 To finish after `git push origin main` is live:
 1. Apply sql/158_profile_private_columns.sql. It hides address, birth
