@@ -13,7 +13,7 @@ import { renderDeptDashboardTab, HEADCOUNT_DEPARTMENT_KEYS } from './deptDashboa
 import { renderHeadcountTallyTab } from './headcountTallyPage.js';
 import { renderDeptProjectionTab, teardownProjectionIfActive } from './deptProjection.js';
 import { renderDepartmentSuppliesTab } from './components/departmentSupplies.js';
-import { renderEquipmentInventoryTab } from './components/equipmentInventory.js';
+import { renderEquipmentInventoryTab, renderInventoryPage, probeInventoryPage, equipmentExtendedAvailable } from './components/equipmentInventory.js';
 import { renderDeptSchedulingTab } from './deptScheduling.js';
 import { renderSuperAdminHomeTab, openGuestOnboardingHub, openDirectory } from './superAdminHome.js';
 import { createUserManagerModal } from './components/userManager.js';
@@ -22,6 +22,14 @@ import { renderTrainingTab } from './training.js';
 import { renderServiceProgramTab } from './serviceProgram.js';
 import { renderTaxTab } from './taxPage.js';
 import { renderEventsTab } from './eventsPage.js';
+import { renderSmallGroupsTab } from './smallGroupsPage.js';
+import { renderDiscipleshipTab } from './discipleshipPage.js';
+import { renderLeadershipInsightsTab } from './leadershipInsightsPage.js';
+import { renderSermonsTab } from './sermonsPage.js';
+import { renderDocumentsTab } from './documentsPage.js';
+import { renderPastoralVisitsTab, probePastoralVisits } from './pastoralVisitsPage.js';
+import { renderCalendarTab } from './calendarPage.js';
+import { renderChildCheckinTab } from './childCheckinPage.js';
 import { renderFlyersTab } from './flyersPage.js';
 import { renderBudgetPageTab } from './budgetPage.js';
 import { renderOfferingsPageTab } from './offeringsPage.js';
@@ -62,15 +70,17 @@ import {
   isPreviewingAsMember, startPreviewAsMember, stopPreviewAsMember, hasAnyDeptLeadership,
   hasFinanceOversight, canRecordOfferings,
 } from './departments.js';
-import { registerServiceWorker, setAppBadgeCount } from './pwa.js';
+import { registerServiceWorker, setAppBadgeCount, clearOfflineData, noteSignedInUser, initOfflineBanner } from './pwa.js';
 import { getTheme, setTheme, loadAppTheme } from './theme.js';
 import { loadChurchBranding } from './churchBranding.js';
 import { confirmLeaveIfProjecting } from './utils/projectionGuard.js';
 import { hasUnsavedWork } from './utils/unsavedWorkGuard.js';
 import { consumeInteractiveSignIn } from './utils/authIntent.js';
 import { confirmDialog } from './components/confirmDialog.js';
+import { createCommunicationHubModal } from './components/communicationHubModal.js';
 
 registerServiceWorker();
+initOfflineBanner(() => t('offline.banner'));
 
 const tabs = document.querySelectorAll('[data-tab-target]');
 const panels = document.querySelectorAll('[data-tab-panel]');
@@ -125,7 +135,9 @@ const lazyTabs = {
   'dept-scheduling': renderDeptSchedulingTab,
   'dept-projection': renderDeptProjectionTab,
   'dept-supplies': renderDepartmentSuppliesTab,
+  'child-checkin': renderChildCheckinTab,
   'dept-equipment': renderEquipmentInventoryTab,
+  inventory: renderInventoryPage,
   'headcount-tally': renderHeadcountTallyTab,
   'super-home': renderSuperAdminHomeTab,
   tools: renderToolsTab,
@@ -133,6 +145,13 @@ const lazyTabs = {
   'service-program': renderServiceProgramTab,
   tax: renderTaxTab,
   events: renderEventsTab,
+  'small-groups': renderSmallGroupsTab,
+  discipleship: renderDiscipleshipTab,
+  insights: renderLeadershipInsightsTab,
+  sermons: renderSermonsTab,
+  documents: renderDocumentsTab,
+  visits: renderPastoralVisitsTab,
+  calendar: renderCalendarTab,
   flyers: renderFlyersTab,
   budget: renderBudgetPageTab,
   offerings: renderOfferingsPageTab,
@@ -234,7 +253,7 @@ try { departmentLastTab = JSON.parse(localStorage.getItem(DEPARTMENT_LAST_TAB_KE
 const DEPARTMENT_RELATIVE_TABS = new Set([
   'dashboard', 'scheduling', 'songbook', 'voice-exercises', 'uniform', 'members',
   'dept-dashboard', 'dept-scheduling', 'dept-projection', 'headcount-tally',
-  'dept-supplies', 'dept-equipment',
+  'dept-supplies', 'dept-equipment', 'child-checkin',
 ]);
 
 // Exported so other tab modules can navigate the user elsewhere --
@@ -309,7 +328,7 @@ const TAB_KIND_MAP = {
 // department-relative tab correctly does. Before this existed, being
 // on Site Admin (or any of these) when a reload fired silently
 // bounced you back to Home/Dashboard.
-const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events', 'flyers', 'pastoral-dashboard']);
+const GLOBAL_STANDALONE_TABS = new Set(['training', 'service-program', 'tax', 'pastor-meetings', 'site-admin', 'events', 'flyers', 'pastoral-dashboard', 'small-groups', 'calendar', 'discipleship', 'insights', 'sermons', 'documents', 'visits', 'inventory']);
 
 function resolveLandingTab(previousTabName, active, isChoir) {
   const mapping = TAB_KIND_MAP[previousTabName];
@@ -345,8 +364,9 @@ function rememberedDeptTab(active, isChoir) {
     case 'members': return isChoir ? tab : null;
     case 'uniform': return (isChoir || active.key === 'ushers') ? tab : null;
     case 'dept-projection': return active.key === 'media_tech' ? tab : null;
-    case 'dept-equipment': return active.key === 'media_tech' ? tab : null;
+    case 'dept-equipment': return active.key === 'media_tech' || equipmentForAllDepts ? tab : null;
     case 'dept-supplies': return active.key === 'cleaning' ? tab : null;
+    case 'child-checkin': return active.key === 'ecodem' && childCheckinAvailable ? tab : null;
     case 'headcount-tally': return HEADCOUNT_DEPARTMENT_KEYS.includes(active.key) ? tab : null;
     default: return null;
   }
@@ -435,6 +455,56 @@ function updateBudgetNavVisibility() {
 // hasFinanceOversight(). Recording day-to-day offerings shouldn't
 // require being a Finance admin/secretary; deleting one still does
 // (see offeringsBoard.js's own canDeleteOfferings() check).
+// Nav buttons for new features: each is built only once the table its SQL
+// migration creates exists (probed once per session), so pushing the code
+// before applying the SQL leaves the sidebar unchanged.
+const probedNavTabs = new Set();
+var childCheckinAvailable = false; // var: read by functions defined earlier in this file
+// Equipment tab for every department once sql/155 is applied
+// (Media & Tech only before that).
+var equipmentForAllDepts = false;
+var equipmentProbed = false;
+var childCheckinProbed = false;
+// probe (optional): a function returning a Supabase query/RPC promise; the
+// button appears only if it succeeds (used for pastoral-only pages).
+function addProbedNavButton(tab, labelKey, table, probe) {
+  if (probedNavTabs.has(tab)) return;
+  probedNavTabs.add(tab);
+  const check = probe ? probe() : getEffectiveSupabase().from(table).select('*', { head: true, count: 'exact' }).limit(1);
+  check.then(({ error }) => {
+    if (error) return;
+    const btn = document.createElement('button');
+    btn.dataset.tabTarget = tab;
+    btn.setAttribute('data-i18n', labelKey);
+    btn.className = 'w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800';
+    btn.textContent = t(labelKey);
+    btn.addEventListener('click', () => { activateTab(tab); closeSidebar(); });
+    unconditionalNavGroupEl.appendChild(btn);
+  });
+}
+
+// Small Groups nav button (sql/147): for everyone, but only
+// once that migration is applied -- probed once, then built like Budget.
+let smallGroupsNavBtn = null;
+let smallGroupsProbed = false;
+function updateSmallGroupsNav() {
+  if (smallGroupsProbed) return;
+  smallGroupsProbed = true;
+  getEffectiveSupabase().from('small_groups').select('id', { head: true, count: 'exact' }).limit(1).then(({ error }) => {
+    if (error || smallGroupsNavBtn) return;
+    smallGroupsNavBtn = document.createElement('button');
+    smallGroupsNavBtn.dataset.tabTarget = 'small-groups';
+    smallGroupsNavBtn.setAttribute('data-i18n', 'smallGroups.title');
+    smallGroupsNavBtn.className = 'w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800';
+    smallGroupsNavBtn.textContent = t('smallGroups.title');
+    smallGroupsNavBtn.addEventListener('click', () => {
+      activateTab('small-groups');
+      closeSidebar();
+    });
+    unconditionalNavGroupEl.appendChild(smallGroupsNavBtn);
+  });
+}
+
 let offeringsNavBtn = null;
 function updateOfferingsNavVisibility() {
   if (canRecordOfferings()) {
@@ -507,6 +577,14 @@ function applyActiveDepartment() {
   forEachNavGroup('global', (el) => el.classList.toggle('hidden', !hasGlobalReach()));
   updateBudgetNavVisibility();
   updateOfferingsNavVisibility();
+  updateSmallGroupsNav();
+  addProbedNavButton('calendar', 'calendar.title', 'calendar_items');
+  addProbedNavButton('discipleship', 'discipleship.title', 'discipleship_steps');
+  addProbedNavButton('sermons', 'sermons.title', 'sermons');
+  addProbedNavButton('documents', 'documents.title', 'church_documents');
+  addProbedNavButton('visits', 'visits.title', null, probePastoralVisits);
+  addProbedNavButton('inventory', 'inventory.title', null, probeInventoryPage);
+  addProbedNavButton('insights', 'insights.title', null, () => getEffectiveSupabase().rpc('get_leadership_insights', { p_weeks: 4 }));
   updateSidebarToolsSelect();
 
   if (!active) {
@@ -555,8 +633,26 @@ function applyActiveDepartment() {
   forEachNavGroup('uniform-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ushers')));
   // Projection: its own page, Media & Tech only.
   forEachNavGroup('dept-projection-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
-  forEachNavGroup('dept-equipment-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'media_tech')));
+  // Equipment inventory: Media & Tech, or every department once sql/155 is applied.
+  forEachNavGroup('dept-equipment-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && (active.key === 'media_tech' || equipmentForAllDepts))));
+  if (!equipmentProbed) {
+    equipmentProbed = true;
+    equipmentExtendedAvailable().then((ok) => {
+      equipmentForAllDepts = ok;
+      const a = getActiveDepartment();
+      if (ok && a && (a.kind === 'lightweight' || a.kind === 'custom')) forEachNavGroup('dept-equipment-nav', (el) => el.classList.remove('hidden'));
+    });
+  }
   forEachNavGroup('dept-supplies-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'cleaning')));
+  // Children's check-in: Sunday School only, once sql/149 is applied.
+  forEachNavGroup('child-checkin-nav', (el) => el.classList.toggle('hidden', !(isDeptDashboardKind && active.key === 'ecodem' && childCheckinAvailable)));
+  if (!childCheckinProbed && active.key === 'ecodem') {
+    childCheckinProbed = true;
+    getEffectiveSupabase().from('child_checkins').select('*', { head: true, count: 'exact' }).limit(1).then(({ error }) => {
+      childCheckinAvailable = !error;
+      if (childCheckinAvailable) forEachNavGroup('child-checkin-nav', (el) => el.classList.toggle('hidden', getActiveDepartment()?.key !== 'ecodem'));
+    });
+  }
   // Headcount Tally: Ushers/Welcoming & Socialisation/Ecodem, every
   // approved member (not just admin/secretary) -- counting people at
   // the door isn't an admin-only task.
@@ -581,6 +677,7 @@ function applyActiveDepartment() {
     loadedTabs.delete('dept-projection');
     loadedTabs.delete('dept-equipment');
     loadedTabs.delete('dept-supplies');
+    loadedTabs.delete('child-checkin');
     loadedTabs.delete('headcount-tally');
     activateTab(GLOBAL_STANDALONE_TABS.has(previousTabName) ? previousTabName : (previousTabName === 'budget' ? resolveBudgetLanding(active) : (rememberedDeptTab(active, false) || resolveLandingTab(previousTabName, active, false) || 'dept-dashboard')));
   } else {
@@ -821,8 +918,9 @@ function buildQuickAccessItems() {
     if (isChoir) items.push({ icon: '🎤', label: t('nav.voiceExercises'), tab: 'voice-exercises' });
     if (isChoir || active.key === 'ushers') items.push({ icon: '🎽', label: t('nav.uniform'), tab: 'uniform' });
     if (active.key === 'media_tech') items.push({ icon: '🎥', label: t('nav.projection'), tab: 'dept-projection' });
-    if (active.key === 'media_tech') items.push({ icon: '🎦', label: t('nav.equipment'), tab: 'dept-equipment' });
+    if (active.key === 'media_tech' || equipmentForAllDepts) items.push({ icon: '🎦', label: t('nav.equipment'), tab: 'dept-equipment' });
     if (active.key === 'cleaning') items.push({ icon: '🧹', label: t('nav.supplies'), tab: 'dept-supplies' });
+    if (active.key === 'ecodem' && childCheckinAvailable) items.push({ icon: '🧒', label: t('childCheckin.title'), tab: 'child-checkin' });
     if (HEADCOUNT_DEPARTMENT_KEYS.includes(active.key)) items.push({ icon: '🔢', label: t('nav.headcountTally'), tab: 'headcount-tally' });
   }
   return items;
@@ -903,7 +1001,23 @@ function updateMemberActionsUI() {
 // per-option toggles worth the complexity. Picking an option runs its
 // action immediately (see runSidebarTool()) and the select snaps back
 // to the placeholder — a one-shot action menu, not a persisted choice.
+// Communication hub availability: its history table only exists once
+// sql/146 is applied. Probed once per session; until then
+// the Tools menu simply doesn't list it.
+let commHubAvailable = false;
+let commHubProbed = false;
+let commHubModal = null;
+function probeCommunicationHub() {
+  if (commHubProbed) return;
+  commHubProbed = true;
+  getEffectiveSupabase().from('broadcasts').select('id').limit(1).then(({ error }) => {
+    commHubAvailable = !error;
+    if (commHubAvailable) updateSidebarToolsSelect();
+  });
+}
+
 function updateSidebarToolsSelect() {
+  probeCommunicationHub();
   const hasAccess = getMyDepartments().length > 0;
   const active = getActiveDepartment();
 
@@ -941,6 +1055,13 @@ function updateSidebarToolsSelect() {
     options.push({ value: 'urgent-prayer-cases', label: t('sidebar.urgentPrayerCases') });
   }
   if (canRecordAttendance) options.push({ value: 'attendance', label: t('sidebar.attendance') });
+  // Communication hub (sql/146): pastoral team, or any department
+  // admin/secretary (for their own departments). Listed only once the
+  // feature is installed -- see probeCommunicationHub().
+  if (commHubAvailable && !isViewingAs() && (['super_admin', 'pastor_admin', 'church_secretary'].includes(getGlobalRole())
+    || getMyDepartments().some((d) => d.role === 'admin' || d.role === 'secretary'))) {
+    options.push({ value: 'communication-hub', label: t('commHub.title') });
+  }
   // Everyone can suggest an improvement — no role gate (sql/047
   // widened this on purpose; it used to be elevated roles only).
   options.push({ value: 'app-suggestion', label: t('sidebar.appSuggestion') });
@@ -969,7 +1090,7 @@ function updateSidebarToolsSelect() {
   // visibility rule above; a group with nothing visible is skipped.
   const TOOL_GROUPS = [
     ['sidebar.groupMe', ['my-profile', 'change-password', 'my-letters', 'report-absence', 'join-department', 'pastor-meeting', 'prayer-request', 'member-registration']],
-    ['sidebar.groupMinistry', ['church-rules', 'department-rules', 'monthly-report', 'attendance', 'urgent-prayer-cases', 'pastoral-dashboard', 'guest-cases', 'member-cases']],
+    ['sidebar.groupMinistry', ['communication-hub', 'church-rules', 'department-rules', 'monthly-report', 'attendance', 'urgent-prayer-cases', 'pastoral-dashboard', 'guest-cases', 'member-cases']],
     ['sidebar.groupAdmin', ['manage-church-admins', 'invite-link', 'church-logo', 'disciplinary-letters', 'plans', 'referral', 'site-admin', 'owner']],
     ['sidebar.groupHelp', ['app-suggestion', 'support-request', 'churchonpoint']],
   ];
@@ -1017,6 +1138,9 @@ export function runSidebarTool(value) {
     createChangePasswordModal({ supabase: effectiveSupabase }).open();
   } else if (value === 'my-profile') {
     createMyProfileModal({ supabase: effectiveSupabase, userId: currentUserId }).open();
+  } else if (value === 'communication-hub') {
+    if (!commHubModal) commHubModal = createCommunicationHubModal({ supabase: effectiveSupabase });
+    commHubModal.open();
   } else if (value === 'my-letters') {
     createMyLettersModal({ supabase: effectiveSupabase, currentUserId }).open();
   } else if (value === 'disciplinary-letters') {
@@ -1444,6 +1568,7 @@ async function applyDeepLinkFromUrl() {
 }
 
 async function showApp(session, { isFreshSignIn = false } = {}) {
+  if (session?.user?.id) noteSignedInUser(session.user.id);
   if (isRecovering) return;
 
   passwordRecoveryEl.classList.add('hidden');
@@ -1551,6 +1676,7 @@ async function showSplashThenApp(session) {
 }
 
 function showAuth() {
+  clearOfflineData();
   currentUserId = null;
   isRecovering = false;
   stopViewAs();

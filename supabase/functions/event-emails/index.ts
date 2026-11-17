@@ -16,7 +16,7 @@
 // for member ID cards, js/components/memberIdCard.js) and embedded
 // directly in the confirmation email -- no separate image hosting
 // needed. Encodes the registration's own qr_token (plain text) --
-// Phase 2's check-in scanner will read this; nothing reads it yet.
+// read by the check-in scanner (sql/156_event_payments_checkin.sql, eventsPage.js).
 //
 // Deploy: `supabase functions deploy event-emails --no-verify-jwt`
 // (send_confirmation has no JWT at all; send_update checks the JWT
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
 
       const { data: registration } = await admin
         .from('event_registrations')
-        .select('id, full_name, email, status, payment_status, qr_token, event:events ( title, start_at, location, online_link, price_cents )')
+        .select('id, event_id, full_name, email, status, payment_status, qr_token, event:events ( title, start_at, location, online_link, price_cents )')
         .eq('id', registration_id)
         .maybeSingle();
       if (!registration) return json({ skipped: 'registration not found' });
@@ -82,9 +82,24 @@ Deno.serve(async (req) => {
       const whereLine = registration.event.online_link
         ? `<p><strong>Online:</strong> <a href="${escapeAttr(registration.event.online_link)}">${escapeHtml(registration.event.online_link)}</a></p>`
         : registration.event.location ? `<p><strong>Location:</strong> ${escapeHtml(registration.event.location)}</p>` : '';
-      const priceLine = registration.event.price_cents
-        ? `<p><strong>Price:</strong> $${(registration.event.price_cents / 100).toFixed(2)} — online payment isn't available yet; the organizing department will follow up about how to pay.</p>`
-        : '';
+      // Online payment (sql/156_event_payments_checkin.sql, event-payment
+      // function) is offered only when the church's Stripe account can take
+      // payments; otherwise say plainly that the organizers will follow up.
+      let priceLine = '';
+      if (registration.event.price_cents) {
+        const price = `$${(registration.event.price_cents / 100).toFixed(2)}`;
+        const { data: giving } = await admin.from('giving_settings').select('stripe_charges_enabled, stripe_account_id').maybeSingle();
+        const canPayOnline = !!(giving?.stripe_charges_enabled && giving?.stripe_account_id && Deno.env.get('STRIPE_SECRET_KEY'));
+        const origin = (Deno.env.get('GIVING_RETURN_ORIGINS') || 'https://app.eglisevpd.com').split(',')[0].trim();
+        if (canPayOnline && registration.payment_status === 'pending' && !isWaitlisted) {
+          const payUrl = new URL('/event.html', origin);
+          payUrl.searchParams.set('event', registration.event_id);
+          payUrl.searchParams.set('pay', registration.id);
+          priceLine = `<p><strong>Price:</strong> ${price} — <a href="${escapeAttr(payUrl.toString())}">Pay online / Payer en ligne</a></p>`;
+        } else {
+          priceLine = `<p><strong>Price:</strong> ${price} — the organizing department will follow up about how to pay.</p>`;
+        }
+      }
 
       const result = await sendResendEmail({
         to: registration.email,
