@@ -106,3 +106,10 @@ To finish after `git push origin main` is live:
 
 - `sql/165_cleanup_old_schedules.sql` (applied): `cleanup_old_schedules()` + pg_cron job `cleanup-old-schedules` (1st of each month, 04:15 UTC). Deletes schedules dated more than one month ago: department shifts/assignments, Media & Tech, Ecodem worker assignments (sessions and children's check-ins kept), preaching schedule, Choir service plans, availability. Program, events, attendance, offerings and sermons are kept.
 - To stop it: `select cron.unschedule('cleanup-old-schedules');`
+
+## Sermons: show only the sermon part of a livestream
+
+- `sql/166_sermon_video_clip.sql` (applied): `sermons.video_start_seconds` / `video_end_seconds` (optional, end after start).
+- `js/utils/videoClip.js`: YouTube id from any link (watch, youtu.be, /live/, /embed/, /shorts/), time parsing (1:05:30, 65:30, 3930, 1h05m30s), embed URL with start/end.
+- Sermons form: "Partie à montrer" with Début / Fin, Aperçu player with "Début ici / Fin ici" (YouTube IFrame API), start filled from a pasted `&t=` link. "Regarder" plays inside the app limited to that part; "Ouvrir sur YouTube" starts at the sermon.
+- Guest page: sermon links open the YouTube player limited to that part. `public-portal` (deployed, v4) returns the two fields.
