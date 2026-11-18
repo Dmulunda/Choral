@@ -151,3 +151,9 @@ Console: French (Canada) recognition by default, a live "Entendu : « … »" li
 - Format menu in the toolbar (new sizes: Instagram portrait, Facebook/WhatsApp post, Facebook cover, 16:9 screen, half-letter, or custom); content is rescaled and kept centred.
 - Text: grouped Google Fonts, bold/italic/underline, upper/lower case, alignment, letter and line spacing, outline, shadow, highlight, transparency. Photos: replace, fill the page, flip, crop to circle/rounded, brightness/contrast/saturation/blur/black and white, remove a colour, remove background (beta). Shapes: rectangle, rounded, circle, triangle, line with fill/outline/corners. Position: layers, align to page, lock, duplicate. Undo/redo (50 steps), keyboard shortcuts, drag-and-drop photos, colour picker from the screen (Chrome/Edge).
 - Fix: saved flyers now keep their custom properties (Fabric 6 `toJSON()` ignored the property list; now `toObject()`), and downloads are at the real page size instead of the on-screen zoom.
+
+## Flyers: big pictures no longer fail
+
+- Cause: the `flyers` storage bucket accepted 10 MB max (PNG/JPEG/WebP only), and big PNGs, PDF pages or phone photos went over it.
+- Every picture is now re-encoded in the browser before upload (max 2400 px, about 6 MB max, steps down if needed): JPEG for photos, PNG only when the picture has transparency. iPhone HEIC opens where the browser supports it; otherwise a clear message asks for JPG.
+- `sql/169_flyers_bucket_25mb.sql` (applied): bucket limit 25 MB and GIF accepted, as a safety margin.
