@@ -76,3 +76,9 @@ To finish after `git push origin main` is live:
 - Bottom bar: line icons with labels — Home, Schedule, Live (live.html), Directory, Menu. Quick access and Settings moved into the drawer.
 - Watermark logo behind the content removed. Brand name unified to "La Voix de la Puissance Divine".
 - Saved theme (Change appearance): to match, set it to primary #0B1F3A, text #1B2433, background #F6F4EF, font Inter — the old saved grey background (#8b8b89) overrides the new cream otherwise.
+
+## Member app redesign — step 2 (Home page)
+
+- `sql/163_home_my_services.sql` (applied): `get_my_upcoming_services()` returns the signed-in person's own upcoming serving dates from every board (shifts, Choir, Media & Tech, Sunday school, moderating, preaching); `confirm_my_service()` sets the caller's own pending row to approved. Declining still goes through each board's own flow (it asks for a reason): "Indisponible" opens that department's schedule.
+- New `js/components/homeFeed.js`; `js/superAdminHome.js` lays out the page: greeting, next service with Je confirme / Indisponible, quick actions, announcements, this week's program (with live times), live countdown card, and for leaders Gestion (counts) + À traiter + membership requests (the black duplicate block is gone).
+- Home widgets use the new card style; the emoji in widget titles are removed.
