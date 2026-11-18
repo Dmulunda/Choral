@@ -157,3 +157,7 @@ Console: French (Canada) recognition by default, a live "Entendu : « … »" li
 - Cause: the `flyers` storage bucket accepted 10 MB max (PNG/JPEG/WebP only), and big PNGs, PDF pages or phone photos went over it.
 - Every picture is now re-encoded in the browser before upload (max 2400 px, about 6 MB max, steps down if needed): JPEG for photos, PNG only when the picture has transparency. iPhone HEIC opens where the browser supports it; otherwise a clear message asks for JPG.
 - `sql/169_flyers_bucket_25mb.sql` (applied): bucket limit 25 MB and GIF accepted, as a safety margin.
+
+## Uploads: safe file names
+
+- Supabase Storage refuses keys with spaces, accents or curly apostrophes ("Invalid key"). New `js/utils/safeFileName.js` cleans the name used in the storage path (extension kept); the original name is still saved where a feature shows it (`file_name`, `pdf_file_name`). Used in rules documents, lesson PDFs, reimbursement receipts, budget files, profile photos and uniform photos. The flyer editor already cleans names since the previous update; lesson videos are cleaned by the course-video-r2 function.

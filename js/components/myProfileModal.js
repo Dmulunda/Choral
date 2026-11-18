@@ -12,6 +12,7 @@ import { renderMemberIdCard } from './memberIdCard.js';
 import { createSignaturePad } from './signaturePad.js';
 import { confirmDialog } from './confirmDialog.js';
 import { exitReasonDialog } from './memberExitModal.js';
+import { safeFileName } from '../utils/safeFileName.js';
 
 export function createMyProfileModal({ supabase, userId }) {
   const root = document.createElement('div');
@@ -172,7 +173,7 @@ export function createMyProfileModal({ supabase, userId }) {
 
     const file = form.querySelector('[data-el="photo-input"]')?.files?.[0];
     if (file) {
-      const path = `${userId}/${Date.now()}-${file.name}`;
+      const path = `${userId}/${Date.now()}-${safeFileName(file.name)}`;
       const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, file);
       if (uploadError) {
         formStatusEl.className = 'text-sm text-rose-600';
