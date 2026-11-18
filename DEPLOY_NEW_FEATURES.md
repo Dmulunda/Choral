@@ -101,3 +101,8 @@ To finish after `git push origin main` is live:
 - Phone bottom bar "Planning" from Home: opens the schedule of the department you serve in next (else your first department, else the calendar).
 - Theme button: shows what it switches to, with "Mode sombre / Mode clair" in the phone menu and as a label on wide screens.
 - Place shown on the Home live card and this week, the guest page countdown and the live page; Change Info has an "Online only" box per service time.
+
+## Monthly schedule clean-up
+
+- `sql/165_cleanup_old_schedules.sql` (applied): `cleanup_old_schedules()` + pg_cron job `cleanup-old-schedules` (1st of each month, 04:15 UTC). Deletes schedules dated more than one month ago: department shifts/assignments, Media & Tech, Ecodem worker assignments (sessions and children's check-ins kept), preaching schedule, Choir service plans, availability. Program, events, attendance, offerings and sermons are kept.
+- To stop it: `select cron.unschedule('cleanup-old-schedules');`
