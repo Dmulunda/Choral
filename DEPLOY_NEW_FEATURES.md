@@ -51,6 +51,15 @@ Already done on the database:
   Needs the ANTHROPIC_API_KEY secret on this project. The "✨ AI help"
   buttons appear by themselves for leaders once the key is set.
 
+- Landing: index.html sends visitors who are not signed in to
+  welcome.html (links with ?query or #hash are left alone; the guest
+  page's Member sign-in uses index.html?signin=1). Back button on the
+  public pages (js/publicBack.js).
+- Live countdown: sql/162_live_schedule.sql (Wed 19:00, Fri 18:30,
+  Sun 10:30, America/Toronto; edited in Change Info). live-status only
+  counts a stream as live when YouTube shows "watching now" (an old
+  scheduled waiting room no longer counts).
+
 To finish after `git push origin main` is live:
 1. Apply sql/158_profile_private_columns.sql. It hides address, birth
    place, legal name and signature from direct reads. Apply it only

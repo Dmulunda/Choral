@@ -47,7 +47,7 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
 
   async function load() {
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
-    const { data, error } = await supabase.from('church_branding').select('logo_url, address, email, phone, website_url, facebook_url, youtube_url, instagram_url, tiktok_url, whatsapp_url').eq('id', true).maybeSingle();
+    const { data, error } = await supabase.from('church_branding').select('logo_url, address, email, phone, website_url, facebook_url, youtube_url, instagram_url, tiktok_url, whatsapp_url, live_schedule').eq('id', true).maybeSingle();
     if (error) {
       bodyEl.innerHTML = `<p class="text-sm text-rose-600">${t('logo.failedToLoad', { message: error.message })}</p>`;
       return;
@@ -104,6 +104,10 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
         <label class="block text-sm font-medium text-slate-600 mb-1">${t(`logo.social.${f}`)}</label>
         <input type="url" data-social="${f}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" placeholder="${SOCIAL_PLACEHOLDERS[f]}" value="${escapeAttr(links[f] || '')}" />
         ${f === 'youtube_url' ? `<p class="text-xs text-slate-400 -mt-1 mb-2">${t('logo.youtubeLiveHint')}</p>` : ''}`).join('')}
+      <h3 class="text-sm font-semibold text-slate-700 mt-4 mb-1">${t('logo.liveTimesTitle')}</h3>
+      <p class="text-xs text-slate-400 mb-2">${t('logo.liveTimesHint')}</p>
+      <div data-el="live-times" class="space-y-2 mb-2"></div>
+      <button type="button" data-action="add-live-time" class="text-sm text-indigo-700 mb-3">${t('logo.liveTimesAdd')}</button>
       <p data-el="address-status" class="text-sm mb-2"></p>
       <button type="button" data-action="save-address" class="w-full px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 disabled:opacity-50">
         ${t('logo.saveAddressButton')}
@@ -116,6 +120,22 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
     const phoneInput = contactSection.querySelector('[data-el="phone-input"]');
     const addressStatusEl = contactSection.querySelector('[data-el="address-status"]');
     const saveAddressBtn = contactSection.querySelector('[data-action="save-address"]');
+    const liveTimesEl = contactSection.querySelector('[data-el="live-times"]');
+    const addLiveTimeRow = (slot = { day: 0, time: '10:30' }) => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2';
+      row.dataset.liveTime = '1';
+      row.innerHTML = `
+        <select data-el="day" class="flex-1 border border-slate-300 rounded-lg px-2 py-2 text-sm">
+          ${[0, 1, 2, 3, 4, 5, 6].map((d) => `<option value="${d}" ${Number(slot.day) === d ? 'selected' : ''}>${t(`logo.weekday.${d}`)}</option>`).join('')}
+        </select>
+        <input type="time" data-el="time" value="${escapeAttr(slot.time || '')}" class="border border-slate-300 rounded-lg px-2 py-2 text-sm" />
+        <button type="button" class="px-2 text-rose-600 text-lg" aria-label="${t('logo.liveTimesRemove')}">&times;</button>`;
+      row.querySelector('button').addEventListener('click', () => row.remove());
+      liveTimesEl.appendChild(row);
+    };
+    (Array.isArray(links.live_schedule) ? links.live_schedule : []).forEach((slot) => addLiveTimeRow(slot));
+    contactSection.querySelector('[data-action="add-live-time"]').addEventListener('click', () => addLiveTimeRow());
     saveAddressBtn.addEventListener('click', () => saveContactInfo(addressInput, emailInput, phoneInput, addressStatusEl, saveAddressBtn, contactSection));
   }
 
@@ -136,6 +156,10 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
       input.value = v;
       links[input.dataset.social] = v || null;
     }
+    links.live_schedule = [...contactSection.querySelectorAll('[data-live-time]')]
+      .map((row) => ({ day: Number(row.querySelector('[data-el="day"]').value), time: row.querySelector('[data-el="time"]').value }))
+      .filter((slot) => /^\d{2}:\d{2}$/.test(slot.time))
+      .slice(0, 14);
 
     button.disabled = true;
     statusEl.className = 'text-sm text-slate-500 mb-2';

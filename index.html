@@ -10,6 +10,19 @@
       document.documentElement.classList.add('dark');
     }
   </script>
+  <!-- Landing: visitors who are not signed in see the public guest page
+       (welcome.html). Signed-in members stay in the app. Any link with a
+       query or hash (?signin=1 from the guest page, ?open=..., password
+       reset links) is left alone. -->
+  <script>
+    (function () {
+      try {
+        if (location.search || location.hash.length > 1) return;
+        var signedIn = Object.keys(localStorage).some(function (k) { return /^sb-.*-auth-token$/.test(k); });
+        if (!signedIn) location.replace('welcome.html');
+      } catch (e) { /* storage blocked: show the app as before */ }
+    })();
+  </script>
   <title>VPD Church Organisation</title>
   <link rel="icon" type="image/png" href="img/vpd-logo.png" />
   <link rel="manifest" href="manifest.json" />
