@@ -483,14 +483,14 @@
                js/eventsPage.js (department admin of the organizing
                department, or Super Admin), same as every other
                department-scoped write in this app. -->
-          <button data-tab-target="events" data-i18n="nav.events"
-                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          <button data-tab-target="events" data-i18n="nav.events" data-nav-group="media-admin-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Events
           </button>
           <!-- Flyers -- same unconditional placement; a real Fabric.js
                drag-and-drop editor, js/components/flyerEditor.js. -->
-          <button data-tab-target="flyers" data-i18n="nav.flyers"
-                  class="w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
+          <button data-tab-target="flyers" data-i18n="nav.flyers" data-nav-group="media-admin-nav"
+                  class="hidden w-full text-left px-3 py-2 rounded-lg font-medium transition-colors hover:bg-slate-800">
             Flyers
           </button>
           <!-- Budget nav button is intentionally NOT here — unlike

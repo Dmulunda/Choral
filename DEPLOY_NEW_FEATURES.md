@@ -136,3 +136,10 @@ Console: French (Canada) recognition by default, a live "Entendu : « … »" li
 - `sql/167_media_team_songs.sql` (applied): approved Media & Tech members can read the song library and add/edit songs (not delete). Before, only Choir members could read and Choir admins write, so the Media team saw an empty list.
 - With a local media folder connected, the whole song library (with lyrics) is copied to `projection-songs-cache.json` in that folder; without internet the song list is read from that copy.
 - Countdown on the projector: the written line starts large (7vw) and wraps, the clock 16vw; both follow the Media theme size and the console's text-size slider; shrinks only if it would not fit.
+
+## Menu, access by role, to-do card, scrolling update notes
+
+- Access (decided by the church): Events, Flyers, Projection and Equipment only for Media & Tech admins (and Super Admin) — menu, quick access and direct links. Supplies for every department admin (and Cleaning members); `sql/168` (applied) makes `department_supplies` per-department. Inventory page for every department admin (RLS shows their departments' items). Pastoral visits unchanged (pastoral team only).
+- Menu: the active ministry's pages are nested right under its row; clicking a ministry always opens its home page (Dashboard).
+- "À faire / To do" card on Home and on each ministry's home page: services waiting for an answer (or "check your schedule"), and "add your availability" when nothing is entered for the rest of the month or, from a week before a new month, for next month. Each line can be hidden for the day.
+- Update dialog: notes scroll inside the dialog, buttons always visible; version.txt keeps the 12 latest notes.
