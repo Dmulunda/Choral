@@ -22,7 +22,7 @@
 
 const SHELL = 'cop-shell-v1';
 const DATA = 'cop-data-v1';
-const PRECACHE = ['index.html', 'offline.html', 'manifest.json', 'img/icons/icon-192.png'];
+const PRECACHE = ['index.html', 'offline.html', 'manifest.json', 'img/icons/icon-192.png', 'img/vpd-logo.png'];
 const CDN_HOSTS = new Set(['cdn.tailwindcss.com', 'cdn.jsdelivr.net']);
 const READ_RPC = /^(is|can|get)_[a-z0-9_]+$/;
 const UNSAFE_RPC = /(create|claim|issue|generate|record|send|checkin|checkout)/;

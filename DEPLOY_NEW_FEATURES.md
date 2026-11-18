@@ -82,3 +82,12 @@ To finish after `git push origin main` is live:
 - `sql/163_home_my_services.sql` (applied): `get_my_upcoming_services()` returns the signed-in person's own upcoming serving dates from every board (shifts, Choir, Media & Tech, Sunday school, moderating, preaching); `confirm_my_service()` sets the caller's own pending row to approved. Declining still goes through each board's own flow (it asks for a reason): "Indisponible" opens that department's schedule.
 - New `js/components/homeFeed.js`; `js/superAdminHome.js` lays out the page: greeting, next service with Je confirme / Indisponible, quick actions, announcements, this week's program (with live times), live countdown card, and for leaders Gestion (counts) + À traiter + membership requests (the black duplicate block is gone).
 - Home widgets use the new card style; the emoji in widget titles are removed.
+
+## Member app redesign — step 3 (page polish)
+
+- Documents: card titles take the full width on phones (were one word per line).
+- Wide tables (events, registrations, reports…) keep a readable width and scroll sideways on phones.
+- Academy tabs scroll instead of wrapping; the "Créer un planning pour" picker no longer pushes the page wider than the screen.
+- Calendar day headings: "Mercredi 18 novembre" (was "Mercredi 18 Novembre").
+- Card titles use the display font; form fields get the warm border and gold focus ring.
+- offline.html: church logo and gold button, no more ChurchOnPoint; the logo is cached for offline use (sw.js). ChurchOnPoint wording removed from the SMS and online-giving help texts.
