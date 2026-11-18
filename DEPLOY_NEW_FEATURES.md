@@ -46,6 +46,11 @@ Already done on the database:
   temporary test function; it now returns 410 and can be deleted from
   the Supabase dashboard.)
 
+- AI writing help: sql/161_ai_writer.sql (usage log, 40 requests per
+  person per day) and edge function `ai-writer` (Claude Haiku 5.5).
+  Needs the ANTHROPIC_API_KEY secret on this project. The "✨ AI help"
+  buttons appear by themselves for leaders once the key is set.
+
 To finish after `git push origin main` is live:
 1. Apply sql/158_profile_private_columns.sql. It hides address, birth
    place, legal name and signature from direct reads. Apply it only
