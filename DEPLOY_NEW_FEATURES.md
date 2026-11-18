@@ -120,3 +120,13 @@ To finish after `git push origin main` is live:
 - Shortcuts (ignored while typing): → / Space / PageDown next, ← / PageUp previous, Enter send preview, B or "." black screen, Esc clear preview — works with presentation clickers.
 - Projector window (projector.html): pings the console every 3 s and says bye on close; fade-in on new content (not on text-size changes); church logo when idle; bolder text and reference.
 - Performance: object URLs cached per file instead of created on every render (was leaking memory with PDF/image slides); text-size slider sends at most once per frame.
+
+## Verse listening (projection) made reliable
+
+`js/utils/voiceVerseDetector.js` rewritten:
+- Keeps the last ~40 words across Chrome's sentence breaks, and also checks interim results, so a reference split over two results or still being spoken is caught.
+- Whole-word book matching (no more "luc" inside "lucide"), scans every mention and keeps the most recent one, longest name first ("1 Jean" before "Jean").
+- Extra spoken forms: Psaume/Psalm, Isaïe, Actes des apôtres, Cantique, Révélation/Revelations, Matthieu/Mathieu, "première épître de…", "évangile selon…", "1er/2e/3e", "chapitre premier", "verset 1er", "3.16 / 3,16".
+- The same reference within a minute is suggested once.
+- Restarts with back-off when Chrome ends the session; precise errors (mic refused, no mic, no internet, stopped) instead of always "mic refused".
+Console: French (Canada) recognition by default, a live "Entendu : « … »" line, corrected hint (Chrome sends audio to Google; needs internet).
