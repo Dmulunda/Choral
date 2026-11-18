@@ -33,8 +33,8 @@ export function setLabelOverride(key, labelEn, labelFr) {
 
 const TRANSLATIONS = {
   en: {
-    'app.brand': 'VPD Church Organisation',
-    'app.brandShort': 'VPD Academy',
+    'app.brand': 'La Voix de la Puissance Divine',
+    'app.brandShort': 'VPD',
     'header.searchPlaceholder': 'Search members, cases, departments',
     'header.newMember': 'New member',
     'menu.open': 'Open menu',
@@ -2840,6 +2840,11 @@ const TRANSLATIONS = {
     'nav.home': 'Home',
     'nav.tools': 'Settings',
     'nav.quickAccess': 'Quick Access',
+    'bottomNav.home': 'Home',
+    'bottomNav.schedule': 'Schedule',
+    'bottomNav.live': 'Live',
+    'bottomNav.directory': 'Directory',
+    'bottomNav.menu': 'Menu',
     'directory.title': 'User Directory',
     'directory.userStatus.new_guest': 'New Guest',
     'directory.userStatus.visitor_other_church': 'Visitor for Other Church',
@@ -2941,7 +2946,7 @@ const TRANSLATIONS = {
 
     'sidebar.roleSwitcher': 'Mode',
     'sidebar.superAdminMode': 'Super Admin',
-    'sidebar.standardUserMode': 'Standard User',
+    'sidebar.standardUserMode': 'Member',
     'sidebar.previewAsMember': 'Preview as Member',
     'previewAsMember.banner': 'Previewing as a Member — read-only',
 
@@ -3201,8 +3206,8 @@ const TRANSLATIONS = {
   },
 
   fr: {
-    'app.brand': 'VPD Church Organisation',
-    'app.brandShort': 'VPD Academy',
+    'app.brand': 'La Voix de la Puissance Divine',
+    'app.brandShort': 'VPD',
     'header.searchPlaceholder': 'Rechercher membres, dossiers, départements',
     'header.newMember': 'Nouveau membre',
     'menu.open': 'Ouvrir le menu',
@@ -6008,6 +6013,11 @@ const TRANSLATIONS = {
     'nav.home': 'Accueil',
     'nav.tools': 'Paramètres',
     'nav.quickAccess': 'Accès rapide',
+    'bottomNav.home': 'Accueil',
+    'bottomNav.schedule': 'Planning',
+    'bottomNav.live': 'Direct',
+    'bottomNav.directory': 'Annuaire',
+    'bottomNav.menu': 'Menu',
     'directory.title': 'Annuaire des utilisateurs',
     'directory.userStatus.new_guest': 'Nouveau visiteur',
     'directory.userStatus.visitor_other_church': "Visiteur d'une autre église",
@@ -6109,7 +6119,7 @@ const TRANSLATIONS = {
 
     'sidebar.roleSwitcher': 'Mode',
     'sidebar.superAdminMode': 'Super Admin',
-    'sidebar.standardUserMode': 'Utilisateur standard',
+    'sidebar.standardUserMode': 'Membre',
     'sidebar.previewAsMember': 'Aperçu en tant que membre',
     'previewAsMember.banner': 'Aperçu en tant que membre — lecture seule',
 

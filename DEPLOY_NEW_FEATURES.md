@@ -67,3 +67,12 @@ To finish after `git push origin main` is live:
    directly and would show "permission denied").
 2. Share https://app.eglisevpd.com/welcome.html (QR code at the entrance,
    social media).
+
+## Member app redesign — step 1 (app-wide look)
+
+- New `css/brand.css`, loaded last in index.html: navy/gold/cream palette, Inter + Fraunces, warm card borders, navy primary buttons, gold focus ring.
+- Header: navy, logo pill on phones (fixes the header running off the screen); Theme and Help move into the phone menu.
+- Sidebar/drawer: navy, gold bar on the active row, coloured initials for ministries, Mode switch reads "Super Admin / Membre".
+- Bottom bar: line icons with labels — Home, Schedule, Live (live.html), Directory, Menu. Quick access and Settings moved into the drawer.
+- Watermark logo behind the content removed. Brand name unified to "La Voix de la Puissance Divine".
+- Saved theme (Change appearance): to match, set it to primary #0B1F3A, text #1B2433, background #F6F4EF, font Inter — the old saved grey background (#8b8b89) overrides the new cream otherwise.
