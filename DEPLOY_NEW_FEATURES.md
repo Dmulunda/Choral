@@ -91,3 +91,13 @@ To finish after `git push origin main` is live:
 - Calendar day headings: "Mercredi 18 novembre" (was "Mercredi 18 Novembre").
 - Card titles use the display font; form fields get the warm border and gold focus ring.
 - offline.html: church logo and gold button, no more ChurchOnPoint; the logo is cached for offline use (sw.js). ChurchOnPoint wording removed from the SMS and online-giving help texts.
+
+## Calendar vs Service teams, Planning button, theme label, online-only services
+
+- `sql/164_calendar_program_and_online_only.sql` (applied):
+  - `get_church_calendar()` now includes the Church Program (`church_program_dates`) at the weekly service time with the church address or "Online (YouTube)", and no longer lists department duty rosters (`department_shifts`, Choir service plans) except for departments flagged `is_public_calendar`.
+  - `live_schedule` slots carry `online_only`; Wednesday 19:00 is online only, Friday and Sunday at the church.
+- Calendar: "Programme" kind, sentence-case titles, intro line. Service Program renamed "Équipes de service / Service teams" with an intro line.
+- Phone bottom bar "Planning" from Home: opens the schedule of the department you serve in next (else your first department, else the calendar).
+- Theme button: shows what it switches to, with "Mode sombre / Mode clair" in the phone menu and as a label on wide screens.
+- Place shown on the Home live card and this week, the guest page countdown and the live page; Change Info has an "Online only" box per service time.

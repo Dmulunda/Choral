@@ -123,13 +123,17 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
     const liveTimesEl = contactSection.querySelector('[data-el="live-times"]');
     const addLiveTimeRow = (slot = { day: 0, time: '10:30' }) => {
       const row = document.createElement('div');
-      row.className = 'flex items-center gap-2';
+      row.className = 'flex flex-wrap items-center gap-2';
       row.dataset.liveTime = '1';
       row.innerHTML = `
         <select data-el="day" class="flex-1 border border-slate-300 rounded-lg px-2 py-2 text-sm">
           ${[0, 1, 2, 3, 4, 5, 6].map((d) => `<option value="${d}" ${Number(slot.day) === d ? 'selected' : ''}>${t(`logo.weekday.${d}`)}</option>`).join('')}
         </select>
         <input type="time" data-el="time" value="${escapeAttr(slot.time || '')}" class="border border-slate-300 rounded-lg px-2 py-2 text-sm" />
+        <label class="flex items-center gap-1.5 text-sm text-slate-600 whitespace-nowrap">
+          <input type="checkbox" data-el="online-only" ${slot.online_only ? 'checked' : ''} class="rounded border-slate-300" />
+          ${t('logo.onlineOnly')}
+        </label>
         <button type="button" class="px-2 text-rose-600 text-lg" aria-label="${t('logo.liveTimesRemove')}">&times;</button>`;
       row.querySelector('button').addEventListener('click', () => row.remove());
       liveTimesEl.appendChild(row);
@@ -157,7 +161,11 @@ export function createChurchLogoModal({ supabase, currentUserId, onSaved }) {
       links[input.dataset.social] = v || null;
     }
     links.live_schedule = [...contactSection.querySelectorAll('[data-live-time]')]
-      .map((row) => ({ day: Number(row.querySelector('[data-el="day"]').value), time: row.querySelector('[data-el="time"]').value }))
+      .map((row) => ({
+        day: Number(row.querySelector('[data-el="day"]').value),
+        time: row.querySelector('[data-el="time"]').value,
+        online_only: row.querySelector('[data-el="online-only"]').checked,
+      }))
       .filter((slot) => /^\d{2}:\d{2}$/.test(slot.time))
       .slice(0, 14);
 
