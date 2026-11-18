@@ -143,3 +143,11 @@ Console: French (Canada) recognition by default, a live "Entendu : « … »" li
 - Menu: the active ministry's pages are nested right under its row; clicking a ministry always opens its home page (Dashboard).
 - "À faire / To do" card on Home and on each ministry's home page: services waiting for an answer (or "check your schedule"), and "add your availability" when nothing is entered for the rest of the month or, from a week before a new month, for next month. Each line can be hidden for the day.
 - Update dialog: notes scroll inside the dialog, buttons always visible; version.txt keeps the 12 latest notes.
+
+## Flyers: Canva-style editor
+
+- No SQL. Everything runs in the browser; heavy tools load only when used (pdf.js for PDF flyers, Tesseract.js for reading text, @imgly/background-removal for the AI cut-out, about 40 MB the first time).
+- "Edit an old flyer": opens a JPG/PNG/PDF (first page), resizes the page to its shape and puts it as a locked background. "Make the words editable" (beta) reads each line of text (French + English) and places an editable text box over a patch in the surrounding colour.
+- Format menu in the toolbar (new sizes: Instagram portrait, Facebook/WhatsApp post, Facebook cover, 16:9 screen, half-letter, or custom); content is rescaled and kept centred.
+- Text: grouped Google Fonts, bold/italic/underline, upper/lower case, alignment, letter and line spacing, outline, shadow, highlight, transparency. Photos: replace, fill the page, flip, crop to circle/rounded, brightness/contrast/saturation/blur/black and white, remove a colour, remove background (beta). Shapes: rectangle, rounded, circle, triangle, line with fill/outline/corners. Position: layers, align to page, lock, duplicate. Undo/redo (50 steps), keyboard shortcuts, drag-and-drop photos, colour picker from the screen (Chrome/Edge).
+- Fix: saved flyers now keep their custom properties (Fabric 6 `toJSON()` ignored the property list; now `toObject()`), and downloads are at the real page size instead of the on-screen zoom.
