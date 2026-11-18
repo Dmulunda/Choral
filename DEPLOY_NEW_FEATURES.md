@@ -113,3 +113,10 @@ To finish after `git push origin main` is live:
 - `js/utils/videoClip.js`: YouTube id from any link (watch, youtu.be, /live/, /embed/, /shorts/), time parsing (1:05:30, 65:30, 3930, 1h05m30s), embed URL with start/end.
 - Sermons form: "Partie à montrer" with Début / Fin, Aperçu player with "Début ici / Fin ici" (YouTube IFrame API), start filled from a pasted `&t=` link. "Regarder" plays inside the app limited to that part; "Ouvrir sur YouTube" starts at the sermon.
 - Guest page: sermon links open the YouTube player limited to that part. `public-portal` (deployed, v4) returns the two fields.
+
+## Projection redesign (Media & Tech)
+
+- Console layout: navy toolbar (Open screen, Black screen, Themes, local folder) with a "Screen connected / not open" pill; sources on the left (pill tabs); sticky right column with 16:9 Preview and On-screen monitors that use the real background/theme, a big "Send to screen" button and Previous/Next.
+- Shortcuts (ignored while typing): → / Space / PageDown next, ← / PageUp previous, Enter send preview, B or "." black screen, Esc clear preview — works with presentation clickers.
+- Projector window (projector.html): pings the console every 3 s and says bye on close; fade-in on new content (not on text-size changes); church logo when idle; bolder text and reference.
+- Performance: object URLs cached per file instead of created on every render (was leaking memory with PDF/image slides); text-size slider sends at most once per frame.
