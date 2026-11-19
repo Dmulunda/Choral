@@ -433,3 +433,6 @@ html.dark .fly-seg { background: #0f172a; }
 html.dark .fly-seg button.is-on { background: #334155; color: #fff; }
 html.dark .fly-stage { background-color: #0f172a; background-image: radial-gradient(#1e293b 1px, transparent 1px); border-color: #334155; }
 html.dark .fly-icon-btn.is-on { background: #E0B654; color: #0B1F3A; }
+
+/* Directory: department chips get room so a row stays one or two lines high. */
+td.user-depts { min-width: 260px; }
