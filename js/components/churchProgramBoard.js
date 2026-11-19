@@ -37,14 +37,18 @@ const FLYER_BUCKET = 'church-program-flyers';
 // a sanity cap so a mis-picked "repeat until" decades out can't spin
 // this into thousands of rows.
 const MAX_RECURRING_DATES = 52;
+const MAX_DAILY_DATES = 92;
 
 function generateRecurringDates(startStr, untilStr, interval) {
   const dates = [];
   const cur = new Date(`${startStr}T00:00:00`);
   const until = new Date(`${untilStr}T00:00:00`);
-  while (cur <= until && dates.length < MAX_RECURRING_DATES) {
+  // Daily allows about three months; weekly/monthly keep the 52 cap.
+  const cap = interval === 'daily' ? MAX_DAILY_DATES : MAX_RECURRING_DATES;
+  while (cur <= until && dates.length < cap) {
     dates.push(formatDateLocal(cur));
     if (interval === 'monthly') cur.setMonth(cur.getMonth() + 1);
+    else if (interval === 'daily') cur.setDate(cur.getDate() + 1);
     else cur.setDate(cur.getDate() + 7);
   }
   return dates;
@@ -86,7 +90,8 @@ export function renderChurchProgramBoard(container, { supabase, canAdminister, c
             </label>
             <div data-el="recurring-options" class="hidden grid sm:grid-cols-2 gap-2 mt-2">
               <select data-el="recurring-interval" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
-                <option value="weekly">${t('churchProgram.recurringWeekly')}</option>
+                <option value="daily">${t('churchProgram.recurringDaily')}</option>
+                <option value="weekly" selected>${t('churchProgram.recurringWeekly')}</option>
                 <option value="monthly">${t('churchProgram.recurringMonthly')}</option>
               </select>
               <input type="date" data-el="repeat-until" min="${todayLocal()}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="${t('churchProgram.repeatUntil')}" />

@@ -161,3 +161,8 @@ Console: French (Canada) recognition by default, a live "Entendu : « … »" li
 ## Uploads: safe file names
 
 - Supabase Storage refuses keys with spaces, accents or curly apostrophes ("Invalid key"). New `js/utils/safeFileName.js` cleans the name used in the storage path (extension kept); the original name is still saved where a feature shows it (`file_name`, `pdf_file_name`). Used in rules documents, lesson PDFs, reimbursement receipts, budget files, profile photos and uniform photos. The flyer editor already cleans names since the previous update; lesson videos are cleaned by the course-video-r2 function.
+
+## Calendar: daily repeat
+
+- Calendar "+ Add" form: new "Repeat" (does not repeat / every day / every week / every month) with "Repeat until"; one `calendar_items` row per date (daily up to 92, weekly/monthly up to 52), inserted together. No SQL.
+- Service program board: Recurring now offers Daily (up to 92 dates) besides Weekly and Monthly.
