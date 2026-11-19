@@ -166,3 +166,7 @@ Console: French (Canada) recognition by default, a live "Entendu : « … »" li
 
 - Calendar "+ Add" form: new "Repeat" (does not repeat / every day / every week / every month) with "Repeat until"; one `calendar_items` row per date (daily up to 92, weekly/monthly up to 52), inserted together. No SQL.
 - Service program board: Recurring now offers Daily (up to 92 dates) besides Weekly and Monthly.
+
+## Update bar instead of pop-up
+
+- `js/versionCheck.js`: a non-critical new version now shows a thin bar at the bottom ("New version available · Update now · ✕") instead of the modal with the notes list. Critical versions still reload after a short notice. version.txt keeps its notes (no longer displayed).
