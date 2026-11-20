@@ -16,6 +16,7 @@ import { GENDERS, MARITAL_STATUSES, AGE_GROUPS, SKILLS } from './memberRegistrat
 import { exportRowsToExcel, exportRowsToCsv } from '../utils/tableExport.js';
 import { exportMemberDirectoryPdf } from './memberDirectoryPdf.js';
 import { openMemberExitModal } from './memberExitModal.js';
+import { renderPropertiesTabs, propertyRows } from './propertiesTabs.js';
 
 const COLUMN_DEFS = [
   { key: 'gender', label: 'memberDirectory.colGender' },
@@ -41,7 +42,6 @@ export function renderMemberDirectory(container, { supabase }) {
   let sortBy = 'full_name';
   const visibleColumns = new Set(DEFAULT_VISIBLE);
   let selectedIds = new Set();
-  let detailEl = null;
 
   bodyEl.innerHTML = `
     <div class="flex flex-wrap items-center gap-2 mb-3">
@@ -101,7 +101,6 @@ export function renderMemberDirectory(container, { supabase }) {
     </div>
 
     <div data-el="table-wrap"></div>
-    <div data-el="detail"></div>
   `;
 
   const searchEl = bodyEl.querySelector('[data-el="search"]');
@@ -114,7 +113,6 @@ export function renderMemberDirectory(container, { supabase }) {
   const tableWrapEl = bodyEl.querySelector('[data-el="table-wrap"]');
   const countersEl = bodyEl.querySelector('[data-el="counters"]');
   const bulkBarEl = bodyEl.querySelector('[data-el="bulk-bar"]');
-  detailEl = bodyEl.querySelector('[data-el="detail"]');
 
   searchEl.addEventListener('input', () => { searchQuery = searchEl.value.trim().toLowerCase(); renderTable(); });
   statusFilterEl.addEventListener('change', () => { statusFilter = statusFilterEl.value; renderTable(); });
@@ -408,7 +406,8 @@ export function renderMemberDirectory(container, { supabase }) {
   }
 
   async function openDetail(row) {
-    detailEl.innerHTML = `<div class="border-t border-slate-200 mt-3 pt-3"><p class="text-sm text-slate-500">${t('common.loading')}</p></div>`;
+    const modal = getPropertiesModal();
+    modal.open(row.full_name, `<p class="text-sm text-slate-500">${t('common.loading')}</p>`);
     const [{ data: history }, { data: exit }] = await Promise.all([
       supabase.from('member_history').select('field, old_value, new_value, changed_at').eq('member_id', row.id).order('changed_at', { ascending: false }),
       row.status === 'Left'
@@ -416,26 +415,63 @@ export function renderMemberDirectory(container, { supabase }) {
         : Promise.resolve({ data: null }),
     ]);
 
-    detailEl.innerHTML = `
-      <div class="border-t border-slate-200 mt-3 pt-3">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold text-slate-700">${escapeHtml(row.full_name)}</h3>
-          <button type="button" data-action="close-detail" class="text-xs text-slate-400 hover:text-slate-600">${t('common.back')}</button>
-        </div>
-        <div class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-slate-600 mb-3">
-          ${COLUMN_DEFS.map((c) => `<div><span class="text-slate-400">${t(c.label)}:</span> ${escapeHtml(cellValue(row, c.key) || '—')}</div>`).join('')}
-        </div>
-        ${exit ? `
-          <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 text-sm text-slate-600">
-            <p class="font-semibold text-slate-700 mb-1">${t('memberExit.exitRecordTitle')}</p>
-            <p>${t('memberExit.colDateLeft')}: ${escapeHtml(exit.date_left)}</p>
-            <p>${t('memberExit.colMainReason')}: ${escapeHtml(t(`exitReasons.${exit.main_reason}`))}</p>
-            ${exit.reason_title ? `<p>${t('memberExit.colReasonTitle')}: ${escapeHtml(exit.reason_title)}</p>` : ''}
-            ${exit.notes ? `<p>${t('memberExit.colNotes')}: ${escapeHtml(exit.notes)}</p>` : ''}
-          </div>
-        ` : ''}
-        <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">${t('memberDirectory.changeHistory')}</h4>
-        <div class="space-y-1 max-h-48 overflow-y-auto">
+    const statusLabel = row.status ? t(`memberDirectory.status${row.status}`) : '';
+    // registered_at is a plain date stored as UTC midnight -- format it in
+    // UTC so it doesn't show as the previous day in the Americas.
+    const registeredText = row.registered_at
+      ? new Date(row.registered_at).toLocaleDateString(appLocale(), { timeZone: 'UTC' })
+      : (row.created_at ? new Date(row.created_at).toLocaleDateString(appLocale()) : '');
+
+    const tabs = [
+      {
+        id: 'general',
+        label: t('properties.tabGeneral'),
+        content: propertyRows([
+          [t('memberDirectory.colName'), row.full_name],
+          [t('memberDirectory.colStatus'), statusLabel],
+          [t('memberDirectory.colGender'), cellValue(row, 'gender')],
+          [t('memberDirectory.colMaritalStatus'), cellValue(row, 'marital_status')],
+          [t('memberDirectory.colAgeGroup'), cellValue(row, 'age_group')],
+          [t('properties.registered'), registeredText],
+        ], escapeHtml),
+      },
+      {
+        id: 'contact',
+        label: t('properties.tabContact'),
+        content: propertyRows([
+          [t('memberDirectory.colPhone'), row.phone],
+          [t('memberDirectory.colEmail'), row.email],
+          [t('memberDirectory.colAddress'), addressText(row)],
+        ], escapeHtml) || `<p class="text-slate-400">—</p>`,
+      },
+      {
+        id: 'career',
+        label: t('properties.tabCareer'),
+        content: propertyRows([
+          [t('memberDirectory.colCareer'), row.career],
+          [t('memberDirectory.colSkills'), skillsText(row)],
+        ], escapeHtml) || `<p class="text-slate-400">—</p>`,
+      },
+    ];
+
+    if (exit) {
+      tabs.push({
+        id: 'exit',
+        label: t('properties.tabExit'),
+        content: propertyRows([
+          [t('memberExit.colDateLeft'), exit.date_left],
+          [t('memberExit.colMainReason'), exit.main_reason ? t(`exitReasons.${exit.main_reason}`) : ''],
+          [t('memberExit.colReasonTitle'), exit.reason_title],
+          [t('memberExit.colNotes'), exit.notes],
+        ], escapeHtml),
+      });
+    }
+
+    tabs.push({
+      id: 'history',
+      label: t('properties.tabHistory'),
+      content: `
+        <div class="space-y-1.5">
           ${(history || []).length > 0 ? history.map((h) => `
             <div class="text-xs text-slate-500">
               ${escapeHtml(new Date(h.changed_at).toLocaleString(appLocale()))} — <span class="font-medium">${escapeHtml(h.field)}</span>:
@@ -443,9 +479,10 @@ export function renderMemberDirectory(container, { supabase }) {
             </div>
           `).join('') : `<p class="text-xs text-slate-400">${t('memberDirectory.noHistory')}</p>`}
         </div>
-      </div>
-    `;
-    detailEl.querySelector('[data-action="close-detail"]').addEventListener('click', () => { detailEl.innerHTML = ''; });
+      `,
+    });
+
+    renderPropertiesTabs(modal.bodyEl, tabs);
   }
 
   load();
@@ -480,6 +517,45 @@ export function createMemberDirectoryModal({ supabase, title }) {
   }
 
   return { open, root };
+}
+
+// One AD-style "Properties" window reused for every member, opened on top
+// of the directory (no scrolling down to a detail section).
+let propertiesModal = null;
+function getPropertiesModal() {
+  if (propertiesModal) return propertiesModal;
+  const root = document.createElement('div');
+  root.className = 'fixed inset-0 z-[60] hidden items-center justify-center bg-black/50 p-4';
+  root.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold" data-el="title"></h2>
+        <button type="button" data-action="close" aria-label="${t('properties.close')}" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div data-el="body"></div>
+      <div class="flex justify-end mt-4">
+        <button type="button" data-action="close" class="px-4 py-1.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50">${t('properties.close')}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(root);
+  const titleEl = root.querySelector('[data-el="title"]');
+  const bodyEl = root.querySelector('[data-el="body"]');
+  const close = () => { root.classList.add('hidden'); root.classList.remove('flex'); };
+  root.querySelectorAll('[data-action="close"]').forEach((b) => b.addEventListener('click', close));
+  root.addEventListener('click', (e) => { if (e.target === root) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !root.classList.contains('hidden')) close(); });
+  propertiesModal = {
+    bodyEl,
+    open(title, html) {
+      titleEl.textContent = title;
+      bodyEl.innerHTML = html;
+      root.classList.remove('hidden');
+      root.classList.add('flex');
+    },
+    close,
+  };
+  return propertiesModal;
 }
 
 function escapeHtml(str) {

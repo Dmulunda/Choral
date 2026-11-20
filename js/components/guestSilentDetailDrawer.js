@@ -10,6 +10,7 @@
 // guest_follow_ups row at all, so the intake-fields/notes/history
 // sections simply don't render when there's nothing to show.
 import { t, departmentLabel, formatDate } from '../i18n.js';
+import { renderPropertiesTabs, propertyRows } from './propertiesTabs.js';
 
 export function createGuestSilentDetailDrawer({ supabase }) {
   const root = document.createElement('div');
@@ -20,7 +21,7 @@ export function createGuestSilentDetailDrawer({ supabase }) {
         <h2 class="text-xl font-bold" data-el="title"></h2>
         <button type="button" data-action="close" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
       </div>
-      <div data-el="body" class="space-y-4 text-sm"></div>
+      <div data-el="body"></div>
     </div>
   `;
   document.body.appendChild(root);
@@ -31,7 +32,7 @@ export function createGuestSilentDetailDrawer({ supabase }) {
   root.querySelectorAll('[data-action="close"]').forEach((btn) => btn.addEventListener('click', close));
   root.addEventListener('click', (e) => { if (e.target === root) close(); });
 
-  async function open({ profileId = null, guestFollowUpId = null, fullName = '', joinedAt = null }) {
+  async function open({ profileId = null, guestFollowUpId = null, fullName = '', joinedAt = null, initialTab = null }) {
     titleEl.textContent = fullName;
     bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('common.loading')}</p>`;
     root.classList.remove('hidden');
@@ -58,83 +59,97 @@ export function createGuestSilentDetailDrawer({ supabase }) {
       ? await supabase.from('profile_notes').select('author_id, note, created_at').eq('profile_id', profileId).order('created_at')
       : { data: [] };
 
-    bodyEl.innerHTML = '';
+    const lf = (key, value) => [t(key), value];
+    const tabs = [];
 
-    if (joinedAt) {
-      const joinedEl = document.createElement('div');
-      joinedEl.innerHTML = `<span class="font-medium text-slate-700">${t('silentDirectory.joined')}:</span> ${escapeHtml(joinedAt)}`;
-      bodyEl.appendChild(joinedEl);
-    }
-
-    const fields = lead ? [
-      [t('guestHub.detail.phone'), lead.phone],
-      [t('guestHub.detail.email'), lead.email],
-      [t('guestHub.detail.city'), lead.city],
-      [t('guestHub.detail.referral'), lead.referral_source ? t(`attendance.referral.${lead.referral_source}`) : null],
-      [t('guestHub.detail.referredBy'), lead.referred_by_name],
-      [t('guestHub.detail.ageRange'), lead.age_range ? t(`attendance.ageRange.${lead.age_range}`) : null],
-      [t('guestHub.detail.prayerRequest'), lead.prayer_request],
-      [t('guestHub.detail.wantsPastorMeeting'), lead.wants_pastor_meeting ? t('common.yes') : null],
-      [t('guestHub.detail.homeChurch'), lead.home_church],
-      [t('guestHub.detail.checkinNote'), lead.notes],
-    ].filter(([, value]) => value) : [];
-
-    if (fields.length > 0) {
-      const fieldsEl = document.createElement('div');
-      fieldsEl.innerHTML = `<div class="font-medium text-slate-700 mb-1">${t('silentDirectory.intakeInfo')}</div>` +
-        fields.map(([label, value]) => `<div class="text-slate-600"><span class="font-medium text-slate-700">${escapeHtml(label)}:</span> ${escapeHtml(value)}</div>`).join('');
-      bodyEl.appendChild(fieldsEl);
-    } else if (!profileId) {
-      bodyEl.innerHTML = `<p class="text-sm text-slate-500">${t('silentDirectory.noDetails')}</p>`;
-    }
+    // General -- like AD's General tab: who this person is.
+    const general = propertyRows([
+      lf('silentDirectory.joined', joinedAt),
+      ...(lead ? [
+        lf('guestHub.detail.city', lead.city),
+        lf('guestHub.detail.ageRange', lead.age_range ? t(`attendance.ageRange.${lead.age_range}`) : null),
+        lf('guestHub.detail.homeChurch', lead.home_church),
+      ] : []),
+    ], escapeHtml);
+    tabs.push({
+      id: 'general',
+      label: t('properties.tabGeneral'),
+      content: general || `<p class="text-slate-500">${t('silentDirectory.noDetails')}</p>`,
+    });
 
     if (lead) {
+      const contact = propertyRows([
+        lf('guestHub.detail.phone', lead.phone),
+        lf('guestHub.detail.email', lead.email),
+        lf('guestHub.detail.city', lead.city),
+      ], escapeHtml);
+      if (contact) tabs.push({ id: 'contact', label: t('properties.tabContact'), content: contact });
+
+      const intake = propertyRows([
+        lf('guestHub.detail.referral', lead.referral_source ? t(`attendance.referral.${lead.referral_source}`) : null),
+        lf('guestHub.detail.referredBy', lead.referred_by_name),
+        lf('guestHub.detail.prayerRequest', lead.prayer_request),
+        lf('guestHub.detail.wantsPastorMeeting', lead.wants_pastor_meeting ? t('common.yes') : null),
+        lf('guestHub.detail.checkinNote', lead.notes),
+      ], escapeHtml);
+      if (intake) tabs.push({ id: 'intake', label: t('properties.tabIntake'), content: intake });
+    }
+
+    // Notes -- guest-case notes (if any) + profile notes with "add".
+    if (lead || profileId) {
       const notesEl = document.createElement('div');
-      notesEl.className = 'border-t border-slate-200 pt-3';
-      notesEl.innerHTML = `<div class="font-medium text-slate-700 mb-1">${t('guestHub.notes.title')}</div>` +
-        ((notes || []).length > 0
-          ? notes.map((n) => `<div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(n.created_at))} — ${escapeHtml(n.note)}</div>`).join('')
-          : `<p class="text-xs text-slate-400">${t('guestHub.notes.empty')}</p>`);
-      bodyEl.appendChild(notesEl);
-
-      if ((transfers || []).length > 0) {
-        const historyEl = document.createElement('div');
-        historyEl.className = 'border-t border-slate-200 pt-3';
-        historyEl.innerHTML = `<div class="font-medium text-slate-700 mb-1">${t('guestHub.detail.history')}</div>` +
-          transfers.map((h) => {
-            const from = h.from_department_id ? departmentLabel(departments.find((d) => d.id === h.from_department_id)?.key) : t('guestHub.historyIntake');
-            const to = departmentLabel(departments.find((d) => d.id === h.to_department_id)?.key);
-            return `<div class="text-xs text-slate-500">${escapeHtml(formatDate(h.created_at))} — ${escapeHtml(from)} → ${escapeHtml(to)}${h.note ? ` (${escapeHtml(h.note)})` : ''}</div>`;
-          }).join('');
-        bodyEl.appendChild(historyEl);
+      notesEl.className = 'space-y-4';
+      if (lead) {
+        notesEl.insertAdjacentHTML('beforeend', `
+          <div>
+            <div class="font-medium text-slate-700 mb-1">${t('guestHub.notes.title')}</div>
+            ${(notes || []).length > 0
+              ? notes.map((n) => `<div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(n.created_at))} — ${escapeHtml(n.note)}</div>`).join('')
+              : `<p class="text-xs text-slate-400">${t('guestHub.notes.empty')}</p>`}
+          </div>
+        `);
       }
+      // Always available when there's a profile (unlike the guest-case
+      // notes above) -- a bulk-imported or manually-added Silent profile
+      // has no guest case at all, so this is its only place for a note.
+      if (profileId) {
+        const profileNotesEl = document.createElement('div');
+        if (lead) profileNotesEl.className = 'border-t border-slate-200 pt-3';
+        profileNotesEl.innerHTML = `
+          <div class="font-medium text-slate-700 mb-1">${t('silentDirectory.notes.title')}</div>
+          ${(profileNotes || []).length > 0
+            ? profileNotes.map((n) => `<div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(n.created_at))} — ${escapeHtml(n.note)}</div>`).join('')
+            : `<p class="text-xs text-slate-400 mb-1">${t('guestHub.notes.empty')}</p>`}
+          <textarea data-el="new-profile-note" rows="2" placeholder="${t('guestHub.notes.placeholder')}" class="w-full border border-slate-300 rounded-lg px-2 py-1 text-sm mb-1.5"></textarea>
+          <button type="button" data-action="add-profile-note" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">${t('guestHub.notes.add')}</button>
+        `;
+        const newNoteTextarea = profileNotesEl.querySelector('[data-el="new-profile-note"]');
+        profileNotesEl.querySelector('[data-action="add-profile-note"]').addEventListener('click', async () => {
+          const note = newNoteTextarea.value.trim();
+          if (!note) return;
+          const { error } = await supabase.rpc('add_profile_note', { p_profile_id: profileId, p_note: note });
+          if (error) { window.alert(error.message); return; }
+          // Reopen on the Notes tab so the new note is visible right away.
+          open({ profileId, guestFollowUpId, fullName, joinedAt, initialTab: 'notes' });
+        });
+        notesEl.appendChild(profileNotesEl);
+      }
+      tabs.push({ id: 'notes', label: t('properties.tabNotes'), content: notesEl });
     }
 
-    // Always available (unlike the guest-case notes above, which only
-    // exist when a linked guest_follow_ups row does) -- this is what a
-    // bulk-imported or manually-added Silent profile (no guest case at
-    // all) was missing entirely: nowhere to attach a note.
-    if (profileId) {
-      const profileNotesEl = document.createElement('div');
-      profileNotesEl.className = 'border-t border-slate-200 pt-3';
-      profileNotesEl.innerHTML = `
-        <div class="font-medium text-slate-700 mb-1">${t('silentDirectory.notes.title')}</div>
-        ${(profileNotes || []).length > 0
-          ? profileNotes.map((n) => `<div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(n.created_at))} — ${escapeHtml(n.note)}</div>`).join('')
-          : `<p class="text-xs text-slate-400 mb-1">${t('guestHub.notes.empty')}</p>`}
-        <textarea data-el="new-profile-note" rows="2" placeholder="${t('guestHub.notes.placeholder')}" class="w-full border border-slate-300 rounded-lg px-2 py-1 text-sm mb-1.5"></textarea>
-        <button type="button" data-action="add-profile-note" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">${t('guestHub.notes.add')}</button>
-      `;
-      const newNoteTextarea = profileNotesEl.querySelector('[data-el="new-profile-note"]');
-      profileNotesEl.querySelector('[data-action="add-profile-note"]').addEventListener('click', async () => {
-        const note = newNoteTextarea.value.trim();
-        if (!note) return;
-        const { error } = await supabase.rpc('add_profile_note', { p_profile_id: profileId, p_note: note });
-        if (error) { window.alert(error.message); return; }
-        open({ profileId, guestFollowUpId, fullName, joinedAt });
+    if (lead && (transfers || []).length > 0) {
+      tabs.push({
+        id: 'history',
+        label: t('properties.tabHistory'),
+        content: transfers.map((h) => {
+          const from = h.from_department_id ? departmentLabel(departments.find((d) => d.id === h.from_department_id)?.key) : t('guestHub.historyIntake');
+          const to = departmentLabel(departments.find((d) => d.id === h.to_department_id)?.key);
+          return `<div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(h.created_at))} — ${escapeHtml(from)} → ${escapeHtml(to)}${h.note ? ` (${escapeHtml(h.note)})` : ''}</div>`;
+        }).join(''),
       });
-      bodyEl.appendChild(profileNotesEl);
     }
+
+    renderPropertiesTabs(bodyEl, tabs, { initial: initialTab });
   }
 
   function close() {
